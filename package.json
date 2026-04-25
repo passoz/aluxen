@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@remix-run/dev": "^2.16.1",
+    "@remix-run/node": "^2.16.1",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.0.0",
     "@types/react": "^18.3.3",

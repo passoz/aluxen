@@ -1,7 +1,7 @@
 import { Form, useActionData, useNavigation } from '@remix-run/react';
 import { json, redirect } from '@remix-run/node';
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from '@remix-run/node';
-import { loginUser, registerUser } from '../utils/auth.server';
+import { loginUser } from '../utils/auth.server';
 import { initializeDatabase } from '../utils/db.server';
 import { createUserSession, getUserId } from '../utils/session.server';
 
@@ -13,26 +13,17 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (userId) {
     throw redirect('/dashboard?tab=tenants');
   }
-  return json({ seededUser: process.env.SEED_USERNAME || 'admin', seededPassword: process.env.SEED_PASSWORD || 'admin123' });
+  return json({});
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   await initializeDatabase();
   const formData = await request.formData();
-  const intent = String(formData.get('intent') || 'login');
   const username = String(formData.get('username') || '').trim();
   const password = String(formData.get('password') || '');
 
   if (!username || !password) {
     return json({ error: 'Informe usuário e senha.' }, { status: 400 });
-  }
-
-  if (intent === 'register') {
-    const user = await registerUser(username, password);
-    if (!user) {
-      return json({ error: 'Este usuário já existe.' }, { status: 400 });
-    }
-    return createUserSession(user.id, '/dashboard?tab=tenants');
   }
 
   const user = await loginUser(username, password);
@@ -63,7 +54,6 @@ export default function LoginRoute() {
             </div>
             <div className="logo-text">Alux<span>en</span></div>
           </div>
-          <p className="subtitle">Gestão de imóveis, contratos e recibos em um monólito Remix funcional.</p>
         </div>
 
         <Form method="post" className="stack">
@@ -76,17 +66,10 @@ export default function LoginRoute() {
             <label htmlFor="password">Senha</label>
             <input id="password" name="password" type="password" required />
           </div>
-          <div className="auth-actions">
-            <button type="submit" name="intent" value="login" className="btn btn-primary" disabled={busy}>
-              {busy ? 'Entrando...' : 'Entrar'}
-            </button>
-            <button type="submit" name="intent" value="register" className="btn" disabled={busy}>
-              Criar conta
-            </button>
-          </div>
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy ? 'Entrando...' : 'Entrar'}
+          </button>
         </Form>
-
-        <p className="hint">Usuário inicial: <code>admin</code> / <code>admin123</code></p>
       </div>
     </div>
   );

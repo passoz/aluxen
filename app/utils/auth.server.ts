@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { execute, queryOne } from './db.server';
+import { createId } from './id';
 
 type UserRow = {
   id: string;
@@ -24,7 +25,7 @@ export async function registerUser(username: string, password: string) {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const id = crypto.randomUUID();
+  const id = createId();
   await execute('INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)', [id, username, passwordHash]);
   return { id, username };
 }

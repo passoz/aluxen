@@ -1,9 +1,9 @@
 import { Form, Link, useFetcher, useLoaderData, useRevalidator } from '@remix-run/react';
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from '@remix-run/node';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createReceiptPdf } from '../utils/pdf.server';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { execute, query, queryOne } from '../utils/db.server';
+import { createId } from '../utils/id';
 import { requireUserId } from '../utils/session.server';
 
 type Tenant = {
@@ -28,6 +28,7 @@ type Lease = {
   property_id: string;
   start_date: string;
   end_date: string;
+  due_day: string;
   rent_amount: string;
   tenant_name: string;
   property_name: string;
@@ -40,6 +41,7 @@ type Receipt = {
   paid_at: string | null;
   amount: string;
   pdf_path: string | null;
+  generated_key: string | null;
   tenant_name: string;
   property_name: string;
 };
@@ -47,17 +49,136 @@ type Receipt = {
 type MutationResponse = { ok?: boolean; error?: string };
 type SortDirection = 'asc' | 'desc';
 type SortState = { key: string; direction: SortDirection };
+type PopoverPlacement = { dropup: boolean; maxHeight: number };
+type QueuePayload = Record<string, string>;
+type OfflineMutation = {
+  id: string;
+  payload: QueuePayload;
+  successMessage: string;
+};
+type DashboardCache = {
+  user: string;
+  tenants: Tenant[];
+  properties: Property[];
+  leases: Lease[];
+  receipts: Receipt[];
+  savedAt: string;
+};
+type PendingIds = {
+  tenants: Set<string>;
+  properties: Set<string>;
+  leases: Set<string>;
+  receipts: Set<string>;
+};
+
+const DASHBOARD_CACHE_KEY = 'aluxen.dashboard-cache.v1';
+const OFFLINE_QUEUE_KEY = 'aluxen.offline-queue.v1';
 
 const tabs = ['tenants', 'properties', 'leases', 'receipts'] as const;
 type Tab = (typeof tabs)[number];
+
+function getPopoverPlacement(triggerRect: DOMRect, popoverHeight: number): PopoverPlacement {
+  const margin = 16;
+  const spaceAbove = Math.max(0, triggerRect.top - margin);
+  const spaceBelow = Math.max(0, window.innerHeight - triggerRect.bottom - margin);
+  const fitsBelow = spaceBelow >= popoverHeight;
+  const fitsAbove = spaceAbove >= popoverHeight;
+
+  if (fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove)) {
+    return { dropup: false, maxHeight: spaceBelow };
+  }
+
+  return { dropup: true, maxHeight: spaceAbove };
+}
 
 function getTab(url: URL): Tab {
   const tab = url.searchParams.get('tab');
   return tabs.includes(tab as Tab) ? (tab as Tab) : 'tenants';
 }
 
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+function getReceiptStatus(receipt: Pick<Receipt, 'paid_at' | 'due_date'>) {
+  if (receipt.paid_at) return 'paid';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dueDate = new Date(`${receipt.due_date}T00:00:00`);
+  return dueDate < today ? 'overdue' : 'due';
+}
+
+function getReceiptStatusLabel(status: string) {
+  if (status === 'paid') return 'Pago';
+  if (status === 'overdue') return 'Vencido';
+  return 'A vencer';
+}
+
 function formatCurrency(value: string | number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
+}
+
+function normalizeMoneyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return (Number(digits) / 100).toFixed(2);
+}
+
+function formatMoneyInput(value: string) {
+  if (!value) return '';
+  return formatCurrency(value);
+}
+
+function formatPhoneInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (!digits) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDateTime(value: string) {
+  const [datePart, timePart = '00:00'] = value.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0);
+}
+
+function formatLocalDateTime(date: Date) {
+  const datePart = formatLocalDate(date);
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${datePart}T${hour}:${minute}`;
+}
+
+function formatDateBr(value: string | null) {
+  if (!value) return '-';
+  const [year, month, day] = value.split(/[-T]/).map(Number);
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
+}
+
+function formatDateTimeBr(value: string | null) {
+  if (!value) return '-';
+  const [datePart, timePart = ''] = value.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  if (timePart) {
+    const [hour, minute] = timePart.split(':');
+    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year} ${hour}:${minute}`;
+  }
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
 function compareValues(left: string | number | null | undefined, right: string | number | null | undefined, direction: SortDirection) {
@@ -78,6 +199,110 @@ function paginateItems<T>(items: T[], page: number, pageSize: number) {
   return items.slice(start, start + pageSize);
 }
 
+function isCreateIntent(intent: string) {
+  return intent === 'tenant.create' || intent === 'property.create' || intent === 'lease.create' || intent === 'receipt.create';
+}
+
+function readDashboardCache() {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(DASHBOARD_CACHE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as DashboardCache;
+  } catch {
+    return null;
+  }
+}
+
+function writeDashboardCache(cache: DashboardCache) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cache));
+}
+
+function readOfflineQueue() {
+  if (typeof window === 'undefined') return [] as OfflineMutation[];
+  const raw = window.localStorage.getItem(OFFLINE_QUEUE_KEY);
+  if (!raw) return [] as OfflineMutation[];
+  try {
+    return JSON.parse(raw) as OfflineMutation[];
+  } catch {
+    return [] as OfflineMutation[];
+  }
+}
+
+function writeOfflineQueue(queue: OfflineMutation[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+}
+
+function enqueueOfflineMutation(mutation: OfflineMutation) {
+  const queue = [...readOfflineQueue(), mutation];
+  writeOfflineQueue(queue);
+  return queue;
+}
+
+function serializeFormData(formData: FormData) {
+  const payload: QueuePayload = {};
+  for (const [key, value] of formData.entries()) {
+    if (typeof value === 'string') {
+      payload[key] = value;
+    }
+  }
+  return payload;
+}
+
+async function submitQueuedMutation(payload: QueuePayload) {
+  const formData = new FormData();
+  Object.entries(payload).forEach(([key, value]) => formData.set(key, value));
+  const response = await fetch('/dashboard', {
+    method: 'POST',
+    body: formData,
+    credentials: 'same-origin',
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? (await response.json()) as MutationResponse
+    : { error: response.ok ? undefined : 'Falha ao sincronizar dados pendentes.' };
+
+  if (!response.ok || data.error) {
+    throw new Error(data.error || 'Falha ao sincronizar dados pendentes.');
+  }
+}
+
+function getPendingIds(queue: OfflineMutation[]): PendingIds {
+  const pending: PendingIds = {
+    tenants: new Set<string>(),
+    properties: new Set<string>(),
+    leases: new Set<string>(),
+    receipts: new Set<string>(),
+  };
+
+  for (const mutation of queue) {
+    const { intent, id } = mutation.payload;
+    if (!id) continue;
+    if (intent.startsWith('tenant.')) pending.tenants.add(id);
+    if (intent.startsWith('property.')) pending.properties.add(id);
+    if (intent.startsWith('lease.')) pending.leases.add(id);
+    if (intent.startsWith('receipt.')) pending.receipts.add(id);
+  }
+
+  return pending;
+}
+
+function getSyncErrorMessage(payload: QueuePayload, error: unknown) {
+  const fallback = error instanceof Error ? error.message : 'Falha ao sincronizar dados pendentes.';
+  if (fallback.includes('UNIQUE constraint failed')) {
+    if (payload.intent?.startsWith('tenant.')) return 'Conflito ao sincronizar inquilino: email ou identificador ja existe no servidor.';
+    if (payload.intent?.startsWith('property.')) return 'Conflito ao sincronizar imovel: identificador ja existe no servidor.';
+    if (payload.intent?.startsWith('lease.')) return 'Conflito ao sincronizar contrato: identificador ja existe no servidor.';
+    if (payload.intent?.startsWith('receipt.')) return 'Conflito ao sincronizar pagamento: identificador ou geracao mensal ja existe no servidor.';
+  }
+  if (fallback.includes('Contrato não encontrado.')) return 'Sincronizacao bloqueada: um pagamento pendente referencia um contrato inexistente no servidor.';
+  if (fallback.includes('Credenciais inválidas.') || fallback.includes('/login')) return 'Sessao expirada. Entre novamente para sincronizar os dados pendentes.';
+  return fallback;
+}
+
 export const meta: MetaFunction = () => [{ title: 'Aluxen | Painel' }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -90,7 +315,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     query<Tenant>('SELECT id, name, email, phone FROM tenants ORDER BY created_at DESC, name'),
     query<Property>('SELECT id, name, address, city, state, zip FROM properties ORDER BY created_at DESC, name'),
     query<Lease>(`
-      SELECT l.id, l.tenant_id, l.property_id, l.start_date::text, l.end_date::text, l.rent_amount::text,
+      SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount,
              t.name AS tenant_name, p.name AS property_name
       FROM leases l
       JOIN tenants t ON t.id = l.tenant_id
@@ -98,7 +323,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       ORDER BY l.created_at DESC
     `),
     query<Receipt>(`
-      SELECT r.id, r.lease_id, r.due_date::text, r.paid_at::text, r.amount::text, r.pdf_path,
+      SELECT r.id, r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.generated_key,
              t.name AS tenant_name, p.name AS property_name
       FROM receipts r
       JOIN leases l ON l.id = r.lease_id
@@ -119,11 +344,12 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     switch (intent) {
       case 'tenant.create': {
+        const id = String(formData.get('id') || createId());
         const name = String(formData.get('name') || '').trim();
         const email = String(formData.get('email') || '').trim();
         const phone = String(formData.get('phone') || '').trim();
         if (!name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute('INSERT INTO tenants (id, name, email, phone) VALUES ($1, $2, $3, $4)', [crypto.randomUUID(), name, email, phone || null]);
+        await execute('INSERT INTO tenants (id, name, email, phone) VALUES ($1, $2, $3, $4)', [id, name, email, phone || null]);
         break;
       }
       case 'tenant.update': {
@@ -132,7 +358,7 @@ export async function action({ request }: ActionFunctionArgs) {
         const email = String(formData.get('email') || '').trim();
         const phone = String(formData.get('phone') || '').trim();
         if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute('UPDATE tenants SET name = $1, email = $2, phone = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4', [name, email, phone || null, id]);
+        await execute("UPDATE tenants SET name = $1, email = $2, phone = $3, updated_at = datetime('now') WHERE id = $4", [name, email, phone || null, id]);
         break;
       }
       case 'tenant.delete': {
@@ -140,13 +366,14 @@ export async function action({ request }: ActionFunctionArgs) {
         break;
       }
       case 'property.create': {
+        const id = String(formData.get('id') || createId());
         const name = String(formData.get('name') || '').trim();
         const address = String(formData.get('address') || '').trim();
         const city = String(formData.get('city') || '').trim();
         const state = String(formData.get('state') || '').trim();
         const zip = String(formData.get('zip') || '').trim();
         if (!name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
-        await execute('INSERT INTO properties (id, name, address, city, state, zip) VALUES ($1, $2, $3, $4, $5, $6)', [crypto.randomUUID(), name, address, city, state, zip || null]);
+        await execute('INSERT INTO properties (id, name, address, city, state, zip) VALUES ($1, $2, $3, $4, $5, $6)', [id, name, address, city, state, zip || null]);
         break;
       }
       case 'property.update': {
@@ -157,7 +384,7 @@ export async function action({ request }: ActionFunctionArgs) {
         const state = String(formData.get('state') || '').trim();
         const zip = String(formData.get('zip') || '').trim();
         if (!id || !name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
-        await execute('UPDATE properties SET name = $1, address = $2, city = $3, state = $4, zip = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6', [name, address, city, state, zip || null, id]);
+        await execute("UPDATE properties SET name = $1, address = $2, city = $3, state = $4, zip = $5, updated_at = datetime('now') WHERE id = $6", [name, address, city, state, zip || null, id]);
         break;
       }
       case 'property.delete': {
@@ -165,13 +392,15 @@ export async function action({ request }: ActionFunctionArgs) {
         break;
       }
       case 'lease.create': {
+        const id = String(formData.get('id') || createId());
         const tenantId = String(formData.get('tenant_id') || '');
         const propertyId = String(formData.get('property_id') || '');
         const startDate = String(formData.get('start_date') || '');
         const endDate = String(formData.get('end_date') || '');
+        const dueDay = Number(formData.get('due_day'));
         const rentAmount = Number(formData.get('rent_amount'));
-        if (!tenantId || !propertyId || !startDate || !endDate || !Number.isFinite(rentAmount)) throw new Error('Preencha todos os campos do contrato.');
-        await execute('INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, rent_amount) VALUES ($1, $2, $3, $4, $5, $6)', [crypto.randomUUID(), tenantId, propertyId, startDate, endDate, rentAmount]);
+        if (!tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) throw new Error('Preencha todos os campos do contrato.');
+        await execute('INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount) VALUES ($1, $2, $3, $4, $5, $6, $7)', [id, tenantId, propertyId, startDate, endDate, dueDay, rentAmount]);
         break;
       }
       case 'lease.update': {
@@ -180,9 +409,10 @@ export async function action({ request }: ActionFunctionArgs) {
         const propertyId = String(formData.get('property_id') || '');
         const startDate = String(formData.get('start_date') || '');
         const endDate = String(formData.get('end_date') || '');
+        const dueDay = Number(formData.get('due_day'));
         const rentAmount = Number(formData.get('rent_amount'));
-        if (!id || !tenantId || !propertyId || !startDate || !endDate || !Number.isFinite(rentAmount)) throw new Error('Preencha todos os campos do contrato.');
-        await execute('UPDATE leases SET tenant_id = $1, property_id = $2, start_date = $3, end_date = $4, rent_amount = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $6', [tenantId, propertyId, startDate, endDate, rentAmount, id]);
+        if (!id || !tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) throw new Error('Preencha todos os campos do contrato.');
+        await execute("UPDATE leases SET tenant_id = $1, property_id = $2, start_date = $3, end_date = $4, due_day = $5, rent_amount = $6, updated_at = datetime('now') WHERE id = $7", [tenantId, propertyId, startDate, endDate, dueDay, rentAmount, id]);
         break;
       }
       case 'lease.delete': {
@@ -191,7 +421,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
       case 'receipt.create':
       case 'receipt.update': {
-        const id = String(formData.get('id') || crypto.randomUUID());
+        const id = String(formData.get('id') || createId());
         const leaseId = String(formData.get('lease_id') || '');
         const dueDate = String(formData.get('due_date') || '');
         const paidAt = String(formData.get('paid_at') || '');
@@ -207,19 +437,35 @@ export async function action({ request }: ActionFunctionArgs) {
         `, [leaseId]);
         if (!lease) throw new Error('Contrato não encontrado.');
 
-        const pdfPath = await createReceiptPdf({
-          receiptId: id,
-          tenantName: lease.tenant_name,
-          propertyName: lease.property_name,
-          dueDate,
-          paidAt: paidAt || null,
-          amount,
-        });
+        const pdfPath = null;
 
         if (intent === 'receipt.create') {
           await execute('INSERT INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path) VALUES ($1, $2, $3, $4, $5, $6)', [id, leaseId, dueDate, paidAt || null, amount, pdfPath]);
         } else {
           await execute('UPDATE receipts SET lease_id = $1, due_date = $2, paid_at = $3, amount = $4, pdf_path = $5 WHERE id = $6', [leaseId, dueDate, paidAt || null, amount, pdfPath, id]);
+        }
+        break;
+      }
+      case 'receipt.generate-monthly': {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        const monthStart = `${monthKey}-01`;
+        const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
+        const activeLeases = await query<Lease>(`
+          SELECT id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, '' AS tenant_name, '' AS property_name
+          FROM leases
+          WHERE start_date <= $1 AND end_date >= $2
+        `, [monthEnd, monthStart]);
+
+        for (const lease of activeLeases) {
+          const dueDay = Math.min(Number(lease.due_day) || 1, getDaysInMonth(year, month));
+          const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
+          await execute(
+            'INSERT OR IGNORE INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path, generated_key) VALUES ($1, $2, $3, NULL, $4, NULL, $5)',
+            [createId(), lease.id, dueDate, lease.rent_amount, `${lease.id}:${monthKey}`],
+          );
         }
         break;
       }
@@ -235,6 +481,28 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   return json<MutationResponse>({ ok: true });
+}
+
+function DataButtons({ collapsed }: { collapsed: boolean }) {
+  return (
+    <>
+      <a href="/export" className="data-btn" download>
+        <span className="nav-icon"><IconExport /></span>
+        {!collapsed && <span className="nav-label">Exportar</span>}
+      </a>
+      <Form action="/import" method="post" encType="multipart/form-data">
+        <label className="data-btn data-btn-label">
+          <input type="file" name="file" accept=".json" onChange={(e) => {
+            if (e.currentTarget.files?.length && window.confirm('Importar dados do arquivo? Isso adicionará novos registros.')) {
+              e.currentTarget.form?.submit();
+            }
+          }} hidden />
+          <span className="nav-icon"><IconImport /></span>
+          {!collapsed && <span className="nav-label">Importar</span>}
+        </label>
+      </Form>
+    </>
+  );
 }
 
 function ThemeToggle({ collapsed }: { collapsed: boolean }) {
@@ -352,14 +620,51 @@ function IconTheme() {
   );
 }
 
-function DeleteRowButton({ intent, tab, id, onOptimisticDelete, onSettled }: { intent: string; tab: Tab; id: string; onOptimisticDelete: () => void; onSettled: () => void }) {
+function IconExport() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Exportar" role="img" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function IconImport() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Importar" role="img" xmlns="http://www.w3.org/2000/svg">
+      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function DeleteRowButton({
+  intent,
+  tab,
+  id,
+  onOptimisticDelete,
+  onSettled,
+  queueOfflineMutation,
+}: {
+  intent: string;
+  tab: Tab;
+  id: string;
+  onOptimisticDelete: () => void;
+  onSettled: () => void;
+  queueOfflineMutation: (payload: QueuePayload, successMessage: string) => void;
+}) {
   const fetcher = useFetcher<MutationResponse>();
 
   useEffect(() => {
     if (fetcher.state === 'idle' && fetcher.data) {
+      if (fetcher.data.ok) {
+        onOptimisticDelete();
+      }
       onSettled();
     }
-  }, [fetcher.state, fetcher.data, onSettled]);
+  }, [fetcher.state, fetcher.data, onOptimisticDelete, onSettled]);
 
   return (
     <fetcher.Form method="post" onSubmit={(event) => {
@@ -367,7 +672,13 @@ function DeleteRowButton({ intent, tab, id, onOptimisticDelete, onSettled }: { i
         event.preventDefault();
         return;
       }
-      onOptimisticDelete();
+
+      if (!window.navigator.onLine) {
+        event.preventDefault();
+        onOptimisticDelete();
+        onSettled();
+        queueOfflineMutation({ intent, tab, id }, 'Exclusão pendente de sincronização.');
+      }
     }}>
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="tab" value={tab} />
@@ -375,6 +686,22 @@ function DeleteRowButton({ intent, tab, id, onOptimisticDelete, onSettled }: { i
       <button type="submit" className="btn btn-sm btn-danger" disabled={fetcher.state !== 'idle'}>Excluir</button>
     </fetcher.Form>
   );
+}
+
+function SyncBanner({ isOnline, pendingCount }: { isOnline: boolean; pendingCount: number }) {
+  if (isOnline && pendingCount === 0) return null;
+
+  return (
+    <div className={`sync-banner ${isOnline ? 'pending' : 'offline'}`}>
+      {!isOnline
+        ? 'Modo offline ativo. As alterações serão sincronizadas quando a conexão voltar.'
+        : `${pendingCount} alteração(ões) pendente(s) de sincronização.`}
+    </div>
+  );
+}
+
+function PendingBadge() {
+  return <span className="pending-badge">Pendente sync</span>;
 }
 
 function Toast({ message, tone, onClose }: { message: string; tone: 'success' | 'error'; onClose: () => void }) {
@@ -411,8 +738,12 @@ function FilterBar({ value, onChange, placeholder, children }: { value: string; 
 
 function DatePickerInput({ id, name, value, onChange, required, label }: { id: string; name: string; value: string; onChange: (value: string) => void; required?: boolean; label: string }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(() => value ? new Date(value) : new Date());
+  const [viewDate, setViewDate] = useState(() => value ? parseLocalDate(value) : new Date());
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropup, setDropup] = useState(false);
+  const [maxDropdownHeight, setMaxDropdownHeight] = useState(320);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -424,6 +755,16 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useLayoutEffect(() => {
+    if (isOpen && buttonRef.current && dropdownRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
+      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
+      setDropup(placement.dropup);
+      setMaxDropdownHeight(Math.max(120, placement.maxHeight));
+    }
+  }, [isOpen]);
+
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
   const year = viewDate.getFullYear();
@@ -434,7 +775,7 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
 
   const selectDate = (day: number) => {
     const newDate = new Date(year, month, day);
-    onChange(newDate.toISOString().split('T')[0]);
+    onChange(formatLocalDate(newDate));
     setIsOpen(false);
   };
 
@@ -443,14 +784,16 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
 
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-  const formattedValue = value ? new Date(value).toLocaleDateString('pt-BR') : '';
+  const formattedValue = value ? parseLocalDate(value).toLocaleDateString('pt-BR') : '';
 
   return (
     <div className="form-group">
       <label htmlFor={id}>{label}</label>
       <div className="custom-date-picker" ref={wrapperRef}>
+        <input type="hidden" id={id} name={name} value={value} />
         <button
           type="button"
+          ref={buttonRef}
           className="date-picker-display"
           onClick={() => setIsOpen(!isOpen)}
         >
@@ -463,7 +806,7 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
           </svg>
         </button>
         {isOpen && (
-          <div className="date-picker-dropdown">
+          <div ref={dropdownRef} className={`date-picker-dropdown ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
             <div className="date-picker-header">
               <button type="button" onClick={prevMonth}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" /></svg>
@@ -479,7 +822,7 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
             <div className="date-picker-days">
               {blanks.map((i) => <span key={`blank-${i}`} className="blank" />)}
               {days.map((day) => {
-                const isSelected = value && new Date(year, month, day).toISOString().split('T')[0] === value;
+                const isSelected = value && formatLocalDate(new Date(year, month, day)) === value;
                 return (
                   <button
                     key={day}
@@ -501,9 +844,13 @@ function DatePickerInput({ id, name, value, onChange, required, label }: { id: s
 
 function DateTimePickerInput({ id, name, value, onChange, label }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(() => value ? new Date(value) : new Date());
+  const [viewDate, setViewDate] = useState(() => value ? parseLocalDateTime(value) : new Date());
   const [showTime, setShowTime] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropup, setDropup] = useState(false);
+  const [maxDropdownHeight, setMaxDropdownHeight] = useState(360);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -516,6 +863,16 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useLayoutEffect(() => {
+    if (isOpen && buttonRef.current && dropdownRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
+      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
+      setDropup(placement.dropup);
+      setMaxDropdownHeight(Math.max(140, placement.maxHeight));
+    }
+  }, [isOpen, showTime]);
+
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
   const year = viewDate.getFullYear();
@@ -526,13 +883,13 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
   const hours = Array.from({ length: 24 }, (_, i) => i);
   const minutes = Array.from({ length: 60 }, (_, i) => i);
 
-  const currentDate = value ? new Date(value) : new Date();
+  const currentDate = value ? parseLocalDateTime(value) : new Date();
   const selectedHour = currentDate.getHours();
   const selectedMinute = currentDate.getMinutes();
 
   const selectDateTime = (day: number, hour?: number, minute?: number) => {
     const newDate = new Date(year, month, day, hour ?? selectedHour, minute ?? selectedMinute);
-    onChange(newDate.toISOString().slice(0, 16));
+    onChange(formatLocalDateTime(newDate));
     setIsOpen(false);
     setShowTime(false);
   };
@@ -542,14 +899,16 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
 
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-  const formattedValue = value ? new Date(value).toLocaleString('pt-BR') : '';
+  const formattedValue = value ? parseLocalDateTime(value).toLocaleString('pt-BR') : '';
 
   return (
     <div className="form-group">
       <label htmlFor={id}>{label}</label>
       <div className="custom-date-picker" ref={wrapperRef}>
+        <input type="hidden" id={id} name={name} value={value} />
         <button
           type="button"
+          ref={buttonRef}
           className="date-picker-display"
           onClick={() => setIsOpen(!isOpen)}
         >
@@ -560,7 +919,7 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
           </svg>
         </button>
         {isOpen && (
-          <div className="date-picker-dropdown datetime">
+          <div ref={dropdownRef} className={`date-picker-dropdown datetime ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
             <div className="date-picker-header">
               <button type="button" onClick={prevMonth}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" /></svg>
@@ -576,7 +935,7 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
             <div className="date-picker-days">
               {blanks.map((i) => <span key={`blank-${i}`} className="blank" />)}
               {days.map((day) => {
-                const isSelected = value && new Date(year, month, day).toISOString().split('T')[0] === value?.split('T')[0];
+                const isSelected = value && formatLocalDate(new Date(year, month, day)) === value?.split('T')[0];
                 return (
                   <button
                     key={day}
@@ -621,7 +980,43 @@ function DateTimePickerInput({ id, name, value, onChange, label }: { id: string;
   );
 }
 
-function CustomSelect({ id, value, onChange, required, label, children }: { id: string; value: string; onChange: (value: string) => void; required?: boolean; label: string; children: React.ReactNode }) {
+function MoneyInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
+  return (
+    <div className="form-group">
+      <label htmlFor={id}>{label}</label>
+      <input type="hidden" name={name} value={value} />
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        value={formatMoneyInput(value)}
+        onChange={(e) => onChange(normalizeMoneyInput(e.target.value))}
+        placeholder="R$ 0,00"
+        required={required}
+      />
+    </div>
+  );
+}
+
+function PhoneInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
+  return (
+    <div className="form-group">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        name={name}
+        type="text"
+        inputMode="tel"
+        value={formatPhoneInput(value)}
+        onChange={(e) => onChange(formatPhoneInput(e.target.value))}
+        placeholder="(22) 99999-9999"
+        required={required}
+      />
+    </div>
+  );
+}
+
+function CustomSelect({ id, name, value, onChange, required, label, children }: { id: string; name: string; value: string; onChange: (value: string) => void; required?: boolean; label: string; children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -648,6 +1043,7 @@ function CustomSelect({ id, value, onChange, required, label, children }: { id: 
     <div className="form-group">
       <label htmlFor={id}>{label}</label>
       <div className="custom-select" ref={wrapperRef}>
+        <input type="hidden" id={id} name={name} value={value} />
         <button
           type="button"
           className="select-display"
@@ -763,7 +1159,14 @@ function Pagination({ page, totalPages, onChange }: { page: number; totalPages: 
 export default function AppRoute() {
   const { tab, user, tenants, properties, leases, receipts } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('sidebar') === 'collapsed';
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'expanded');
+  }, [collapsed]);
 
   const [tenantItems, setTenantItems] = useState(tenants);
   const [propertyItems, setPropertyItems] = useState(properties);
@@ -772,11 +1175,11 @@ export default function AppRoute() {
 
   const [tenantForm, setTenantForm] = useState({ name: '', email: '', phone: '' });
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', city: '', state: '', zip: '' });
-  const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', rent_amount: '' });
+  const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
   const [receiptForm, setReceiptForm] = useState({ lease_id: '', due_date: '', paid_at: '', amount: '' });
   const [tenantDraft, setTenantDraft] = useState({ id: '', name: '', email: '', phone: '' });
   const [propertyDraft, setPropertyDraft] = useState({ id: '', name: '', address: '', city: '', state: '', zip: '' });
-  const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', rent_amount: '' });
+  const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
   const [receiptDraft, setReceiptDraft] = useState({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
   const [modalType, setModalType] = useState<'' | Tab>('');
   const [createModalType, setCreateModalType] = useState<'' | Tab>('');
@@ -785,7 +1188,7 @@ export default function AppRoute() {
   const [propertySearch, setPropertySearch] = useState('');
   const [leaseSearch, setLeaseSearch] = useState('');
   const [receiptSearch, setReceiptSearch] = useState('');
-  const [receiptStatus, setReceiptStatus] = useState<'all' | 'paid' | 'pending'>('all');
+  const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'paid'>('all');
   const [tenantSort, setTenantSort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [propertySort, setPropertySort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [leaseSort, setLeaseSort] = useState<SortState>({ key: 'tenant_name', direction: 'asc' });
@@ -794,6 +1197,9 @@ export default function AppRoute() {
   const [propertyPage, setPropertyPage] = useState(1);
   const [leasePage, setLeasePage] = useState(1);
   const [receiptPage, setReceiptPage] = useState(1);
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [pendingIds, setPendingIds] = useState<PendingIds>({ tenants: new Set(), properties: new Set(), leases: new Set(), receipts: new Set() });
 
   const tenantFetcher = useFetcher<MutationResponse>();
   const propertyFetcher = useFetcher<MutationResponse>();
@@ -803,11 +1209,98 @@ export default function AppRoute() {
   const lastHandledPropertyResponse = useRef<MutationResponse | undefined>(undefined);
   const lastHandledLeaseResponse = useRef<MutationResponse | undefined>(undefined);
   const lastHandledReceiptResponse = useRef<MutationResponse | undefined>(undefined);
+  const syncInFlight = useRef(false);
+
+  function queueOfflineMutation(payload: QueuePayload, successMessage: string) {
+    const mutationPayload = { ...payload };
+    if (isCreateIntent(mutationPayload.intent) && !mutationPayload.id) {
+      mutationPayload.id = createId();
+    }
+    const queue = enqueueOfflineMutation({ id: createId(), payload: mutationPayload, successMessage });
+    setPendingSyncCount(queue.length);
+    setPendingIds(getPendingIds(queue));
+    setToast({ message: successMessage, tone: 'success' });
+  }
+
+  async function syncOfflineQueue() {
+    if (syncInFlight.current || !window.navigator.onLine) {
+      return;
+    }
+
+    const queue = readOfflineQueue();
+    if (!queue.length) {
+      setPendingSyncCount(0);
+      setPendingIds(getPendingIds([]));
+      return;
+    }
+
+    syncInFlight.current = true;
+
+    try {
+      let remaining = [...queue];
+      for (const mutation of queue) {
+        await submitQueuedMutation(mutation.payload);
+        remaining = remaining.filter((item) => item.id !== mutation.id);
+        writeOfflineQueue(remaining);
+        setPendingSyncCount(remaining.length);
+        setPendingIds(getPendingIds(remaining));
+      }
+      revalidator.revalidate();
+      setToast({ message: 'Sincronização concluída com o servidor.', tone: 'success' });
+    } catch (error) {
+      const queueHead = readOfflineQueue()[0];
+      setToast({ message: getSyncErrorMessage(queueHead?.payload || {}, error), tone: 'error' });
+    } finally {
+      syncInFlight.current = false;
+    }
+  }
 
   useEffect(() => setTenantItems(tenants), [tenants]);
   useEffect(() => setPropertyItems(properties), [properties]);
   useEffect(() => setLeaseItems(leases), [leases]);
   useEffect(() => setReceiptItems(receipts), [receipts]);
+
+  useEffect(() => {
+    const cache = readDashboardCache();
+    const queue = readOfflineQueue();
+    setPendingSyncCount(queue.length);
+    setPendingIds(getPendingIds(queue));
+    if (!window.navigator.onLine && cache) {
+      setTenantItems(cache.tenants);
+      setPropertyItems(cache.properties);
+      setLeaseItems(cache.leases);
+      setReceiptItems(cache.receipts);
+    }
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      void syncOfflineQueue();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (window.navigator.onLine) {
+      void syncOfflineQueue();
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    writeDashboardCache({
+      user,
+      tenants: tenantItems,
+      properties: propertyItems,
+      leases: leaseItems,
+      receipts: receiptItems,
+      savedAt: new Date().toISOString(),
+    });
+  }, [user, tenantItems, propertyItems, leaseItems, receiptItems]);
 
   useEffect(() => {
     if (tenantFetcher.state !== 'idle' || !tenantFetcher.data || lastHandledTenantResponse.current === tenantFetcher.data) {
@@ -853,8 +1346,8 @@ export default function AppRoute() {
     lastHandledLeaseResponse.current = leaseFetcher.data;
     revalidator.revalidate();
     if (leaseFetcher.data.ok) {
-      setLeaseForm({ tenant_id: '', property_id: '', start_date: '', end_date: '', rent_amount: '' });
-      setLeaseDraft({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', rent_amount: '' });
+      setLeaseForm({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
+      setLeaseDraft({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
       setModalType('');
       setCreateModalType('');
       setToast({ message: 'Contrato salvo com sucesso.', tone: 'success' });
@@ -875,7 +1368,7 @@ export default function AppRoute() {
       setReceiptDraft({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
       setModalType('');
       setCreateModalType('');
-      setToast({ message: 'Recibo salvo com sucesso.', tone: 'success' });
+      setToast({ message: 'Pagamentos atualizados com sucesso.', tone: 'success' });
     } else if (receiptFetcher.data.error) {
       setToast({ message: receiptFetcher.data.error, tone: 'error' });
     }
@@ -886,7 +1379,7 @@ export default function AppRoute() {
   const filteredLeases = useMemo(() => leaseItems.filter((item) => `${item.tenant_name} ${item.property_name} ${item.start_date} ${item.end_date}`.toLowerCase().includes(leaseSearch.toLowerCase())), [leaseItems, leaseSearch]);
   const filteredReceipts = useMemo(() => receiptItems.filter((item) => {
     const matchesText = `${item.tenant_name} ${item.property_name} ${item.due_date} ${item.amount}`.toLowerCase().includes(receiptSearch.toLowerCase());
-    const matchesStatus = receiptStatus === 'all' || (receiptStatus === 'paid' ? Boolean(item.paid_at) : !item.paid_at);
+    const matchesStatus = receiptStatus === 'all' || getReceiptStatus(item) === receiptStatus;
     return matchesText && matchesStatus;
   }), [receiptItems, receiptSearch, receiptStatus]);
   const sortedTenants = useMemo(() => sortItems(filteredTenants, tenantSort), [filteredTenants, tenantSort]);
@@ -912,7 +1405,73 @@ export default function AppRoute() {
   useEffect(() => setReceiptPage((page) => Math.min(page, receiptTotalPages)), [receiptTotalPages]);
 
   function settleAfterMutation() {
-    revalidator.revalidate();
+    if (window.navigator.onLine) {
+      revalidator.revalidate();
+    }
+  }
+
+  function buildOfflinePayload(form: HTMLFormElement) {
+    const payload = serializeFormData(new FormData(form));
+    if (isCreateIntent(payload.intent) && !payload.id) {
+      payload.id = createId();
+    }
+    return payload;
+  }
+
+  function handleOfflineSubmit(
+    event: React.FormEvent<HTMLFormElement>,
+    optimisticUpdate: (payload: QueuePayload) => void,
+    successMessage: string,
+    reset?: () => void,
+  ) {
+    if (window.navigator.onLine) {
+      return false;
+    }
+
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!form.reportValidity()) {
+      return true;
+    }
+
+    const payload = buildOfflinePayload(form);
+    optimisticUpdate(payload);
+    queueOfflineMutation(payload, successMessage);
+    reset?.();
+    return true;
+  }
+
+  function applyOfflineMonthlyReceiptGeneration() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+    const monthStart = `${monthKey}-01`;
+    const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
+
+    const activeLeases = leaseItems.filter((lease) => lease.start_date <= monthEnd && lease.end_date >= monthStart);
+    const nextReceipts = [...receiptItems];
+
+    for (const lease of activeLeases) {
+      const generatedKey = `${lease.id}:${monthKey}`;
+      if (nextReceipts.some((item) => item.generated_key === generatedKey)) {
+        continue;
+      }
+      const dueDay = Math.min(Number(lease.due_day) || 1, getDaysInMonth(year, month));
+      nextReceipts.unshift({
+        id: createId(),
+        lease_id: lease.id,
+        due_date: `${monthKey}-${String(dueDay).padStart(2, '0')}`,
+        paid_at: null,
+        amount: lease.rent_amount,
+        pdf_path: null,
+        generated_key: generatedKey,
+        tenant_name: lease.tenant_name,
+        property_name: lease.property_name,
+      });
+    }
+
+    setReceiptItems(nextReceipts);
   }
 
   function startTenantEdit(item: Tenant) {
@@ -926,7 +1485,7 @@ export default function AppRoute() {
   }
 
   function startLeaseEdit(item: Lease) {
-    setLeaseDraft({ id: item.id, tenant_id: item.tenant_id, property_id: item.property_id, start_date: item.start_date, end_date: item.end_date, rent_amount: item.rent_amount });
+    setLeaseDraft({ id: item.id, tenant_id: item.tenant_id, property_id: item.property_id, start_date: item.start_date, end_date: item.end_date, due_day: String(item.due_day || '1'), rent_amount: item.rent_amount });
     setModalType('leases');
   }
 
@@ -954,9 +1513,10 @@ export default function AppRoute() {
             <li><Link to="/dashboard?tab=tenants"><span className="nav-icon"><IconTenants /></span>{!collapsed ? <span className="nav-label">Inquilinos</span> : null}</Link></li>
             <li><Link to="/dashboard?tab=properties"><span className="nav-icon"><IconProperties /></span>{!collapsed ? <span className="nav-label">Imóveis</span> : null}</Link></li>
             <li><Link to="/dashboard?tab=leases"><span className="nav-icon"><IconLeases /></span>{!collapsed ? <span className="nav-label">Contratos</span> : null}</Link></li>
-            <li><Link to="/dashboard?tab=receipts"><span className="nav-icon"><IconReceipts /></span>{!collapsed ? <span className="nav-label">Recibos</span> : null}</Link></li>
+            <li><Link to="/dashboard?tab=receipts"><span className="nav-icon"><IconReceipts /></span>{!collapsed ? <span className="nav-label">Pagamentos</span> : null}</Link></li>
           </ul>
           <div className="sidebar-footer">
+            <DataButtons collapsed={collapsed} />
             <ThemeToggle collapsed={collapsed} />
             <Form action="/logout" method="post">
               <button type="submit"><span className="nav-icon"><IconLogout /></span>{!collapsed ? <span className="nav-label">Sair</span> : null}</button>
@@ -969,10 +1529,11 @@ export default function AppRoute() {
             <div className="card page-hero">
               <div>
                 <p className="eyebrow">Painel</p>
-                <h1>{tab === 'tenants' ? 'Inquilinos' : tab === 'properties' ? 'Imóveis' : tab === 'leases' ? 'Contratos' : 'Recibos'}</h1>
+                <h1>{tab === 'tenants' ? 'Inquilinos' : tab === 'properties' ? 'Imóveis' : tab === 'leases' ? 'Contratos' : 'Pagamentos e Recibos'}</h1>
                 <p className="subtitle">Sessão ativa para <strong>{user}</strong>.</p>
               </div>
             </div>
+            <SyncBanner isOnline={isOnline} pendingCount={pendingSyncCount} />
             {toast ? <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} /> : null}
 
             {tab === 'tenants' ? (
@@ -985,12 +1546,12 @@ export default function AppRoute() {
                     <tbody>
                       {pagedTenants.length ? pagedTenants.map((tenant) => (
                         <tr key={tenant.id}>
-                          <td data-label="Nome">{tenant.name}</td>
+                          <td data-label="Nome">{tenant.name} {pendingIds.tenants.has(tenant.id) ? <PendingBadge /> : null}</td>
                           <td data-label="Email">{tenant.email}</td>
                           <td data-label="Telefone">{tenant.phone || '-'}</td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startTenantEdit(tenant)}>Editar</button>
-                            <DeleteRowButton intent="tenant.delete" tab="tenants" id={tenant.id} onOptimisticDelete={() => setTenantItems((current) => current.filter((row) => row.id !== tenant.id))} onSettled={settleAfterMutation} />
+                            <DeleteRowButton intent="tenant.delete" tab="tenants" id={tenant.id} onOptimisticDelete={() => setTenantItems((current) => current.filter((row) => row.id !== tenant.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
                       )) : <tr><td colSpan={4}>Nenhum inquilino cadastrado.</td></tr>}
@@ -1011,12 +1572,12 @@ export default function AppRoute() {
                     <tbody>
                       {pagedProperties.length ? pagedProperties.map((property) => (
                         <tr key={property.id}>
-                          <td data-label="Nome">{property.name}</td>
+                          <td data-label="Nome">{property.name} {pendingIds.properties.has(property.id) ? <PendingBadge /> : null}</td>
                           <td data-label="Cidade">{property.city}</td>
                           <td data-label="Estado">{property.state}</td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startPropertyEdit(property)}>Editar</button>
-                            <DeleteRowButton intent="property.delete" tab="properties" id={property.id} onOptimisticDelete={() => setPropertyItems((current) => current.filter((row) => row.id !== property.id))} onSettled={settleAfterMutation} />
+                            <DeleteRowButton intent="property.delete" tab="properties" id={property.id} onOptimisticDelete={() => setPropertyItems((current) => current.filter((row) => row.id !== property.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
                       )) : <tr><td colSpan={4}>Nenhum imóvel cadastrado.</td></tr>}
@@ -1033,20 +1594,21 @@ export default function AppRoute() {
                 <FilterBar value={leaseSearch} onChange={setLeaseSearch} placeholder="Buscar por inquilino, imóvel ou período" />
                 <div className="table-wrap">
                   <table>
-                    <thead><tr><th><SortHeader label="Inquilino" active={leaseSort.key === 'tenant_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'tenant_name', setLeaseSort)} /></th><th><SortHeader label="Imóvel" active={leaseSort.key === 'property_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'property_name', setLeaseSort)} /></th><th><SortHeader label="Início" active={leaseSort.key === 'start_date'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'start_date', setLeaseSort)} /></th><th><SortHeader label="Valor" active={leaseSort.key === 'rent_amount'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'rent_amount', setLeaseSort)} /></th><th>Ações</th></tr></thead>
+                    <thead><tr><th><SortHeader label="Inquilino" active={leaseSort.key === 'tenant_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'tenant_name', setLeaseSort)} /></th><th><SortHeader label="Imóvel" active={leaseSort.key === 'property_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'property_name', setLeaseSort)} /></th><th><SortHeader label="Início" active={leaseSort.key === 'start_date'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'start_date', setLeaseSort)} /></th><th><SortHeader label="Vencimento" active={leaseSort.key === 'due_day'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'due_day', setLeaseSort)} /></th><th><SortHeader label="Valor" active={leaseSort.key === 'rent_amount'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'rent_amount', setLeaseSort)} /></th><th>Ações</th></tr></thead>
                     <tbody>
                       {pagedLeases.length ? pagedLeases.map((lease) => (
                         <tr key={lease.id}>
-                          <td data-label="Inquilino">{lease.tenant_name}</td>
+                          <td data-label="Inquilino">{lease.tenant_name} {pendingIds.leases.has(lease.id) ? <PendingBadge /> : null}</td>
                           <td data-label="Imóvel">{lease.property_name}</td>
                           <td data-label="Período">{lease.start_date} a {lease.end_date}</td>
+                          <td data-label="Vencimento">Dia {lease.due_day}</td>
                           <td data-label="Valor">{formatCurrency(lease.rent_amount)}</td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startLeaseEdit(lease)}>Editar</button>
-                            <DeleteRowButton intent="lease.delete" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.filter((row) => row.id !== lease.id))} onSettled={settleAfterMutation} />
+                            <DeleteRowButton intent="lease.delete" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.filter((row) => row.id !== lease.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
-                      )) : <tr><td colSpan={5}>Cadastre um inquilino e um imóvel para criar contratos.</td></tr>}
+                      )) : <tr><td colSpan={6}>Cadastre um inquilino e um imóvel para criar contratos.</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1056,12 +1618,26 @@ export default function AppRoute() {
 
             {tab === 'receipts' ? (
               <section className="card stack-lg receipts-section">
-                <div className="section-header"><h2>Gerenciar Recebimentos</h2><button type="button" className="btn btn-primary" onClick={() => setCreateModalType('receipts')}>Novo recibo</button></div>
+                <div className="section-header">
+                  <h2>Pagamentos e Recibos</h2>
+                  <div className="auth-actions">
+                    <receiptFetcher.Form method="post" onSubmit={(event) => {
+                      if (handleOfflineSubmit(event, () => applyOfflineMonthlyReceiptGeneration(), 'Geração mensal colocada na fila de sincronização.')) {
+                        return;
+                      }
+                    }}>
+                      <input type="hidden" name="intent" value="receipt.generate-monthly" />
+                      <button type="submit" className="btn btn-secondary" disabled={receiptFetcher.state !== 'idle'}>Gerar pagamentos</button>
+                    </receiptFetcher.Form>
+                    <button type="button" className="btn btn-primary" onClick={() => setCreateModalType('receipts')}>Novo pagamento</button>
+                  </div>
+                </div>
                 <FilterBar value={receiptSearch} onChange={setReceiptSearch} placeholder="Buscar por contrato, imóvel, vencimento ou valor">
-                  <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'paid' | 'pending')}>
+                  <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'paid')}>
                     <option value="all">Todos</option>
+                    <option value="due">A vencer</option>
+                    <option value="overdue">Vencido</option>
                     <option value="paid">Pago</option>
-                    <option value="pending">Pendente</option>
                   </SmallSelect>
                 </FilterBar>
                 <div className="table-wrap">
@@ -1070,15 +1646,19 @@ export default function AppRoute() {
                     <tbody>
                       {pagedReceipts.length ? pagedReceipts.map((receipt) => (
                         <tr key={receipt.id}>
-                          <td data-label="Contrato" className="contract-cell"><span>{receipt.tenant_name}</span><span>{receipt.property_name}</span></td>
-                          <td data-label="Status"><span className={`status-badge ${receipt.paid_at ? 'paid' : 'pending'}`}>{receipt.paid_at ? 'Pago' : 'Pendente'}</span></td>
-                          <td data-label="Vencimento">{receipt.due_date}</td>
-                          <td data-label="Pagamento">{receipt.paid_at || '-'}</td>
+                          <td data-label="Contrato" className="contract-cell"><span>{receipt.tenant_name} {pendingIds.receipts.has(receipt.id) ? <PendingBadge /> : null}</span><span>{receipt.property_name}</span></td>
+                          <td data-label="Status"><span className={`status-badge ${getReceiptStatus(receipt)}`}>{getReceiptStatusLabel(getReceiptStatus(receipt))}</span></td>
+                          <td data-label="Vencimento">{formatDateBr(receipt.due_date)}</td>
+                          <td data-label="Pagamento">{formatDateTimeBr(receipt.paid_at)}</td>
                           <td data-label="Valor">{formatCurrency(receipt.amount)}</td>
-                          <td data-label="PDF">{receipt.pdf_path ? <a className="btn btn-sm btn-secondary" href={receipt.pdf_path} target="_blank" rel="noreferrer">Abrir PDF</a> : '-'}</td>
+                          <td data-label="PDF">
+                              {receipt.paid_at ? (
+                                <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
+                              ) : '-'}
+                            </td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startReceiptEdit(receipt)}>Editar</button>
-                            <DeleteRowButton intent="receipt.delete" tab="receipts" id={receipt.id} onOptimisticDelete={() => setReceiptItems((current) => current.filter((row) => row.id !== receipt.id))} onSettled={settleAfterMutation} />
+                            <DeleteRowButton intent="receipt.delete" tab="receipts" id={receipt.id} onOptimisticDelete={() => setReceiptItems((current) => current.filter((row) => row.id !== receipt.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
                       )) : <tr><td colSpan={7}>Cadastre um contrato para gerar recibos.</td></tr>}
@@ -1090,32 +1670,61 @@ export default function AppRoute() {
             ) : null}
 
             {modalType === 'tenants' ? <Modal title="Editar Inquilino" onClose={() => setModalType('')}>
-              <tenantFetcher.Form method="post" className="stack" onSubmit={() => setTenantItems((current) => current.map((row) => row.id === tenantDraft.id ? { ...row, name: tenantDraft.name, email: tenantDraft.email, phone: tenantDraft.phone || null } : row))}>
+              <tenantFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  setTenantItems((current) => current.map((row) => row.id === payload.id ? { ...row, name: payload.name, email: payload.email, phone: payload.phone || null } : row));
+                }, 'Alteração pendente de sincronização.', () => {
+                  setTenantDraft({ id: '', name: '', email: '', phone: '' });
+                  setModalType('');
+                })) {
+                  return;
+                }
+                setTenantItems((current) => current.map((row) => row.id === tenantDraft.id ? { ...row, name: tenantDraft.name, email: tenantDraft.email, phone: tenantDraft.phone || null } : row));
+              }}>
                 <input type="hidden" name="intent" value="tenant.update" />
                 <input type="hidden" name="id" value={tenantDraft.id} />
                 <div className="form-group"><label htmlFor="modal-tenant-name">Nome</label><input id="modal-tenant-name" name="name" value={tenantDraft.name} onChange={(e) => setTenantDraft((current) => ({ ...current, name: e.target.value }))} required /></div>
                 <div className="form-group"><label htmlFor="modal-tenant-email">Email</label><input id="modal-tenant-email" name="email" type="email" value={tenantDraft.email} onChange={(e) => setTenantDraft((current) => ({ ...current, email: e.target.value }))} required /></div>
-                <div className="form-group"><label htmlFor="modal-tenant-phone">Telefone</label><input id="modal-tenant-phone" name="phone" value={tenantDraft.phone} onChange={(e) => setTenantDraft((current) => ({ ...current, phone: e.target.value }))} /></div>
+                <PhoneInput id="modal-tenant-phone" name="phone" value={tenantDraft.phone} onChange={(value) => setTenantDraft((current) => ({ ...current, phone: value }))} label="Telefone" />
                 <button type="submit" className="btn btn-primary" disabled={tenantFetcher.state !== 'idle'}>Salvar alterações</button>
               </tenantFetcher.Form>
             </Modal> : null}
 
             {createModalType === 'tenants' ? <Modal title="Novo Inquilino" onClose={() => setCreateModalType('')}>
-              <tenantFetcher.Form method="post" className="stack" onSubmit={() => {
-                const item = { id: `tmp-${crypto.randomUUID()}`, name: tenantForm.name, email: tenantForm.email, phone: tenantForm.phone || null };
+              <tenantFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const item = { id: payload.id, name: payload.name, email: payload.email, phone: payload.phone || null };
+                  setTenantItems((current) => [item, ...current]);
+                }, 'Cadastro pendente de sincronização.', () => {
+                  setTenantForm({ name: '', email: '', phone: '' });
+                  setCreateModalType('');
+                })) {
+                  return;
+                }
+                const item = { id: `tmp-${createId()}`, name: tenantForm.name, email: tenantForm.email, phone: tenantForm.phone || null };
                 setTenantItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="tenant.create" />
                 <input type="hidden" name="tab" value="tenants" />
                 <div className="form-group"><label htmlFor="create-tenant-name">Nome</label><input id="create-tenant-name" name="name" value={tenantForm.name} onChange={(e) => setTenantForm((current) => ({ ...current, name: e.target.value }))} required /></div>
                 <div className="form-group"><label htmlFor="create-tenant-email">Email</label><input id="create-tenant-email" name="email" type="email" value={tenantForm.email} onChange={(e) => setTenantForm((current) => ({ ...current, email: e.target.value }))} required /></div>
-                <div className="form-group"><label htmlFor="create-tenant-phone">Telefone</label><input id="create-tenant-phone" name="phone" value={tenantForm.phone} onChange={(e) => setTenantForm((current) => ({ ...current, phone: e.target.value }))} /></div>
+                <PhoneInput id="create-tenant-phone" name="phone" value={tenantForm.phone} onChange={(value) => setTenantForm((current) => ({ ...current, phone: value }))} label="Telefone" />
                 <button type="submit" className="btn btn-primary" disabled={tenantFetcher.state !== 'idle'}>Adicionar inquilino</button>
               </tenantFetcher.Form>
             </Modal> : null}
 
             {modalType === 'properties' ? <Modal title="Editar Imóvel" onClose={() => setModalType('')}>
-              <propertyFetcher.Form method="post" className="stack" onSubmit={() => setPropertyItems((current) => current.map((row) => row.id === propertyDraft.id ? { ...row, name: propertyDraft.name, address: propertyDraft.address, city: propertyDraft.city, state: propertyDraft.state, zip: propertyDraft.zip || null } : row))}>
+              <propertyFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  setPropertyItems((current) => current.map((row) => row.id === payload.id ? { ...row, name: payload.name, address: payload.address, city: payload.city, state: payload.state, zip: payload.zip || null } : row));
+                }, 'Alteração pendente de sincronização.', () => {
+                  setPropertyDraft({ id: '', name: '', address: '', city: '', state: '', zip: '' });
+                  setModalType('');
+                })) {
+                  return;
+                }
+                setPropertyItems((current) => current.map((row) => row.id === propertyDraft.id ? { ...row, name: propertyDraft.name, address: propertyDraft.address, city: propertyDraft.city, state: propertyDraft.state, zip: propertyDraft.zip || null } : row));
+              }}>
                 <input type="hidden" name="intent" value="property.update" />
                 <input type="hidden" name="id" value={propertyDraft.id} />
                 <div className="form-group"><label htmlFor="modal-property-name">Nome</label><input id="modal-property-name" name="name" value={propertyDraft.name} onChange={(e) => setPropertyDraft((current) => ({ ...current, name: e.target.value }))} required /></div>
@@ -1128,8 +1737,17 @@ export default function AppRoute() {
             </Modal> : null}
 
             {createModalType === 'properties' ? <Modal title="Novo Imóvel" onClose={() => setCreateModalType('')}>
-              <propertyFetcher.Form method="post" className="stack" onSubmit={() => {
-                const item = { id: `tmp-${crypto.randomUUID()}`, name: propertyForm.name, address: propertyForm.address, city: propertyForm.city, state: propertyForm.state, zip: propertyForm.zip || null };
+              <propertyFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const item = { id: payload.id, name: payload.name, address: payload.address, city: payload.city, state: payload.state, zip: payload.zip || null };
+                  setPropertyItems((current) => [item, ...current]);
+                }, 'Cadastro pendente de sincronização.', () => {
+                  setPropertyForm({ name: '', address: '', city: '', state: '', zip: '' });
+                  setCreateModalType('');
+                })) {
+                  return;
+                }
+                const item = { id: `tmp-${createId()}`, name: propertyForm.name, address: propertyForm.address, city: propertyForm.city, state: propertyForm.state, zip: propertyForm.zip || null };
                 setPropertyItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="property.create" />
@@ -1144,86 +1762,128 @@ export default function AppRoute() {
             </Modal> : null}
 
             {modalType === 'leases' ? <Modal title="Editar Contrato" onClose={() => setModalType('')}>
-              <leaseFetcher.Form method="post" className="stack" onSubmit={() => {
+              <leaseFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const tenant = tenantItems.find((item) => item.id === payload.tenant_id);
+                  const property = propertyItems.find((item) => item.id === payload.property_id);
+                  setLeaseItems((current) => current.map((row) => row.id === payload.id ? { ...row, tenant_id: payload.tenant_id, property_id: payload.property_id, start_date: payload.start_date, end_date: payload.end_date, due_day: payload.due_day, rent_amount: payload.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' } : row));
+                }, 'Alteração pendente de sincronização.', () => {
+                  setLeaseDraft({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
+                  setModalType('');
+                })) {
+                  return;
+                }
                 const tenant = tenantItems.find((item) => item.id === leaseDraft.tenant_id);
                 const property = propertyItems.find((item) => item.id === leaseDraft.property_id);
-                setLeaseItems((current) => current.map((row) => row.id === leaseDraft.id ? { ...row, tenant_id: leaseDraft.tenant_id, property_id: leaseDraft.property_id, start_date: leaseDraft.start_date, end_date: leaseDraft.end_date, rent_amount: leaseDraft.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' } : row));
+                setLeaseItems((current) => current.map((row) => row.id === leaseDraft.id ? { ...row, tenant_id: leaseDraft.tenant_id, property_id: leaseDraft.property_id, start_date: leaseDraft.start_date, end_date: leaseDraft.end_date, due_day: leaseDraft.due_day, rent_amount: leaseDraft.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' } : row));
               }}>
                 <input type="hidden" name="intent" value="lease.update" />
                 <input type="hidden" name="id" value={leaseDraft.id} />
-                <CustomSelect id="modal-lease-tenant" value={leaseDraft.tenant_id} onChange={(v) => setLeaseDraft((current) => ({ ...current, tenant_id: v }))} label="Inquilino" required>
+                <CustomSelect id="modal-lease-tenant" name="tenant_id" value={leaseDraft.tenant_id} onChange={(v) => setLeaseDraft((current) => ({ ...current, tenant_id: v }))} label="Inquilino" required>
                   <option value="">Selecione</option>
                   {tenantItems.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                 </CustomSelect>
-                <CustomSelect id="modal-lease-property" value={leaseDraft.property_id} onChange={(v) => setLeaseDraft((current) => ({ ...current, property_id: v }))} label="Imóvel" required>
+                <CustomSelect id="modal-lease-property" name="property_id" value={leaseDraft.property_id} onChange={(v) => setLeaseDraft((current) => ({ ...current, property_id: v }))} label="Imóvel" required>
                   <option value="">Selecione</option>
                   {propertyItems.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
                 </CustomSelect>
                 <DatePickerInput id="modal-lease-start" name="start_date" value={leaseDraft.start_date} onChange={(v) => setLeaseDraft((current) => ({ ...current, start_date: v }))} label="Início" required />
                 <DatePickerInput id="modal-lease-end" name="end_date" value={leaseDraft.end_date} onChange={(v) => setLeaseDraft((current) => ({ ...current, end_date: v }))} label="Fim" required />
-                <div className="form-group"><label htmlFor="modal-lease-rent">Aluguel</label><input id="modal-lease-rent" name="rent_amount" type="number" step="0.01" value={leaseDraft.rent_amount} onChange={(e) => setLeaseDraft((current) => ({ ...current, rent_amount: e.target.value }))} required /></div>
+                <div className="form-group"><label htmlFor="modal-lease-due-day">Dia do vencimento</label><input id="modal-lease-due-day" name="due_day" type="number" min="1" max="31" value={leaseDraft.due_day} onChange={(e) => setLeaseDraft((current) => ({ ...current, due_day: e.target.value }))} required /></div>
+                <MoneyInput id="modal-lease-rent" name="rent_amount" value={leaseDraft.rent_amount} onChange={(value) => setLeaseDraft((current) => ({ ...current, rent_amount: value }))} label="Aluguel" required />
                 <button type="submit" className="btn btn-primary" disabled={leaseFetcher.state !== 'idle'}>Salvar alterações</button>
               </leaseFetcher.Form>
             </Modal> : null}
 
             {createModalType === 'leases' ? <Modal title="Novo Contrato" onClose={() => setCreateModalType('')}>
-              <leaseFetcher.Form method="post" className="stack" onSubmit={() => {
+              <leaseFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const tenant = tenantItems.find((item) => item.id === payload.tenant_id);
+                  const property = propertyItems.find((item) => item.id === payload.property_id);
+                  const item = { id: payload.id, tenant_id: payload.tenant_id, property_id: payload.property_id, start_date: payload.start_date, end_date: payload.end_date, due_day: payload.due_day, rent_amount: payload.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' };
+                  setLeaseItems((current) => [item, ...current]);
+                }, 'Cadastro pendente de sincronização.', () => {
+                  setLeaseForm({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
+                  setCreateModalType('');
+                })) {
+                  return;
+                }
                 const tenant = tenantItems.find((item) => item.id === leaseForm.tenant_id);
                 const property = propertyItems.find((item) => item.id === leaseForm.property_id);
-                const item = { id: `tmp-${crypto.randomUUID()}`, tenant_id: leaseForm.tenant_id, property_id: leaseForm.property_id, start_date: leaseForm.start_date, end_date: leaseForm.end_date, rent_amount: leaseForm.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' };
+                const item = { id: `tmp-${createId()}`, tenant_id: leaseForm.tenant_id, property_id: leaseForm.property_id, start_date: leaseForm.start_date, end_date: leaseForm.end_date, due_day: leaseForm.due_day, rent_amount: leaseForm.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' };
                 setLeaseItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="lease.create" />
                 <input type="hidden" name="tab" value="leases" />
-                <CustomSelect id="create-lease-tenant" value={leaseForm.tenant_id} onChange={(v) => setLeaseForm((current) => ({ ...current, tenant_id: v }))} label="Inquilino" required>
+                <CustomSelect id="create-lease-tenant" name="tenant_id" value={leaseForm.tenant_id} onChange={(v) => setLeaseForm((current) => ({ ...current, tenant_id: v }))} label="Inquilino" required>
                   <option value="">Selecione</option>
                   {tenantItems.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
                 </CustomSelect>
-                <CustomSelect id="create-lease-property" value={leaseForm.property_id} onChange={(v) => setLeaseForm((current) => ({ ...current, property_id: v }))} label="Imóvel" required>
+                <CustomSelect id="create-lease-property" name="property_id" value={leaseForm.property_id} onChange={(v) => setLeaseForm((current) => ({ ...current, property_id: v }))} label="Imóvel" required>
                   <option value="">Selecione</option>
                   {propertyItems.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
                 </CustomSelect>
                 <DatePickerInput id="create-lease-start" name="start_date" value={leaseForm.start_date} onChange={(v) => setLeaseForm((current) => ({ ...current, start_date: v }))} label="Início" required />
                 <DatePickerInput id="create-lease-end" name="end_date" value={leaseForm.end_date} onChange={(v) => setLeaseForm((current) => ({ ...current, end_date: v }))} label="Fim" required />
-                <div className="form-group"><label htmlFor="create-lease-rent">Aluguel</label><input id="create-lease-rent" name="rent_amount" type="number" step="0.01" value={leaseForm.rent_amount} onChange={(e) => setLeaseForm((current) => ({ ...current, rent_amount: e.target.value }))} required /></div>
+                <div className="form-group"><label htmlFor="create-lease-due-day">Dia do vencimento</label><input id="create-lease-due-day" name="due_day" type="number" min="1" max="31" value={leaseForm.due_day} onChange={(e) => setLeaseForm((current) => ({ ...current, due_day: e.target.value }))} required /></div>
+                <MoneyInput id="create-lease-rent" name="rent_amount" value={leaseForm.rent_amount} onChange={(value) => setLeaseForm((current) => ({ ...current, rent_amount: value }))} label="Aluguel" required />
                 <button type="submit" className="btn btn-primary" disabled={leaseFetcher.state !== 'idle'}>Adicionar contrato</button>
               </leaseFetcher.Form>
             </Modal> : null}
 
-            {modalType === 'receipts' ? <Modal title="Editar Recibo" onClose={() => setModalType('')}>
-              <receiptFetcher.Form method="post" className="stack" onSubmit={() => {
+            {modalType === 'receipts' ? <Modal title="Editar Pagamento" onClose={() => setModalType('')}>
+              <receiptFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const lease = receiptLeaseMeta(payload.lease_id);
+                  setReceiptItems((current) => current.map((row) => row.id === payload.id ? { ...row, lease_id: payload.lease_id, due_date: payload.due_date, paid_at: payload.paid_at || null, amount: payload.amount, tenant_name: lease?.tenant_name || '-', property_name: lease?.property_name || '-', pdf_path: null } : row));
+                }, 'Alteração pendente de sincronização.', () => {
+                  setReceiptDraft({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
+                  setModalType('');
+                })) {
+                  return;
+                }
                 const lease = receiptLeaseMeta(receiptDraft.lease_id);
                 setReceiptItems((current) => current.map((row) => row.id === receiptDraft.id ? { ...row, lease_id: receiptDraft.lease_id, due_date: receiptDraft.due_date, paid_at: receiptDraft.paid_at || null, amount: receiptDraft.amount, tenant_name: lease?.tenant_name || '-', property_name: lease?.property_name || '-' } : row));
               }}>
                 <input type="hidden" name="intent" value="receipt.update" />
                 <input type="hidden" name="id" value={receiptDraft.id} />
-                <CustomSelect id="modal-receipt-lease" value={receiptDraft.lease_id} onChange={(v) => setReceiptDraft((current) => ({ ...current, lease_id: v }))} label="Contrato" required>
+                <CustomSelect id="modal-receipt-lease" name="lease_id" value={receiptDraft.lease_id} onChange={(v) => setReceiptDraft((current) => ({ ...current, lease_id: v }))} label="Contrato" required>
                   <option value="">Selecione</option>
                   {leaseItems.map((lease) => <option key={lease.id} value={lease.id}>{lease.tenant_name} / {lease.property_name}</option>)}
                 </CustomSelect>
                 <DatePickerInput id="modal-receipt-due" name="due_date" value={receiptDraft.due_date} onChange={(v) => setReceiptDraft((current) => ({ ...current, due_date: v }))} label="Vencimento" required />
                 <DateTimePickerInput id="modal-receipt-paid" name="paid_at" value={receiptDraft.paid_at} onChange={(v) => setReceiptDraft((current) => ({ ...current, paid_at: v }))} label="Pago em" />
-                <div className="form-group"><label htmlFor="modal-receipt-amount">Valor</label><input id="modal-receipt-amount" name="amount" type="number" step="0.01" value={receiptDraft.amount} onChange={(e) => setReceiptDraft((current) => ({ ...current, amount: e.target.value }))} required /></div>
+                <MoneyInput id="modal-receipt-amount" name="amount" value={receiptDraft.amount} onChange={(value) => setReceiptDraft((current) => ({ ...current, amount: value }))} label="Valor" required />
                 <button type="submit" className="btn btn-primary" disabled={receiptFetcher.state !== 'idle'}>Salvar alterações</button>
               </receiptFetcher.Form>
             </Modal> : null}
 
-            {createModalType === 'receipts' ? <Modal title="Novo Recibo" onClose={() => setCreateModalType('')}>
-              <receiptFetcher.Form method="post" className="stack" onSubmit={() => {
+            {createModalType === 'receipts' ? <Modal title="Novo Pagamento" onClose={() => setCreateModalType('')}>
+              <receiptFetcher.Form method="post" className="stack" onSubmit={(event) => {
+                if (handleOfflineSubmit(event, (payload) => {
+                  const lease = receiptLeaseMeta(payload.lease_id);
+                  const item = { id: payload.id, lease_id: payload.lease_id, due_date: payload.due_date, paid_at: payload.paid_at || null, amount: payload.amount, pdf_path: null, generated_key: null, tenant_name: lease?.tenant_name || '-', property_name: lease?.property_name || '-' };
+                  setReceiptItems((current) => [item, ...current]);
+                }, 'Cadastro pendente de sincronização.', () => {
+                  setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '' });
+                  setCreateModalType('');
+                })) {
+                  return;
+                }
                 const lease = receiptLeaseMeta(receiptForm.lease_id);
-                const item = { id: `tmp-${crypto.randomUUID()}`, lease_id: receiptForm.lease_id, due_date: receiptForm.due_date, paid_at: receiptForm.paid_at || null, amount: receiptForm.amount, pdf_path: null, tenant_name: lease?.tenant_name || '-', property_name: lease?.property_name || '-' };
+                const item = { id: `tmp-${createId()}`, lease_id: receiptForm.lease_id, due_date: receiptForm.due_date, paid_at: receiptForm.paid_at || null, amount: receiptForm.amount, pdf_path: null, generated_key: null, tenant_name: lease?.tenant_name || '-', property_name: lease?.property_name || '-' };
                 setReceiptItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="receipt.create" />
                 <input type="hidden" name="tab" value="receipts" />
-                <CustomSelect id="create-receipt-lease" value={receiptForm.lease_id} onChange={(v) => setReceiptForm((current) => ({ ...current, lease_id: v }))} label="Contrato" required>
+                <CustomSelect id="create-receipt-lease" name="lease_id" value={receiptForm.lease_id} onChange={(v) => setReceiptForm((current) => ({ ...current, lease_id: v }))} label="Contrato" required>
                   <option value="">Selecione</option>
                   {leaseItems.map((lease) => <option key={lease.id} value={lease.id}>{lease.tenant_name} / {lease.property_name}</option>)}
                 </CustomSelect>
                 <DatePickerInput id="create-receipt-due" name="due_date" value={receiptForm.due_date} onChange={(v) => setReceiptForm((current) => ({ ...current, due_date: v }))} label="Vencimento" required />
                 <DateTimePickerInput id="create-receipt-paid" name="paid_at" value={receiptForm.paid_at} onChange={(v) => setReceiptForm((current) => ({ ...current, paid_at: v }))} label="Pago em" />
-                <div className="form-group"><label htmlFor="create-receipt-amount">Valor</label><input id="create-receipt-amount" name="amount" type="number" step="0.01" value={receiptForm.amount} onChange={(e) => setReceiptForm((current) => ({ ...current, amount: e.target.value }))} required /></div>
-                <button type="submit" className="btn btn-primary" disabled={receiptFetcher.state !== 'idle'}>Adicionar recibo</button>
+                <MoneyInput id="create-receipt-amount" name="amount" value={receiptForm.amount} onChange={(value) => setReceiptForm((current) => ({ ...current, amount: value }))} label="Valor" required />
+                <button type="submit" className="btn btn-primary" disabled={receiptFetcher.state !== 'idle'}>Adicionar pagamento</button>
               </receiptFetcher.Form>
             </Modal> : null}
           </div>

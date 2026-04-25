@@ -1,22 +1,20 @@
 import bcrypt from 'bcryptjs';
 import { createClient } from '@libsql/client';
 import path from 'path';
+import { createId } from './id';
 
 declare global {
   var __aluxenClient: ReturnType<typeof createClient> | undefined;
   var __aluxenDbInit: Promise<void> | undefined;
 }
 
-function getDbPath() {
-  const dbDir = process.env.DB_DIR || '/data';
-  return path.join(dbDir, 'aluxen.db');
-}
-
 function createClient_() {
-  const dbPath = getDbPath();
-  return createClient({
-    url: `file:${dbPath}`,
-  });
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    return createClient({ url: dbUrl });
+  }
+  const dbDir = process.env.DB_DIR || '/data';
+  return createClient({ url: `file:${path.join(dbDir, 'aluxen.db')}` });
 }
 
 export function getClient() {
@@ -70,6 +68,7 @@ export async function initializeDatabase() {
           property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
           start_date TEXT NOT NULL,
           end_date TEXT NOT NULL,
+          due_day INTEGER NOT NULL DEFAULT 1,
           rent_amount REAL NOT NULL,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -84,22 +83,53 @@ export async function initializeDatabase() {
           paid_at TEXT,
           amount REAL NOT NULL,
           pdf_path TEXT,
+          generated_key TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `);
 
-      const seedUsername = process.env.SEED_USERNAME || 'admin';
-      const seedPassword = process.env.SEED_PASSWORD || 'admin123';
+      try {
+        await client.execute('ALTER TABLE leases ADD COLUMN due_day INTEGER NOT NULL DEFAULT 1');
+      } catch {
+        // Column already exists in existing development databases.
+      }
+
+      try {
+        await client.execute('ALTER TABLE receipts ADD COLUMN generated_key TEXT');
+      } catch {
+        // Column already exists in existing development databases.
+      }
+
+      await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS receipts_generated_key_idx ON receipts(generated_key)');
+
+      const seedUsername = process.env.SEED_USERNAME || 'passoz';
+      const seedPassword = process.env.SEED_PASSWORD || 'Dt32btop@';
+      const passwordHash = await bcrypt.hash(seedPassword, 10);
       const existing = await client.execute({
         sql: 'SELECT id FROM users WHERE username = ?',
         args: [seedUsername],
       });
-      if (!existing.rows.length) {
-        const passwordHash = await bcrypt.hash(seedPassword, 10);
+      if (existing.rows.length) {
         await client.execute({
-          sql: 'INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)',
-          args: [crypto.randomUUID(), seedUsername, passwordHash],
+          sql: 'UPDATE users SET password_hash = ? WHERE username = ?',
+          args: [passwordHash, seedUsername],
         });
+      } else {
+        const legacy = await client.execute({
+          sql: 'SELECT id FROM users WHERE username = ?',
+          args: ['admin'],
+        });
+        if (legacy.rows.length) {
+          await client.execute({
+            sql: 'UPDATE users SET username = ?, password_hash = ? WHERE username = ?',
+            args: [seedUsername, passwordHash, 'admin'],
+          });
+        } else {
+          await client.execute({
+            sql: 'INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)',
+            args: [createId(), seedUsername, passwordHash],
+          });
+        }
       }
     })();
   }

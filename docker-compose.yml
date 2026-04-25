@@ -1,37 +1,18 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: rental
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d rental"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   app:
-    image: node:22-alpine
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     volumes:
-      - .:/app
-      - /app/node_modules
-    working_dir: /app
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - aluxen-data:/data
     environment:
-      - DATABASE_URL=postgres://user:password@postgres:5432/rental?sslmode=disable
-      - SESSION_SECRET=dev-session-secret
-      - SEED_USERNAME=admin
-      - SEED_PASSWORD=admin123
+      - DB_DIR=/data
+      - SESSION_SECRET=${SESSION_SECRET:-production-secret-change-me}
+      - SEED_USERNAME=${SEED_USERNAME:-passoz}
+      - SEED_PASSWORD=${SEED_PASSWORD:-Dt32btop@}
 
 volumes:
-  pgdata:
+  aluxen-data:
+    driver: local
