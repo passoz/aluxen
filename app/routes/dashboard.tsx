@@ -11,6 +11,7 @@ type Tenant = {
   name: string;
   email: string;
   phone: string | null;
+  cpf: string | null;
 };
 
 type Property = {
@@ -32,6 +33,7 @@ type Lease = {
   rent_amount: string;
   tenant_name: string;
   property_name: string;
+  status: string;
 };
 
 type Receipt = {
@@ -200,7 +202,7 @@ function paginateItems<T>(items: T[], page: number, pageSize: number) {
 }
 
 function isCreateIntent(intent: string) {
-  return intent === 'tenant.create' || intent === 'property.create' || intent === 'lease.create' || intent === 'receipt.create';
+  return intent === 'tenant.create' || intent === 'property.create' || intent === 'lease.create' || intent === 'receipt.create' || intent === 'lease.terminate' || intent === 'lease.reactivate';
 }
 
 function readDashboardCache() {
@@ -312,15 +314,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const [user, tenants, properties, leases, receipts] = await Promise.all([
     queryOne<{ username: string }>('SELECT username FROM users WHERE id = $1', [userId]),
-    query<Tenant>('SELECT id, name, email, phone FROM tenants ORDER BY created_at DESC, name'),
+    query<Tenant>('SELECT id, name, email, phone, cpf FROM tenants ORDER BY created_at DESC, name'),
     query<Property>('SELECT id, name, address, city, state, zip FROM properties ORDER BY created_at DESC, name'),
     query<Lease>(`
-      SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount,
+      SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
              t.name AS tenant_name, p.name AS property_name
       FROM leases l
       JOIN tenants t ON t.id = l.tenant_id
       JOIN properties p ON p.id = l.property_id
-      ORDER BY l.created_at DESC
+      ORDER BY l.status, l.created_at DESC
     `),
     query<Receipt>(`
       SELECT r.id, r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.generated_key,
@@ -348,8 +350,9 @@ export async function action({ request }: ActionFunctionArgs) {
         const name = String(formData.get('name') || '').trim();
         const email = String(formData.get('email') || '').trim();
         const phone = String(formData.get('phone') || '').trim();
+        const cpf = String(formData.get('cpf') || '').trim();
         if (!name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute('INSERT INTO tenants (id, name, email, phone) VALUES ($1, $2, $3, $4)', [id, name, email, phone || null]);
+        await execute('INSERT INTO tenants (id, name, email, phone, cpf) VALUES ($1, $2, $3, $4, $5)', [id, name, email, phone || null, cpf || null]);
         break;
       }
       case 'tenant.update': {
@@ -357,8 +360,9 @@ export async function action({ request }: ActionFunctionArgs) {
         const name = String(formData.get('name') || '').trim();
         const email = String(formData.get('email') || '').trim();
         const phone = String(formData.get('phone') || '').trim();
+        const cpf = String(formData.get('cpf') || '').trim();
         if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute("UPDATE tenants SET name = $1, email = $2, phone = $3, updated_at = datetime('now') WHERE id = $4", [name, email, phone || null, id]);
+        await execute("UPDATE tenants SET name = $1, email = $2, phone = $3, cpf = $4, updated_at = datetime('now') WHERE id = $5", [name, email, phone || null, cpf || null, id]);
         break;
       }
       case 'tenant.delete': {
@@ -415,6 +419,14 @@ export async function action({ request }: ActionFunctionArgs) {
         await execute("UPDATE leases SET tenant_id = $1, property_id = $2, start_date = $3, end_date = $4, due_day = $5, rent_amount = $6, updated_at = datetime('now') WHERE id = $7", [tenantId, propertyId, startDate, endDate, dueDay, rentAmount, id]);
         break;
       }
+      case 'lease.terminate': {
+        await execute("UPDATE leases SET status = 'terminated', updated_at = datetime('now') WHERE id = $1", [String(formData.get('id'))]);
+        break;
+      }
+      case 'lease.reactivate': {
+        await execute("UPDATE leases SET status = 'active', updated_at = datetime('now') WHERE id = $1", [String(formData.get('id'))]);
+        break;
+      }
       case 'lease.delete': {
         await execute('DELETE FROM leases WHERE id = $1', [String(formData.get('id'))]);
         break;
@@ -454,9 +466,9 @@ export async function action({ request }: ActionFunctionArgs) {
         const monthStart = `${monthKey}-01`;
         const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
         const activeLeases = await query<Lease>(`
-          SELECT id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, '' AS tenant_name, '' AS property_name
+          SELECT id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, '' AS tenant_name, '' AS property_name, status
           FROM leases
-          WHERE start_date <= $1 AND end_date >= $2
+          WHERE status = 'active' AND start_date <= $1 AND end_date >= $2
         `, [monthEnd, monthStart]);
 
         for (const lease of activeLeases) {
@@ -647,6 +659,9 @@ function DeleteRowButton({
   onOptimisticDelete,
   onSettled,
   queueOfflineMutation,
+  confirmMessage,
+  btnLabel,
+  btnClass,
 }: {
   intent: string;
   tab: Tab;
@@ -654,6 +669,9 @@ function DeleteRowButton({
   onOptimisticDelete: () => void;
   onSettled: () => void;
   queueOfflineMutation: (payload: QueuePayload, successMessage: string) => void;
+  confirmMessage?: string;
+  btnLabel?: string;
+  btnClass?: string;
 }) {
   const fetcher = useFetcher<MutationResponse>();
 
@@ -668,7 +686,7 @@ function DeleteRowButton({
 
   return (
     <fetcher.Form method="post" onSubmit={(event) => {
-      if (!window.confirm('Tem certeza que deseja excluir este item?')) {
+      if (!window.confirm(confirmMessage || 'Tem certeza que deseja excluir este item?')) {
         event.preventDefault();
         return;
       }
@@ -677,13 +695,13 @@ function DeleteRowButton({
         event.preventDefault();
         onOptimisticDelete();
         onSettled();
-        queueOfflineMutation({ intent, tab, id }, 'Exclusão pendente de sincronização.');
+        queueOfflineMutation({ intent, tab, id }, 'Ação pendente de sincronização.');
       }
     }}>
       <input type="hidden" name="intent" value={intent} />
       <input type="hidden" name="tab" value={tab} />
       <input type="hidden" name="id" value={id} />
-      <button type="submit" className="btn btn-sm btn-danger" disabled={fetcher.state !== 'idle'}>Excluir</button>
+      <button type="submit" className={btnClass || 'btn btn-sm btn-danger'} disabled={fetcher.state !== 'idle'}>{btnLabel || 'Excluir'}</button>
     </fetcher.Form>
   );
 }
@@ -998,6 +1016,33 @@ function MoneyInput({ id, name, value, onChange, label, required }: { id: string
   );
 }
 
+function formatCpfInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (!digits) return '';
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function CpfInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
+  return (
+    <div className="form-group">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        name={name}
+        type="text"
+        inputMode="numeric"
+        value={formatCpfInput(value)}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 11))}
+        placeholder="000.000.000-00"
+        required={required}
+      />
+    </div>
+  );
+}
+
 function PhoneInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
   return (
     <div className="form-group">
@@ -1164,20 +1209,34 @@ export default function AppRoute() {
     return window.localStorage.getItem('sidebar') === 'collapsed';
   });
 
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     window.localStorage.setItem('sidebar', collapsed ? 'collapsed' : 'expanded');
   }, [collapsed]);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [tab]);
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileMenuOpen(false);
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, []);
 
   const [tenantItems, setTenantItems] = useState(tenants);
   const [propertyItems, setPropertyItems] = useState(properties);
   const [leaseItems, setLeaseItems] = useState(leases);
   const [receiptItems, setReceiptItems] = useState(receipts);
 
-  const [tenantForm, setTenantForm] = useState({ name: '', email: '', phone: '' });
+  const [tenantForm, setTenantForm] = useState({ name: '', email: '', phone: '', cpf: '' });
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', city: '', state: '', zip: '' });
   const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
   const [receiptForm, setReceiptForm] = useState({ lease_id: '', due_date: '', paid_at: '', amount: '' });
-  const [tenantDraft, setTenantDraft] = useState({ id: '', name: '', email: '', phone: '' });
+  const [tenantDraft, setTenantDraft] = useState({ id: '', name: '', email: '', phone: '', cpf: '' });
   const [propertyDraft, setPropertyDraft] = useState({ id: '', name: '', address: '', city: '', state: '', zip: '' });
   const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
   const [receiptDraft, setReceiptDraft] = useState({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
@@ -1187,6 +1246,7 @@ export default function AppRoute() {
   const [tenantSearch, setTenantSearch] = useState('');
   const [propertySearch, setPropertySearch] = useState('');
   const [leaseSearch, setLeaseSearch] = useState('');
+  const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'terminated'>('all');
   const [receiptSearch, setReceiptSearch] = useState('');
   const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'paid'>('all');
   const [tenantSort, setTenantSort] = useState<SortState>({ key: 'name', direction: 'asc' });
@@ -1310,8 +1370,8 @@ export default function AppRoute() {
     lastHandledTenantResponse.current = tenantFetcher.data;
     revalidator.revalidate();
     if (tenantFetcher.data.ok) {
-      setTenantForm({ name: '', email: '', phone: '' });
-      setTenantDraft({ id: '', name: '', email: '', phone: '' });
+      setTenantForm({ name: '', email: '', phone: '', cpf: '' });
+      setTenantDraft({ id: '', name: '', email: '', phone: '', cpf: '' });
       setModalType('');
       setCreateModalType('');
       setToast({ message: 'Inquilino salvo com sucesso.', tone: 'success' });
@@ -1376,7 +1436,11 @@ export default function AppRoute() {
 
   const filteredTenants = useMemo(() => tenantItems.filter((item) => `${item.name} ${item.email} ${item.phone || ''}`.toLowerCase().includes(tenantSearch.toLowerCase())), [tenantItems, tenantSearch]);
   const filteredProperties = useMemo(() => propertyItems.filter((item) => `${item.name} ${item.city} ${item.state} ${item.address}`.toLowerCase().includes(propertySearch.toLowerCase())), [propertyItems, propertySearch]);
-  const filteredLeases = useMemo(() => leaseItems.filter((item) => `${item.tenant_name} ${item.property_name} ${item.start_date} ${item.end_date}`.toLowerCase().includes(leaseSearch.toLowerCase())), [leaseItems, leaseSearch]);
+  const filteredLeases = useMemo(() => leaseItems.filter((item) => {
+    if (leaseStatus === 'active' && item.status !== 'active') return false;
+    if (leaseStatus === 'terminated' && item.status !== 'terminated') return false;
+    return `${item.tenant_name} ${item.property_name} ${item.start_date} ${item.end_date}`.toLowerCase().includes(leaseSearch.toLowerCase());
+  }), [leaseItems, leaseSearch, leaseStatus]);
   const filteredReceipts = useMemo(() => receiptItems.filter((item) => {
     const matchesText = `${item.tenant_name} ${item.property_name} ${item.due_date} ${item.amount}`.toLowerCase().includes(receiptSearch.toLowerCase());
     const matchesStatus = receiptStatus === 'all' || getReceiptStatus(item) === receiptStatus;
@@ -1397,7 +1461,7 @@ export default function AppRoute() {
 
   useEffect(() => setTenantPage(1), [tenantSearch, tenantSort]);
   useEffect(() => setPropertyPage(1), [propertySearch, propertySort]);
-  useEffect(() => setLeasePage(1), [leaseSearch, leaseSort]);
+  useEffect(() => setLeasePage(1), [leaseSearch, leaseSort, leaseStatus]);
   useEffect(() => setReceiptPage(1), [receiptSearch, receiptStatus, receiptSort]);
   useEffect(() => setTenantPage((page) => Math.min(page, tenantTotalPages)), [tenantTotalPages]);
   useEffect(() => setPropertyPage((page) => Math.min(page, propertyTotalPages)), [propertyTotalPages]);
@@ -1449,7 +1513,7 @@ export default function AppRoute() {
     const monthStart = `${monthKey}-01`;
     const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
 
-    const activeLeases = leaseItems.filter((lease) => lease.start_date <= monthEnd && lease.end_date >= monthStart);
+    const activeLeases = leaseItems.filter((lease) => lease.status === 'active' && lease.start_date <= monthEnd && lease.end_date >= monthStart);
     const nextReceipts = [...receiptItems];
 
     for (const lease of activeLeases) {
@@ -1475,7 +1539,7 @@ export default function AppRoute() {
   }
 
   function startTenantEdit(item: Tenant) {
-    setTenantDraft({ id: item.id, name: item.name, email: item.email, phone: item.phone || '' });
+    setTenantDraft({ id: item.id, name: item.name, email: item.email, phone: item.phone || '', cpf: item.cpf || '' });
     setModalType('tenants');
   }
 
@@ -1504,22 +1568,31 @@ export default function AppRoute() {
 
   return (
     <div className="app-shell">
-      <nav className={collapsed ? 'sidebar' : 'sidebar open'}>
-        <Brand collapsed={collapsed} />
+      <button className="hamburger-float" type="button" onClick={() => setMobileMenuOpen(v => !v)} aria-label={mobileMenuOpen ? 'Fechar menu' : 'Abrir menu'}>
+        {mobileMenuOpen ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+        )}
+      </button>
+      {mobileMenuOpen && <div className="sidebar-backdrop" onClick={() => setMobileMenuOpen(false)} />}
+
+      <nav className={`sidebar${(!collapsed || mobileMenuOpen) ? ' open' : ''}${mobileMenuOpen ? ' mobile-open' : ''}`}>
+        <Brand collapsed={collapsed && !mobileMenuOpen} />
         <button className="menu-btn" type="button" onClick={() => setCollapsed((value) => !value)} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
           <MenuGlyph collapsed={collapsed} />
         </button>
 <ul>
-            <li><Link to="/dashboard?tab=tenants"><span className="nav-icon"><IconTenants /></span>{!collapsed ? <span className="nav-label">Inquilinos</span> : null}</Link></li>
-            <li><Link to="/dashboard?tab=properties"><span className="nav-icon"><IconProperties /></span>{!collapsed ? <span className="nav-label">Imóveis</span> : null}</Link></li>
-            <li><Link to="/dashboard?tab=leases"><span className="nav-icon"><IconLeases /></span>{!collapsed ? <span className="nav-label">Contratos</span> : null}</Link></li>
-            <li><Link to="/dashboard?tab=receipts"><span className="nav-icon"><IconReceipts /></span>{!collapsed ? <span className="nav-label">Pagamentos</span> : null}</Link></li>
+            <li><Link to="/dashboard?tab=tenants" onClick={() => setMobileMenuOpen(false)}><span className="nav-icon"><IconTenants /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Inquilinos</span> : null}</Link></li>
+            <li><Link to="/dashboard?tab=properties" onClick={() => setMobileMenuOpen(false)}><span className="nav-icon"><IconProperties /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Imóveis</span> : null}</Link></li>
+            <li><Link to="/dashboard?tab=leases" onClick={() => setMobileMenuOpen(false)}><span className="nav-icon"><IconLeases /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Contratos</span> : null}</Link></li>
+            <li><Link to="/dashboard?tab=receipts" onClick={() => setMobileMenuOpen(false)}><span className="nav-icon"><IconReceipts /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Pagamentos</span> : null}</Link></li>
           </ul>
           <div className="sidebar-footer">
-            <DataButtons collapsed={collapsed} />
-            <ThemeToggle collapsed={collapsed} />
+            <DataButtons collapsed={collapsed && !mobileMenuOpen} />
+            <ThemeToggle collapsed={collapsed && !mobileMenuOpen} />
             <Form action="/logout" method="post">
-              <button type="submit"><span className="nav-icon"><IconLogout /></span>{!collapsed ? <span className="nav-label">Sair</span> : null}</button>
+              <button type="submit"><span className="nav-icon"><IconLogout /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Sair</span> : null}</button>
             </Form>
           </div>
       </nav>
@@ -1542,19 +1615,20 @@ export default function AppRoute() {
                 <FilterBar value={tenantSearch} onChange={setTenantSearch} placeholder="Buscar por nome, email ou telefone" />
                 <div className="table-wrap">
                   <table>
-                    <thead><tr><th><SortHeader label="Nome" active={tenantSort.key === 'name'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'name', setTenantSort)} /></th><th><SortHeader label="Email" active={tenantSort.key === 'email'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'email', setTenantSort)} /></th><th><SortHeader label="Telefone" active={tenantSort.key === 'phone'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'phone', setTenantSort)} /></th><th>Ações</th></tr></thead>
+                    <thead><tr><th><SortHeader label="Nome" active={tenantSort.key === 'name'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'name', setTenantSort)} /></th><th><SortHeader label="Email" active={tenantSort.key === 'email'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'email', setTenantSort)} /></th><th><SortHeader label="CPF" active={tenantSort.key === 'cpf'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'cpf', setTenantSort)} /></th><th><SortHeader label="Telefone" active={tenantSort.key === 'phone'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'phone', setTenantSort)} /></th><th>Ações</th></tr></thead>
                     <tbody>
                       {pagedTenants.length ? pagedTenants.map((tenant) => (
                         <tr key={tenant.id}>
                           <td data-label="Nome">{tenant.name} {pendingIds.tenants.has(tenant.id) ? <PendingBadge /> : null}</td>
                           <td data-label="Email">{tenant.email}</td>
+                          <td data-label="CPF">{tenant.cpf || '-'}</td>
                           <td data-label="Telefone">{tenant.phone || '-'}</td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startTenantEdit(tenant)}>Editar</button>
                             <DeleteRowButton intent="tenant.delete" tab="tenants" id={tenant.id} onOptimisticDelete={() => setTenantItems((current) => current.filter((row) => row.id !== tenant.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
-                      )) : <tr><td colSpan={4}>Nenhum inquilino cadastrado.</td></tr>}
+                      )) : <tr><td colSpan={5}>Nenhum inquilino cadastrado.</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1591,24 +1665,43 @@ export default function AppRoute() {
             {tab === 'leases' ? (
               <section className="card stack-lg">
                 <div className="section-header"><h2>Gerenciar Contratos</h2><button type="button" className="btn btn-primary" onClick={() => setCreateModalType('leases')}>Novo contrato</button></div>
-                <FilterBar value={leaseSearch} onChange={setLeaseSearch} placeholder="Buscar por inquilino, imóvel ou período" />
+                <FilterBar value={leaseSearch} onChange={setLeaseSearch} placeholder="Buscar por inquilino, imóvel ou período">
+                  <SmallSelect value={leaseStatus} onChange={(v) => setLeaseStatus(v as 'all' | 'active' | 'terminated')}>
+                    <option value="all">Todos</option>
+                    <option value="active">Ativos</option>
+                    <option value="terminated">Encerrados</option>
+                  </SmallSelect>
+                </FilterBar>
                 <div className="table-wrap">
                   <table>
-                    <thead><tr><th><SortHeader label="Inquilino" active={leaseSort.key === 'tenant_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'tenant_name', setLeaseSort)} /></th><th><SortHeader label="Imóvel" active={leaseSort.key === 'property_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'property_name', setLeaseSort)} /></th><th><SortHeader label="Início" active={leaseSort.key === 'start_date'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'start_date', setLeaseSort)} /></th><th><SortHeader label="Vencimento" active={leaseSort.key === 'due_day'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'due_day', setLeaseSort)} /></th><th><SortHeader label="Valor" active={leaseSort.key === 'rent_amount'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'rent_amount', setLeaseSort)} /></th><th>Ações</th></tr></thead>
+                    <thead><tr><th><SortHeader label="Inquilino" active={leaseSort.key === 'tenant_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'tenant_name', setLeaseSort)} /></th><th><SortHeader label="Imóvel" active={leaseSort.key === 'property_name'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'property_name', setLeaseSort)} /></th><th>Status</th><th><SortHeader label="Início" active={leaseSort.key === 'start_date'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'start_date', setLeaseSort)} /></th><th><SortHeader label="Vencimento" active={leaseSort.key === 'due_day'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'due_day', setLeaseSort)} /></th>                        <th><SortHeader label="Valor" active={leaseSort.key === 'rent_amount'} direction={leaseSort.direction} onClick={() => toggleSort(leaseSort, 'rent_amount', setLeaseSort)} /></th><th>PDF</th><th>Ações</th></tr></thead>
                     <tbody>
                       {pagedLeases.length ? pagedLeases.map((lease) => (
-                        <tr key={lease.id}>
+                        <tr key={lease.id} style={lease.status === 'terminated' ? { opacity: 0.55 } : undefined}>
                           <td data-label="Inquilino">{lease.tenant_name} {pendingIds.leases.has(lease.id) ? <PendingBadge /> : null}</td>
                           <td data-label="Imóvel">{lease.property_name}</td>
+                          <td data-label="Status"><span className={`status-badge ${lease.status === 'active' ? 'paid' : 'overdue'}`}>{lease.status === 'active' ? 'Ativo' : 'Encerrado'}</span></td>
                           <td data-label="Período">{lease.start_date} a {lease.end_date}</td>
                           <td data-label="Vencimento">Dia {lease.due_day}</td>
-                          <td data-label="Valor">{formatCurrency(lease.rent_amount)}</td>
-                          <td className="row-actions">
-                            <button type="button" className="btn btn-sm btn-secondary" onClick={() => startLeaseEdit(lease)}>Editar</button>
-                            <DeleteRowButton intent="lease.delete" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.filter((row) => row.id !== lease.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
-                          </td>
+                           <td data-label="Valor">{formatCurrency(lease.rent_amount)}</td>
+                           <td data-label="PDF">
+                             <div className="row-actions">
+                               <a className="btn btn-sm btn-secondary" href={`/contract-pdf?id=${lease.id}`} target="_blank" rel="noreferrer">Contrato</a>
+                             </div>
+                           </td>
+                           <td className="row-actions">
+                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startLeaseEdit(lease)}>Editar</button>
+                             {lease.status === 'active' ? (
+                               <DeleteRowButton intent="lease.terminate" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.map((row) => row.id === lease.id ? { ...row, status: 'terminated' } : row))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} btnLabel="Encerrar" btnClass="btn btn-sm btn-outline" confirmMessage="Encerrar este contrato? Ele ficará inativo." />
+                             ) : (
+                               <DeleteRowButton intent="lease.reactivate" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.map((row) => row.id === lease.id ? { ...row, status: 'active' } : row))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} btnLabel="Reativar" btnClass="btn btn-sm btn-secondary" confirmMessage="Reativar este contrato?" />
+                             )}
+                             <span style={{ marginLeft: '0.25rem' }}>
+                               <DeleteRowButton intent="lease.delete" tab="leases" id={lease.id} onOptimisticDelete={() => setLeaseItems((current) => current.filter((row) => row.id !== lease.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
+                             </span>
+                           </td>
                         </tr>
-                      )) : <tr><td colSpan={6}>Cadastre um inquilino e um imóvel para criar contratos.</td></tr>}
+                       )) : <tr><td colSpan={8}>Cadastre um inquilino e um imóvel para criar contratos.</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1653,7 +1746,13 @@ export default function AppRoute() {
                           <td data-label="Valor">{formatCurrency(receipt.amount)}</td>
                           <td data-label="PDF">
                               {receipt.paid_at ? (
-                                <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
+                                <div className="row-actions">
+                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
+                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer" download>
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    {' '}Download
+                                  </a>
+                                </div>
                               ) : '-'}
                             </td>
                           <td className="row-actions">
@@ -1672,42 +1771,45 @@ export default function AppRoute() {
             {modalType === 'tenants' ? <Modal title="Editar Inquilino" onClose={() => setModalType('')}>
               <tenantFetcher.Form method="post" className="stack" onSubmit={(event) => {
                 if (handleOfflineSubmit(event, (payload) => {
-                  setTenantItems((current) => current.map((row) => row.id === payload.id ? { ...row, name: payload.name, email: payload.email, phone: payload.phone || null } : row));
+                  setTenantItems((current) => current.map((row) => row.id === payload.id ? { ...row, name: payload.name, email: payload.email, phone: payload.phone || null, cpf: payload.cpf || null } : row));
                 }, 'Alteração pendente de sincronização.', () => {
-                  setTenantDraft({ id: '', name: '', email: '', phone: '' });
+                  setTenantDraft({ id: '', name: '', email: '', phone: '', cpf: '' });
                   setModalType('');
                 })) {
                   return;
                 }
-                setTenantItems((current) => current.map((row) => row.id === tenantDraft.id ? { ...row, name: tenantDraft.name, email: tenantDraft.email, phone: tenantDraft.phone || null } : row));
+                setTenantItems((current) => current.map((row) => row.id === tenantDraft.id ? { ...row, name: tenantDraft.name, email: tenantDraft.email, phone: tenantDraft.phone || null, cpf: tenantDraft.cpf || null } : row));
               }}>
                 <input type="hidden" name="intent" value="tenant.update" />
                 <input type="hidden" name="id" value={tenantDraft.id} />
                 <div className="form-group"><label htmlFor="modal-tenant-name">Nome</label><input id="modal-tenant-name" name="name" value={tenantDraft.name} onChange={(e) => setTenantDraft((current) => ({ ...current, name: e.target.value }))} required /></div>
                 <div className="form-group"><label htmlFor="modal-tenant-email">Email</label><input id="modal-tenant-email" name="email" type="email" value={tenantDraft.email} onChange={(e) => setTenantDraft((current) => ({ ...current, email: e.target.value }))} required /></div>
+                <CpfInput id="modal-tenant-cpf" name="cpf" value={tenantDraft.cpf} onChange={(value) => setTenantDraft((current) => ({ ...current, cpf: value }))} label="CPF" />
                 <PhoneInput id="modal-tenant-phone" name="phone" value={tenantDraft.phone} onChange={(value) => setTenantDraft((current) => ({ ...current, phone: value }))} label="Telefone" />
                 <button type="submit" className="btn btn-primary" disabled={tenantFetcher.state !== 'idle'}>Salvar alterações</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setTenantDraft({ id: '', name: '', email: '', phone: '', cpf: '' }); setModalType(''); }}>Descartar</button>
               </tenantFetcher.Form>
             </Modal> : null}
 
             {createModalType === 'tenants' ? <Modal title="Novo Inquilino" onClose={() => setCreateModalType('')}>
               <tenantFetcher.Form method="post" className="stack" onSubmit={(event) => {
                 if (handleOfflineSubmit(event, (payload) => {
-                  const item = { id: payload.id, name: payload.name, email: payload.email, phone: payload.phone || null };
+                  const item = { id: payload.id, name: payload.name, email: payload.email, phone: payload.phone || null, cpf: payload.cpf || null };
                   setTenantItems((current) => [item, ...current]);
                 }, 'Cadastro pendente de sincronização.', () => {
-                  setTenantForm({ name: '', email: '', phone: '' });
+                  setTenantForm({ name: '', email: '', phone: '', cpf: '' });
                   setCreateModalType('');
                 })) {
                   return;
                 }
-                const item = { id: `tmp-${createId()}`, name: tenantForm.name, email: tenantForm.email, phone: tenantForm.phone || null };
+                const item = { id: `tmp-${createId()}`, name: tenantForm.name, email: tenantForm.email, phone: tenantForm.phone || null, cpf: tenantForm.cpf || null };
                 setTenantItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="tenant.create" />
                 <input type="hidden" name="tab" value="tenants" />
                 <div className="form-group"><label htmlFor="create-tenant-name">Nome</label><input id="create-tenant-name" name="name" value={tenantForm.name} onChange={(e) => setTenantForm((current) => ({ ...current, name: e.target.value }))} required /></div>
                 <div className="form-group"><label htmlFor="create-tenant-email">Email</label><input id="create-tenant-email" name="email" type="email" value={tenantForm.email} onChange={(e) => setTenantForm((current) => ({ ...current, email: e.target.value }))} required /></div>
+                <CpfInput id="create-tenant-cpf" name="cpf" value={tenantForm.cpf} onChange={(value) => setTenantForm((current) => ({ ...current, cpf: value }))} label="CPF" />
                 <PhoneInput id="create-tenant-phone" name="phone" value={tenantForm.phone} onChange={(value) => setTenantForm((current) => ({ ...current, phone: value }))} label="Telefone" />
                 <button type="submit" className="btn btn-primary" disabled={tenantFetcher.state !== 'idle'}>Adicionar inquilino</button>
               </tenantFetcher.Form>
@@ -1733,6 +1835,7 @@ export default function AppRoute() {
                 <div className="form-group"><label htmlFor="modal-property-state">Estado</label><input id="modal-property-state" name="state" value={propertyDraft.state} onChange={(e) => setPropertyDraft((current) => ({ ...current, state: e.target.value }))} required /></div>
                 <div className="form-group"><label htmlFor="modal-property-zip">CEP</label><input id="modal-property-zip" name="zip" value={propertyDraft.zip} onChange={(e) => setPropertyDraft((current) => ({ ...current, zip: e.target.value }))} /></div>
                 <button type="submit" className="btn btn-primary" disabled={propertyFetcher.state !== 'idle'}>Salvar alterações</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setPropertyDraft({ id: '', name: '', address: '', city: '', state: '', zip: '' }); setModalType(''); }}>Descartar</button>
               </propertyFetcher.Form>
             </Modal> : null}
 
@@ -1792,6 +1895,7 @@ export default function AppRoute() {
                 <div className="form-group"><label htmlFor="modal-lease-due-day">Dia do vencimento</label><input id="modal-lease-due-day" name="due_day" type="number" min="1" max="31" value={leaseDraft.due_day} onChange={(e) => setLeaseDraft((current) => ({ ...current, due_day: e.target.value }))} required /></div>
                 <MoneyInput id="modal-lease-rent" name="rent_amount" value={leaseDraft.rent_amount} onChange={(value) => setLeaseDraft((current) => ({ ...current, rent_amount: value }))} label="Aluguel" required />
                 <button type="submit" className="btn btn-primary" disabled={leaseFetcher.state !== 'idle'}>Salvar alterações</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setLeaseDraft({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' }); setModalType(''); }}>Descartar</button>
               </leaseFetcher.Form>
             </Modal> : null}
 
@@ -1800,7 +1904,7 @@ export default function AppRoute() {
                 if (handleOfflineSubmit(event, (payload) => {
                   const tenant = tenantItems.find((item) => item.id === payload.tenant_id);
                   const property = propertyItems.find((item) => item.id === payload.property_id);
-                  const item = { id: payload.id, tenant_id: payload.tenant_id, property_id: payload.property_id, start_date: payload.start_date, end_date: payload.end_date, due_day: payload.due_day, rent_amount: payload.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' };
+                  const item = { id: payload.id, tenant_id: payload.tenant_id, property_id: payload.property_id, start_date: payload.start_date, end_date: payload.end_date, due_day: payload.due_day, rent_amount: payload.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-', status: 'active' };
                   setLeaseItems((current) => [item, ...current]);
                 }, 'Cadastro pendente de sincronização.', () => {
                   setLeaseForm({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
@@ -1810,7 +1914,7 @@ export default function AppRoute() {
                 }
                 const tenant = tenantItems.find((item) => item.id === leaseForm.tenant_id);
                 const property = propertyItems.find((item) => item.id === leaseForm.property_id);
-                const item = { id: `tmp-${createId()}`, tenant_id: leaseForm.tenant_id, property_id: leaseForm.property_id, start_date: leaseForm.start_date, end_date: leaseForm.end_date, due_day: leaseForm.due_day, rent_amount: leaseForm.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-' };
+                const item = { id: `tmp-${createId()}`, tenant_id: leaseForm.tenant_id, property_id: leaseForm.property_id, start_date: leaseForm.start_date, end_date: leaseForm.end_date, due_day: leaseForm.due_day, rent_amount: leaseForm.rent_amount, tenant_name: tenant?.name || '-', property_name: property?.name || '-', status: 'active' };
                 setLeaseItems((current) => [item, ...current]);
               }}>
                 <input type="hidden" name="intent" value="lease.create" />
@@ -1855,6 +1959,7 @@ export default function AppRoute() {
                 <DateTimePickerInput id="modal-receipt-paid" name="paid_at" value={receiptDraft.paid_at} onChange={(v) => setReceiptDraft((current) => ({ ...current, paid_at: v }))} label="Pago em" />
                 <MoneyInput id="modal-receipt-amount" name="amount" value={receiptDraft.amount} onChange={(value) => setReceiptDraft((current) => ({ ...current, amount: value }))} label="Valor" required />
                 <button type="submit" className="btn btn-primary" disabled={receiptFetcher.state !== 'idle'}>Salvar alterações</button>
+                <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setReceiptDraft({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' }); setModalType(''); }}>Descartar</button>
               </receiptFetcher.Form>
             </Modal> : null}
 

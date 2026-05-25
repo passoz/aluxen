@@ -95,6 +95,18 @@ export async function initializeDatabase() {
       }
 
       try {
+        await client.execute('ALTER TABLE tenants ADD COLUMN cpf TEXT');
+      } catch {
+        // Column already exists.
+      }
+
+      try {
+        await client.execute("ALTER TABLE leases ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+      } catch {
+        // Column already exists.
+      }
+
+      try {
         await client.execute('ALTER TABLE receipts ADD COLUMN generated_key TEXT');
       } catch {
         // Column already exists in existing development databases.

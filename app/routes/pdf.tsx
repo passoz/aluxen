@@ -38,7 +38,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response('Recibo não está pago', { status: 400 });
   }
 
-  const buffer = await createReceiptPdfBuffer({
+  const pdfBytes = await createReceiptPdfBuffer({
     receiptId: receipt.id,
     tenantName: receipt.tenant_name,
     propertyName: receipt.property_name,
@@ -47,7 +47,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     amount: receipt.amount,
   });
 
-  return new Response(buffer, {
+  return new Response(pdfBytes as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="recibo-${receipt.id}.pdf"`,

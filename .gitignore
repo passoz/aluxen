@@ -1,0 +1,7 @@
+node_modules/
+build/
+public/receipts/
+public/contracts/
+data/
+.env
+*.tsbuildinfo
