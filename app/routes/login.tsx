@@ -5,6 +5,22 @@ import { loginUser } from '../utils/auth.server';
 import { initializeDatabase } from '../utils/db.server';
 import { createUserSession, getUserId } from '../utils/session.server';
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 5;
+const RATE_LIMIT_WINDOW = 60_000; // 1 minute
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 export const meta: MetaFunction = () => [{ title: 'Aluxen | Entrar' }];
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -18,6 +34,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   await initializeDatabase();
+
+  const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+  if (!checkRateLimit(ip)) {
+    return json({ error: 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.' }, { status: 429 });
+  }
+
   const formData = await request.formData();
   const username = String(formData.get('username') || '').trim();
   const password = String(formData.get('password') || '');

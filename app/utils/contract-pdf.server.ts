@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { getSetting } from './db.server';
 
 type ContractPdfInput = {
   leaseId: string;
@@ -246,11 +247,11 @@ export async function createContractPdfBuffer(input: ContractPdfInput) {
   sectionTitle('IDENTIFICAÇÃO DAS PARTES CONTRATANTES');
 
   bodyText('LOCADOR:', { size: 10.5 });
-  bodyLabel('Nome:', 'Fernando Henrique Passos de Souza');
-  bodyLabel('Profissão:', 'Técnico em Informática');
-  bodyLabel('Nacionalidade:', 'Brasileiro');
-  bodyLabel('Estado civil:', 'Casado');
-  bodyLabel('CPF:', '075.898.017-55');
+  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const landlordCpf = (await getSetting('landlord_cpf')) || '075.898.017-55';
+  bodyLabel('Nome:', landlordName);
+  cursorY -= 20;
+  bodyLabel('CPF:', landlordCpf);
   bodyText(`Endereço: Rua Alemanha, nº 132, Bairro Jardim Caiçara, ${city} - ${state}, CEP 28910-370`);
   cursorY -= 6;
 
