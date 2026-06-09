@@ -381,6 +381,22 @@ body {
     white-space: nowrap;
 }
 
+.sidebar-footer .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-radius: 8px;
+    transition: all 0.15s;
+}
+
+.sidebar-footer .nav-link:hover {
+    color: var(--text);
+    background: var(--color2);
+}
+
 .sidebar:not(.open) {
     padding: 0.5rem;
 }
@@ -837,6 +853,34 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
     background: var(--color3);
     color: var(--color5);
     font-weight: 600;
+}
+
+.select-search {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    background: var(--glass-bg);
+    color: var(--text);
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.select-search:focus {
+    border-color: var(--color3);
+}
+
+.select-options {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.select-options .muted {
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 0.5rem 1rem;
 }
 
 .small-select {
@@ -1564,4 +1608,32 @@ tr:hover { background: var(--glass-hover-bg); }
         flex-direction: column;
         align-items: stretch;
     }
+}
+
+.settings-page {
+    padding: 2rem 1rem;
+    min-height: 100vh;
+    background: var(--bg);
+}
+
+.settings-page .success {
+    padding: 0.75rem 1rem;
+    background: var(--color2);
+    border-radius: 8px;
+    color: var(--text);
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 2px solid var(--glass-border);
+    border-top: 2px solid var(--color3);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }

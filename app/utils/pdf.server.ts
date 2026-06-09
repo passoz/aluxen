@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { getSetting } from './db.server';
 
 const PDF_TIME_ZONE = 'America/Sao_Paulo';
 
@@ -11,6 +12,7 @@ type ReceiptPdfInput = {
   dueDate: string;
   paidAt: string | null;
   amount: number;
+  signature?: boolean;
 };
 
 type FontLike = {
@@ -166,8 +168,8 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput) {
 
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const signatureBytes = await readFile(path.join(process.cwd(), 'app', 'assets', 'assinatura01.png'));
-  const signatureImage = await pdf.embedPng(signatureBytes);
+
+  const showSignature = input.signature !== false;
 
   const pageBg = rgb(0.985, 0.985, 0.98);
   const panelBg = rgb(1, 1, 1);
@@ -243,23 +245,33 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput) {
   cursorY -= declarationLines * 18 + 42;
   page.drawText(`Cabo Frio, ${formatReceiptIssuedAt(issuedAt)}`, { x: cardX, y: cursorY, size: 12, font: fontRegular, color: ink });
 
-  const signatureMaxWidth = 180;
-  const signatureScale = signatureMaxWidth / signatureImage.width;
-  const signatureWidth = signatureImage.width * signatureScale;
-  const signatureHeight = signatureImage.height * signatureScale;
-  const signatureX = cardX + (contentWidth - signatureWidth) / 2;
-  const signatureY = cursorY - signatureHeight - 20;
-  page.drawImage(signatureImage, {
-    x: signatureX,
-    y: signatureY,
-    width: signatureWidth,
-    height: signatureHeight,
-  });
+  let signatureY: number;
+
+  if (showSignature) {
+    const signatureBytes = await readFile(path.join(process.cwd(), 'app', 'assets', 'assinatura01.png'));
+    const signatureImage = await pdf.embedPng(signatureBytes);
+
+    const signatureMaxWidth = 180;
+    const signatureScale = signatureMaxWidth / signatureImage.width;
+    const signatureWidth = signatureImage.width * signatureScale;
+    const signatureHeight = signatureImage.height * signatureScale;
+    signatureY = cursorY - signatureHeight - 20;
+    const signatureX = cardX + (contentWidth - signatureWidth) / 2;
+    page.drawImage(signatureImage, {
+      x: signatureX,
+      y: signatureY,
+      width: signatureWidth,
+      height: signatureHeight,
+    });
+  } else {
+    signatureY = cursorY - 20;
+  }
 
   const signatureLineWidth = 220;
   const signatureLineX = cardX + (contentWidth - signatureLineWidth) / 2;
-  const signerName = 'Fernando Passos';
-  const signerCpf = 'CPF 075.898.017-55';
+  const signerName = (await getSetting('landlord_name')) || 'Fernando Passos';
+  const signerCpfRaw = (await getSetting('landlord_cpf')) || '075.898.017-55';
+  const signerCpf = `CPF ${signerCpfRaw}`;
   const signerNameWidth = fontBold.widthOfTextAtSize(signerName, 11);
   const signerCpfWidth = fontRegular.widthOfTextAtSize(signerCpf, 10);
   page.drawLine({ start: { x: signatureLineX, y: signatureY - 10 }, end: { x: signatureLineX + signatureLineWidth, y: signatureY - 10 }, thickness: 1, color: border });

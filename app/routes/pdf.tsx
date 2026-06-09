@@ -8,6 +8,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
+  const showSignature = url.searchParams.get('assinatura') !== 'false';
 
   if (!id) {
     throw new Response('ID inválido', { status: 400 });
@@ -45,6 +46,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     dueDate: receipt.due_date,
     paidAt: receipt.paid_at,
     amount: receipt.amount,
+    signature: showSignature,
   });
 
   return new Response(pdfBytes as BodyInit, {

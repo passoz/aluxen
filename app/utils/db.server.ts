@@ -84,7 +84,8 @@ export async function initializeDatabase() {
           amount REAL NOT NULL,
           pdf_path TEXT,
           generated_key TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT
         )
       `);
 
@@ -110,6 +111,18 @@ export async function initializeDatabase() {
         await client.execute('ALTER TABLE receipts ADD COLUMN generated_key TEXT');
       } catch {
         // Column already exists in existing development databases.
+      }
+
+      try {
+        await client.execute("ALTER TABLE receipts ADD COLUMN updated_at TEXT");
+      } catch {
+        // Column already exists in existing development databases.
+      }
+
+      try {
+        await client.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+      } catch {
+        // Table already exists.
       }
 
       await client.execute('CREATE UNIQUE INDEX IF NOT EXISTS receipts_generated_key_idx ON receipts(generated_key)');
@@ -163,4 +176,13 @@ export async function queryOne<T>(sql: string, args: unknown[] = []): Promise<T 
 export async function execute(sql: string, args: unknown[] = []): Promise<void> {
   await initializeDatabase();
   await getClient().execute({ sql, args });
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const row = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = $1', [key]);
+  return row?.value ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await execute('INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)', [key, value]);
 }

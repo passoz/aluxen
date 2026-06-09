@@ -1,308 +1,40 @@
 import { Form, Link, useFetcher, useLoaderData, useRevalidator } from '@remix-run/react';
 import { json } from '@remix-run/node';
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from '@remix-run/node';
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { execute, query, queryOne } from '../utils/db.server';
 import { createId } from '../utils/id';
 import { requireUserId } from '../utils/session.server';
+import {
+  Brand, MenuGlyph, DataButtons, ThemeToggle, DeleteRowButton,
+  SyncBanner, PendingBadge, Toast, Modal, FilterBar,
+  DatePickerInput, DateTimePickerInput, MoneyInput, CpfInput, PhoneInput,
+  CustomSelect, SortHeader, SmallSelect, Pagination, LoadingRow
+} from '../components/ui';
+import {
+  IconTenants, IconProperties, IconLeases, IconReceipts,
+  IconLogout, IconSettings, IconTheme, IconExport, IconImport
+} from '../components/icons';
 
-type Tenant = {
-  id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  cpf: string | null;
-};
-
-type Property = {
-  id: string;
-  name: string;
-  address: string;
-  city: string;
-  state: string;
-  zip: string | null;
-};
-
-type Lease = {
-  id: string;
-  tenant_id: string;
-  property_id: string;
-  start_date: string;
-  end_date: string;
-  due_day: string;
-  rent_amount: string;
-  tenant_name: string;
-  property_name: string;
-  status: string;
-};
-
-type Receipt = {
-  id: string;
-  lease_id: string;
-  due_date: string;
-  paid_at: string | null;
-  amount: string;
-  pdf_path: string | null;
-  generated_key: string | null;
-  tenant_name: string;
-  property_name: string;
-};
-
-type MutationResponse = { ok?: boolean; error?: string };
-type SortDirection = 'asc' | 'desc';
-type SortState = { key: string; direction: SortDirection };
-type PopoverPlacement = { dropup: boolean; maxHeight: number };
-type QueuePayload = Record<string, string>;
-type OfflineMutation = {
-  id: string;
-  payload: QueuePayload;
-  successMessage: string;
-};
-type DashboardCache = {
-  user: string;
-  tenants: Tenant[];
-  properties: Property[];
-  leases: Lease[];
-  receipts: Receipt[];
-  savedAt: string;
-};
-type PendingIds = {
-  tenants: Set<string>;
-  properties: Set<string>;
-  leases: Set<string>;
-  receipts: Set<string>;
-};
-
-const DASHBOARD_CACHE_KEY = 'aluxen.dashboard-cache.v1';
-const OFFLINE_QUEUE_KEY = 'aluxen.offline-queue.v1';
-
-const tabs = ['tenants', 'properties', 'leases', 'receipts'] as const;
-type Tab = (typeof tabs)[number];
-
-function getPopoverPlacement(triggerRect: DOMRect, popoverHeight: number): PopoverPlacement {
-  const margin = 16;
-  const spaceAbove = Math.max(0, triggerRect.top - margin);
-  const spaceBelow = Math.max(0, window.innerHeight - triggerRect.bottom - margin);
-  const fitsBelow = spaceBelow >= popoverHeight;
-  const fitsAbove = spaceAbove >= popoverHeight;
-
-  if (fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove)) {
-    return { dropup: false, maxHeight: spaceBelow };
-  }
-
-  return { dropup: true, maxHeight: spaceAbove };
-}
+import type {
+  Tenant, Property, Lease, Receipt,
+  MutationResponse, SortState, Tab, QueuePayload, PendingIds
+} from '../types/dashboard';
+import { tabs } from '../types/dashboard';
+import {
+  getDaysInMonth, getReceiptStatus, getReceiptStatusLabel,
+  formatCurrency, formatDateBr, formatDateTimeBr,
+  compareValues, sortItems, paginateItems
+} from '../utils/format';
+import {
+  readDashboardCache, writeDashboardCache, readOfflineQueue, writeOfflineQueue,
+  enqueueOfflineMutation, serializeFormData, submitQueuedMutation,
+  getPendingIds, getSyncErrorMessage, isCreateIntent
+} from '../utils/offline';
 
 function getTab(url: URL): Tab {
   const tab = url.searchParams.get('tab');
   return tabs.includes(tab as Tab) ? (tab as Tab) : 'tenants';
-}
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate();
-}
-
-function getReceiptStatus(receipt: Pick<Receipt, 'paid_at' | 'due_date'>) {
-  if (receipt.paid_at) return 'paid';
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dueDate = new Date(`${receipt.due_date}T00:00:00`);
-  return dueDate < today ? 'overdue' : 'due';
-}
-
-function getReceiptStatusLabel(status: string) {
-  if (status === 'paid') return 'Pago';
-  if (status === 'overdue') return 'Vencido';
-  return 'A vencer';
-}
-
-function formatCurrency(value: string | number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
-}
-
-function normalizeMoneyInput(value: string) {
-  const digits = value.replace(/\D/g, '');
-  if (!digits) return '';
-  return (Number(digits) / 100).toFixed(2);
-}
-
-function formatMoneyInput(value: string) {
-  if (!value) return '';
-  return formatCurrency(value);
-}
-
-function formatPhoneInput(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
-  if (!digits) return '';
-  if (digits.length <= 2) return `(${digits}`;
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-}
-
-function parseLocalDate(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1);
-}
-
-function formatLocalDate(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function parseLocalDateTime(value: string) {
-  const [datePart, timePart = '00:00'] = value.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hour, minute] = timePart.split(':').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0);
-}
-
-function formatLocalDateTime(date: Date) {
-  const datePart = formatLocalDate(date);
-  const hour = String(date.getHours()).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  return `${datePart}T${hour}:${minute}`;
-}
-
-function formatDateBr(value: string | null) {
-  if (!value) return '-';
-  const [year, month, day] = value.split(/[-T]/).map(Number);
-  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-}
-
-function formatDateTimeBr(value: string | null) {
-  if (!value) return '-';
-  const [datePart, timePart = ''] = value.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  if (timePart) {
-    const [hour, minute] = timePart.split(':');
-    return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year} ${hour}:${minute}`;
-  }
-  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
-}
-
-function compareValues(left: string | number | null | undefined, right: string | number | null | undefined, direction: SortDirection) {
-  const a = left ?? '';
-  const b = right ?? '';
-  const result = typeof a === 'number' || typeof b === 'number'
-    ? Number(a) - Number(b)
-    : String(a).localeCompare(String(b), 'pt-BR', { numeric: true, sensitivity: 'base' });
-  return direction === 'asc' ? result : -result;
-}
-
-function sortItems<T extends Record<string, unknown>>(items: T[], sort: SortState) {
-  return [...items].sort((a, b) => compareValues(a[sort.key] as string | number | null | undefined, b[sort.key] as string | number | null | undefined, sort.direction));
-}
-
-function paginateItems<T>(items: T[], page: number, pageSize: number) {
-  const start = (page - 1) * pageSize;
-  return items.slice(start, start + pageSize);
-}
-
-function isCreateIntent(intent: string) {
-  return intent === 'tenant.create' || intent === 'property.create' || intent === 'lease.create' || intent === 'receipt.create' || intent === 'lease.terminate' || intent === 'lease.reactivate';
-}
-
-function readDashboardCache() {
-  if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(DASHBOARD_CACHE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as DashboardCache;
-  } catch {
-    return null;
-  }
-}
-
-function writeDashboardCache(cache: DashboardCache) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cache));
-}
-
-function readOfflineQueue() {
-  if (typeof window === 'undefined') return [] as OfflineMutation[];
-  const raw = window.localStorage.getItem(OFFLINE_QUEUE_KEY);
-  if (!raw) return [] as OfflineMutation[];
-  try {
-    return JSON.parse(raw) as OfflineMutation[];
-  } catch {
-    return [] as OfflineMutation[];
-  }
-}
-
-function writeOfflineQueue(queue: OfflineMutation[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-}
-
-function enqueueOfflineMutation(mutation: OfflineMutation) {
-  const queue = [...readOfflineQueue(), mutation];
-  writeOfflineQueue(queue);
-  return queue;
-}
-
-function serializeFormData(formData: FormData) {
-  const payload: QueuePayload = {};
-  for (const [key, value] of formData.entries()) {
-    if (typeof value === 'string') {
-      payload[key] = value;
-    }
-  }
-  return payload;
-}
-
-async function submitQueuedMutation(payload: QueuePayload) {
-  const formData = new FormData();
-  Object.entries(payload).forEach(([key, value]) => formData.set(key, value));
-  const response = await fetch('/dashboard', {
-    method: 'POST',
-    body: formData,
-    credentials: 'same-origin',
-  });
-
-  const contentType = response.headers.get('content-type') || '';
-  const data = contentType.includes('application/json')
-    ? (await response.json()) as MutationResponse
-    : { error: response.ok ? undefined : 'Falha ao sincronizar dados pendentes.' };
-
-  if (!response.ok || data.error) {
-    throw new Error(data.error || 'Falha ao sincronizar dados pendentes.');
-  }
-}
-
-function getPendingIds(queue: OfflineMutation[]): PendingIds {
-  const pending: PendingIds = {
-    tenants: new Set<string>(),
-    properties: new Set<string>(),
-    leases: new Set<string>(),
-    receipts: new Set<string>(),
-  };
-
-  for (const mutation of queue) {
-    const { intent, id } = mutation.payload;
-    if (!id) continue;
-    if (intent.startsWith('tenant.')) pending.tenants.add(id);
-    if (intent.startsWith('property.')) pending.properties.add(id);
-    if (intent.startsWith('lease.')) pending.leases.add(id);
-    if (intent.startsWith('receipt.')) pending.receipts.add(id);
-  }
-
-  return pending;
-}
-
-function getSyncErrorMessage(payload: QueuePayload, error: unknown) {
-  const fallback = error instanceof Error ? error.message : 'Falha ao sincronizar dados pendentes.';
-  if (fallback.includes('UNIQUE constraint failed')) {
-    if (payload.intent?.startsWith('tenant.')) return 'Conflito ao sincronizar inquilino: email ou identificador ja existe no servidor.';
-    if (payload.intent?.startsWith('property.')) return 'Conflito ao sincronizar imovel: identificador ja existe no servidor.';
-    if (payload.intent?.startsWith('lease.')) return 'Conflito ao sincronizar contrato: identificador ja existe no servidor.';
-    if (payload.intent?.startsWith('receipt.')) return 'Conflito ao sincronizar pagamento: identificador ou geracao mensal ja existe no servidor.';
-  }
-  if (fallback.includes('Contrato não encontrado.')) return 'Sincronizacao bloqueada: um pagamento pendente referencia um contrato inexistente no servidor.';
-  if (fallback.includes('Credenciais inválidas.') || fallback.includes('/login')) return 'Sessao expirada. Entre novamente para sincronizar os dados pendentes.';
-  return fallback;
 }
 
 export const meta: MetaFunction = () => [{ title: 'Aluxen | Painel' }];
@@ -312,7 +44,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const tab = getTab(url);
 
-  const [user, tenants, properties, leases, receipts] = await Promise.all([
+  const [user, tenants, properties, leases, receipts, activeTenantIds] = await Promise.all([
     queryOne<{ username: string }>('SELECT username FROM users WHERE id = $1', [userId]),
     query<Tenant>('SELECT id, name, email, phone, cpf FROM tenants ORDER BY created_at DESC, name'),
     query<Property>('SELECT id, name, address, city, state, zip FROM properties ORDER BY created_at DESC, name'),
@@ -333,9 +65,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       JOIN properties p ON p.id = l.property_id
       ORDER BY r.created_at DESC
     `),
+    query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM leases WHERE status = \'active\''),
   ]);
 
-  return json({ tab, user: user?.username || 'admin', tenants, properties, leases, receipts });
+  return json({ tab, user: user?.username || 'admin', tenants, properties, leases, receipts, activeTenantIds: activeTenantIds.map((r) => r.tenant_id) });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -366,7 +99,10 @@ export async function action({ request }: ActionFunctionArgs) {
         break;
       }
       case 'tenant.delete': {
-        await execute('DELETE FROM tenants WHERE id = $1', [String(formData.get('id'))]);
+        const tenantId = String(formData.get('id'));
+        const activeLease = await queryOne<{ id: string }>('SELECT id FROM leases WHERE tenant_id = $1 AND status = \'active\'', [tenantId]);
+        if (activeLease) throw new Error('Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.');
+        await execute('DELETE FROM tenants WHERE id = $1', [tenantId]);
         break;
       }
       case 'property.create': {
@@ -485,6 +221,16 @@ export async function action({ request }: ActionFunctionArgs) {
         await execute('DELETE FROM receipts WHERE id = $1', [String(formData.get('id'))]);
         break;
       }
+      case 'receipt.batch-pay': {
+        const ids = (formData.get('ids') || '').toString().split(',').filter(Boolean);
+        if (!ids.length) throw new Error('Nenhum recibo selecionado.');
+        const now = new Date();
+        const paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        for (const receiptId of ids) {
+          await execute("UPDATE receipts SET paid_at = $1, updated_at = datetime('now') WHERE id = $2 AND paid_at IS NULL", [paidAt, receiptId]);
+        }
+        break;
+      }
       default:
         throw new Error('Ação inválida.');
     }
@@ -495,714 +241,8 @@ export async function action({ request }: ActionFunctionArgs) {
   return json<MutationResponse>({ ok: true });
 }
 
-function DataButtons({ collapsed }: { collapsed: boolean }) {
-  return (
-    <>
-      <a href="/export" className="data-btn" download>
-        <span className="nav-icon"><IconExport /></span>
-        {!collapsed && <span className="nav-label">Exportar</span>}
-      </a>
-      <Form action="/import" method="post" encType="multipart/form-data">
-        <label className="data-btn data-btn-label">
-          <input type="file" name="file" accept=".json" onChange={(e) => {
-            if (e.currentTarget.files?.length && window.confirm('Importar dados do arquivo? Isso adicionará novos registros.')) {
-              e.currentTarget.form?.submit();
-            }
-          }} hidden />
-          <span className="nav-icon"><IconImport /></span>
-          {!collapsed && <span className="nav-label">Importar</span>}
-        </label>
-      </Form>
-    </>
-  );
-}
-
-function ThemeToggle({ collapsed }: { collapsed: boolean }) {
-  const [theme, setTheme] = useState('light');
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem('theme') || 'light';
-    setTheme(stored);
-    document.documentElement.setAttribute('data-theme', stored);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    window.localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  return (
-    <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === 'light' ? 'dark' : 'light')}>
-      <span className="nav-icon"><IconTheme /></span>
-      {!collapsed && <span className="nav-label">Tema</span>}
-    </button>
-  );
-}
-
-function Brand({ collapsed }: { collapsed: boolean }) {
-  return (
-    <div className="logo">
-      <div className="logo-icon" aria-hidden="true">
-        <svg className="logo-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M10 31L32 13L54 31" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M17 29V49C17 51.2 18.8 53 21 53H43C45.2 53 47 51.2 47 49V29" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M26 53V39C26 36.8 27.8 35 30 35H34C36.2 35 38 36.8 38 39V53" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <circle cx="32" cy="22" r="3.2" className="logo-fill"/>
-        </svg>
-      </div>
-      {!collapsed ? <div className="logo-text">Alux<span>en</span></div> : null}
-    </div>
-  );
-}
-
-function MenuGlyph({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg className="menu-glyph" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      {collapsed ? (
-        <>
-          <path d="M5 7H19" />
-          <path d="M5 12H19" />
-          <path d="M5 17H19" />
-        </>
-      ) : (
-        <>
-          <path d="M15 7L9 12L15 17" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-function IconTenants() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 20C4 16.6863 7.58172 14 12 14C16.4183 14 20 16.6863 20 20" />
-    </svg>
-  );
-}
-
-function IconProperties() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M3 21H21" />
-      <path d="M5 21V7L12 3L19 7V21" />
-      <rect x="8" y="13" width="3" height="3" />
-      <rect x="13" y="13" width="3" height="3" />
-    </svg>
-  );
-}
-
-function IconLeases() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M9 12H15" />
-      <path d="M9 16H15" />
-      <path d="M6 3V21" />
-      <path d="M18 3V21" />
-      <path d="M6 21H18C19.1046 21 20 20.1046 20 19V5C20 3.89543 18.6569 3 17 3H7C5.34315 3 4 3.89543 4 5V19C4 20.1046 4.89543 21 6 21Z" />
-    </svg>
-  );
-}
-
-function IconReceipts() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 2V22" />
-      <path d="M17 5H9C7.89543 5 7 5.89543 7 7V17C7 18.1046 7.89543 19 9 19H17C18.1046 19 19 18.1046 19 17V7C19 5.89543 18.1046 5 17 5Z" />
-      <path d="M9 9H17" />
-    </svg>
-  );
-}
-
-function IconLogout() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" />
-      <path d="M16 17L21 12M21 12L16 7M21 12H9" />
-    </svg>
-  );
-}
-
-function IconTheme() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Tema" role="img" xmlns="http://www.w3.org/2000/svg">
-      <path d="M21 12.79A9 9 0 1 1 11.21 3.01 7 7 0 0 0 21 12.79z" fill="currentColor"/>
-    </svg>
-  );
-}
-
-function IconExport() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Exportar" role="img" xmlns="http://www.w3.org/2000/svg">
-      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M17 8L12 3L7 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 3V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function IconImport() {
-  return (
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Importar" role="img" xmlns="http://www.w3.org/2000/svg">
-      <path d="M21 15V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M7 10L12 15L17 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M12 15V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-
-function DeleteRowButton({
-  intent,
-  tab,
-  id,
-  onOptimisticDelete,
-  onSettled,
-  queueOfflineMutation,
-  confirmMessage,
-  btnLabel,
-  btnClass,
-}: {
-  intent: string;
-  tab: Tab;
-  id: string;
-  onOptimisticDelete: () => void;
-  onSettled: () => void;
-  queueOfflineMutation: (payload: QueuePayload, successMessage: string) => void;
-  confirmMessage?: string;
-  btnLabel?: string;
-  btnClass?: string;
-}) {
-  const fetcher = useFetcher<MutationResponse>();
-
-  useEffect(() => {
-    if (fetcher.state === 'idle' && fetcher.data) {
-      if (fetcher.data.ok) {
-        onOptimisticDelete();
-      }
-      onSettled();
-    }
-  }, [fetcher.state, fetcher.data, onOptimisticDelete, onSettled]);
-
-  return (
-    <fetcher.Form method="post" onSubmit={(event) => {
-      if (!window.confirm(confirmMessage || 'Tem certeza que deseja excluir este item?')) {
-        event.preventDefault();
-        return;
-      }
-
-      if (!window.navigator.onLine) {
-        event.preventDefault();
-        onOptimisticDelete();
-        onSettled();
-        queueOfflineMutation({ intent, tab, id }, 'Ação pendente de sincronização.');
-      }
-    }}>
-      <input type="hidden" name="intent" value={intent} />
-      <input type="hidden" name="tab" value={tab} />
-      <input type="hidden" name="id" value={id} />
-      <button type="submit" className={btnClass || 'btn btn-sm btn-danger'} disabled={fetcher.state !== 'idle'}>{btnLabel || 'Excluir'}</button>
-    </fetcher.Form>
-  );
-}
-
-function SyncBanner({ isOnline, pendingCount }: { isOnline: boolean; pendingCount: number }) {
-  if (isOnline && pendingCount === 0) return null;
-
-  return (
-    <div className={`sync-banner ${isOnline ? 'pending' : 'offline'}`}>
-      {!isOnline
-        ? 'Modo offline ativo. As alterações serão sincronizadas quando a conexão voltar.'
-        : `${pendingCount} alteração(ões) pendente(s) de sincronização.`}
-    </div>
-  );
-}
-
-function PendingBadge() {
-  return <span className="pending-badge">Pendente sync</span>;
-}
-
-function Toast({ message, tone, onClose }: { message: string; tone: 'success' | 'error'; onClose: () => void }) {
-  useEffect(() => {
-    const timer = window.setTimeout(onClose, 2600);
-    return () => window.clearTimeout(timer);
-  }, [message, onClose]);
-
-  return <div className={`toast ${tone}`}>{message}</div>;
-}
-
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal-card" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <h3>{title}</h3>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>Fechar</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function FilterBar({ value, onChange, placeholder, children }: { value: string; onChange: (value: string) => void; placeholder: string; children?: React.ReactNode }) {
-  return (
-    <div className="filter-bar">
-      <input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} aria-label={placeholder} />
-      {children}
-    </div>
-  );
-}
-
-function DatePickerInput({ id, name, value, onChange, required, label }: { id: string; name: string; value: string; onChange: (value: string) => void; required?: boolean; label: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(() => value ? parseLocalDate(value) : new Date());
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropup, setDropup] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(320);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (isOpen && buttonRef.current && dropdownRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
-      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
-      setDropup(placement.dropup);
-      setMaxDropdownHeight(Math.max(120, placement.maxHeight));
-    }
-  }, [isOpen]);
-
-  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
-  const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const blanks = Array.from({ length: firstDay }, (_, i) => i);
-
-  const selectDate = (day: number) => {
-    const newDate = new Date(year, month, day);
-    onChange(formatLocalDate(newDate));
-    setIsOpen(false);
-  };
-
-  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
-
-  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-  const formattedValue = value ? parseLocalDate(value).toLocaleDateString('pt-BR') : '';
-
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <div className="custom-date-picker" ref={wrapperRef}>
-        <input type="hidden" id={id} name={name} value={value} />
-        <button
-          type="button"
-          ref={buttonRef}
-          className="date-picker-display"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <span>{formattedValue || 'Selecione...'}</span>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2V6" />
-            <path d="M8 2V6" />
-            <path d="M3 10H21" />
-          </svg>
-        </button>
-        {isOpen && (
-          <div ref={dropdownRef} className={`date-picker-dropdown ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
-            <div className="date-picker-header">
-              <button type="button" onClick={prevMonth}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" /></svg>
-              </button>
-              <span>{monthNames[month]} {year}</span>
-              <button type="button" onClick={nextMonth}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M9 18L15 12L9 6" /></svg>
-              </button>
-            </div>
-            <div className="date-picker-weekdays">
-              <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
-            </div>
-            <div className="date-picker-days">
-              {blanks.map((i) => <span key={`blank-${i}`} className="blank" />)}
-              {days.map((day) => {
-                const isSelected = value && formatLocalDate(new Date(year, month, day)) === value;
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    className={isSelected ? 'selected' : ''}
-                    onClick={() => selectDate(day)}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DateTimePickerInput({ id, name, value, onChange, label }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [viewDate, setViewDate] = useState(() => value ? parseLocalDateTime(value) : new Date());
-  const [showTime, setShowTime] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropup, setDropup] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(360);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setShowTime(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (isOpen && buttonRef.current && dropdownRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
-      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
-      setDropup(placement.dropup);
-      setMaxDropdownHeight(Math.max(140, placement.maxHeight));
-    }
-  }, [isOpen, showTime]);
-
-  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
-  const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const blanks = Array.from({ length: firstDay }, (_, i) => i);
-  const hours = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = Array.from({ length: 60 }, (_, i) => i);
-
-  const currentDate = value ? parseLocalDateTime(value) : new Date();
-  const selectedHour = currentDate.getHours();
-  const selectedMinute = currentDate.getMinutes();
-
-  const selectDateTime = (day: number, hour?: number, minute?: number) => {
-    const newDate = new Date(year, month, day, hour ?? selectedHour, minute ?? selectedMinute);
-    onChange(formatLocalDateTime(newDate));
-    setIsOpen(false);
-    setShowTime(false);
-  };
-
-  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
-
-  const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
-  const formattedValue = value ? parseLocalDateTime(value).toLocaleString('pt-BR') : '';
-
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <div className="custom-date-picker" ref={wrapperRef}>
-        <input type="hidden" id={id} name={name} value={value} />
-        <button
-          type="button"
-          ref={buttonRef}
-          className="date-picker-display"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <span>{formattedValue || 'Selecione...'}</span>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 6V12L16 14" />
-          </svg>
-        </button>
-        {isOpen && (
-          <div ref={dropdownRef} className={`date-picker-dropdown datetime ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
-            <div className="date-picker-header">
-              <button type="button" onClick={prevMonth}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M15 18L9 12L15 6" /></svg>
-              </button>
-              <span>{monthNames[month]} {year}</span>
-              <button type="button" onClick={nextMonth}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M9 18L15 12L9 6" /></svg>
-              </button>
-            </div>
-            <div className="date-picker-weekdays">
-              <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
-            </div>
-            <div className="date-picker-days">
-              {blanks.map((i) => <span key={`blank-${i}`} className="blank" />)}
-              {days.map((day) => {
-                const isSelected = value && formatLocalDate(new Date(year, month, day)) === value?.split('T')[0];
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    className={isSelected ? 'selected' : ''}
-                    onClick={() => selectDateTime(day)}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="time-picker-section">
-              <button type="button" className="time-toggle" onClick={() => setShowTime(!showTime)}>
-                <span>Horário</span>
-                <svg viewBox="0 0 24 24" fill="none"><path d={showTime ? "M18 15L12 9L6 15" : "M6 9L12 15L18 9"} /></svg>
-              </button>
-              {showTime && (
-                <div className="time-picker-grid">
-                  <select 
-                    value={selectedHour} 
-                    onChange={(e) => selectDateTime(daysInMonth, parseInt(e.target.value), selectedMinute)}
-                    className="time-select"
-                  >
-                    {hours.map(h => <option key={h} value={h}>{h.toString().padStart(2, '0')}</option>)}
-                  </select>
-                  <span>:</span>
-                  <select 
-                    value={selectedMinute} 
-                    onChange={(e) => selectDateTime(daysInMonth, selectedHour, parseInt(e.target.value))}
-                    className="time-select"
-                  >
-                    {minutes.filter((_, i) => i % 5 === 0).map(m => <option key={m} value={m}>{m.toString().padStart(2, '0')}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MoneyInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <input type="hidden" name={name} value={value} />
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        value={formatMoneyInput(value)}
-        onChange={(e) => onChange(normalizeMoneyInput(e.target.value))}
-        placeholder="R$ 0,00"
-        required={required}
-      />
-    </div>
-  );
-}
-
-function formatCpfInput(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
-  if (!digits) return '';
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-}
-
-function CpfInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        name={name}
-        type="text"
-        inputMode="numeric"
-        value={formatCpfInput(value)}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 11))}
-        placeholder="000.000.000-00"
-        required={required}
-      />
-    </div>
-  );
-}
-
-function PhoneInput({ id, name, value, onChange, label, required }: { id: string; name: string; value: string; onChange: (value: string) => void; label: string; required?: boolean }) {
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <input
-        id={id}
-        name={name}
-        type="text"
-        inputMode="tel"
-        value={formatPhoneInput(value)}
-        onChange={(e) => onChange(formatPhoneInput(e.target.value))}
-        placeholder="(22) 99999-9999"
-        required={required}
-      />
-    </div>
-  );
-}
-
-function CustomSelect({ id, name, value, onChange, required, label, children }: { id: string; name: string; value: string; onChange: (value: string) => void; required?: boolean; label: string; children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const options = React.Children.toArray(children);
-  const selectedLabel = options.find((opt) => {
-    const optReact = opt as React.ReactElement<{ value: string }>;
-    return optReact.props?.value === value;
-  });
-  const displayText = selectedLabel 
-    ? (selectedLabel as React.ReactElement<{ children: React.ReactNode }>)?.props?.children 
-    : 'Selecione...';
-
-  return (
-    <div className="form-group">
-      <label htmlFor={id}>{label}</label>
-      <div className="custom-select" ref={wrapperRef}>
-        <input type="hidden" id={id} name={name} value={value} />
-        <button
-          type="button"
-          className="select-display"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          <span>{displayText}</span>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-        {isOpen && (
-          <div className="select-dropdown">
-            <button
-              type="button"
-              className={`select-option ${!value ? 'selected' : ''}`}
-              onClick={() => { onChange(''); setIsOpen(false); }}
-            >
-              Selecione...
-            </button>
-            {options.map((opt, i) => {
-              const optReact = opt as React.ReactElement<{ value: string; children: React.ReactNode }>;
-              const isSelected = optReact.props.value === value;
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  className={`select-option ${isSelected ? 'selected' : ''}`}
-                  onClick={() => { onChange(optReact.props.value); setIsOpen(false); }}
-                >
-                  {optReact.props.children}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SortHeader({ label, active, direction, onClick }: { label: string; active: boolean; direction: SortDirection; onClick: () => void }) {
-  return <button type="button" className={`sort-header ${active ? 'active' : ''}`} onClick={onClick}>{label}{active ? (direction === 'asc' ? ' ↑' : ' ↓') : ''}</button>;
-}
-
-function SmallSelect({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: React.ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const options = React.Children.toArray(children);
-  const selectedLabel = options.find((opt) => {
-    const optReact = opt as React.ReactElement<{ value: string }>;
-    return optReact.props?.value === value;
-  });
-  const displayText = selectedLabel 
-    ? (selectedLabel as React.ReactElement<{ children: React.ReactNode }>)?.props?.children 
-    : value;
-
-  return (
-    <div className="small-select" ref={wrapperRef}>
-      <button
-        type="button"
-        className="small-select-display"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <span>{displayText}</span>
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-      {isOpen && (
-        <div className="small-select-dropdown">
-          {options.map((opt, i) => {
-            const optReact = opt as React.ReactElement<{ value: string; children: React.ReactNode }>;
-            const isSelected = optReact.props.value === value;
-            return (
-              <button
-                key={i}
-                type="button"
-                className={`small-select-option ${isSelected ? 'selected' : ''}`}
-                onClick={() => { onChange(optReact.props.value); setIsOpen(false); }}
-              >
-                {optReact.props.children}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="pagination">
-      <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1}>Anterior</button>
-      <span className="pagination-label">Página {page} de {totalPages}</span>
-      <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>Próxima</button>
-    </div>
-  );
-}
-
 export default function AppRoute() {
-  const { tab, user, tenants, properties, leases, receipts } = useLoaderData<typeof loader>();
+  const { tab, user, tenants, properties, leases, receipts, activeTenantIds } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -1249,6 +289,9 @@ export default function AppRoute() {
   const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'terminated'>('all');
   const [receiptSearch, setReceiptSearch] = useState('');
   const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'paid'>('all');
+  const [receiptMonth, setReceiptMonth] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
+  const [receiptYear, setReceiptYear] = useState(() => String(new Date().getFullYear()));
+  const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
   const [tenantSort, setTenantSort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [propertySort, setPropertySort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [leaseSort, setLeaseSort] = useState<SortState>({ key: 'tenant_name', direction: 'asc' });
@@ -1260,6 +303,15 @@ export default function AppRoute() {
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [pendingIds, setPendingIds] = useState<PendingIds>({ tenants: new Set(), properties: new Set(), leases: new Set(), receipts: new Set() });
+  const [initialLoading, setInitialLoading] = useState(true);
+  const activeTenantSet = useMemo(() => new Set(activeTenantIds), [activeTenantIds]);
+
+  useEffect(() => {
+    if (tenants.length || properties.length || leases.length || receipts.length) {
+      const timer = setTimeout(() => setInitialLoading(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [tenants, properties, leases, receipts]);
 
   const tenantFetcher = useFetcher<MutationResponse>();
   const propertyFetcher = useFetcher<MutationResponse>();
@@ -1444,8 +496,11 @@ export default function AppRoute() {
   const filteredReceipts = useMemo(() => receiptItems.filter((item) => {
     const matchesText = `${item.tenant_name} ${item.property_name} ${item.due_date} ${item.amount}`.toLowerCase().includes(receiptSearch.toLowerCase());
     const matchesStatus = receiptStatus === 'all' || getReceiptStatus(item) === receiptStatus;
-    return matchesText && matchesStatus;
-  }), [receiptItems, receiptSearch, receiptStatus]);
+    const itemMonth = item.due_date.slice(5, 7);
+    const itemYear = item.due_date.slice(0, 4);
+    const matchesPeriod = !receiptMonth || !receiptYear || (itemMonth === receiptMonth && itemYear === receiptYear);
+    return matchesText && matchesStatus && matchesPeriod;
+  }), [receiptItems, receiptSearch, receiptStatus, receiptMonth, receiptYear]);
   const sortedTenants = useMemo(() => sortItems(filteredTenants, tenantSort), [filteredTenants, tenantSort]);
   const sortedProperties = useMemo(() => sortItems(filteredProperties, propertySort), [filteredProperties, propertySort]);
   const sortedLeases = useMemo(() => sortItems(filteredLeases, leaseSort), [filteredLeases, leaseSort]);
@@ -1462,7 +517,7 @@ export default function AppRoute() {
   useEffect(() => setTenantPage(1), [tenantSearch, tenantSort]);
   useEffect(() => setPropertyPage(1), [propertySearch, propertySort]);
   useEffect(() => setLeasePage(1), [leaseSearch, leaseSort, leaseStatus]);
-  useEffect(() => setReceiptPage(1), [receiptSearch, receiptStatus, receiptSort]);
+  useEffect(() => setReceiptPage(1), [receiptSearch, receiptStatus, receiptSort, receiptMonth, receiptYear]);
   useEffect(() => setTenantPage((page) => Math.min(page, tenantTotalPages)), [tenantTotalPages]);
   useEffect(() => setPropertyPage((page) => Math.min(page, propertyTotalPages)), [propertyTotalPages]);
   useEffect(() => setLeasePage((page) => Math.min(page, leaseTotalPages)), [leaseTotalPages]);
@@ -1591,6 +646,7 @@ export default function AppRoute() {
           <div className="sidebar-footer">
             <DataButtons collapsed={collapsed && !mobileMenuOpen} />
             <ThemeToggle collapsed={collapsed && !mobileMenuOpen} />
+            <a href="/settings" className="nav-link"><span className="nav-icon"><IconSettings /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Configurações</span> : null}</a>
             <Form action="/logout" method="post">
               <button type="submit"><span className="nav-icon"><IconLogout /></span>{(!collapsed || mobileMenuOpen) ? <span className="nav-label">Sair</span> : null}</button>
             </Form>
@@ -1617,18 +673,18 @@ export default function AppRoute() {
                   <table>
                     <thead><tr><th><SortHeader label="Nome" active={tenantSort.key === 'name'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'name', setTenantSort)} /></th><th><SortHeader label="Email" active={tenantSort.key === 'email'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'email', setTenantSort)} /></th><th><SortHeader label="CPF" active={tenantSort.key === 'cpf'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'cpf', setTenantSort)} /></th><th><SortHeader label="Telefone" active={tenantSort.key === 'phone'} direction={tenantSort.direction} onClick={() => toggleSort(tenantSort, 'phone', setTenantSort)} /></th><th>Ações</th></tr></thead>
                     <tbody>
-                      {pagedTenants.length ? pagedTenants.map((tenant) => (
+                      {initialLoading ? <LoadingRow colSpan={5} /> : (pagedTenants.length ? pagedTenants.map((tenant) => (
                         <tr key={tenant.id}>
-                          <td data-label="Nome">{tenant.name} {pendingIds.tenants.has(tenant.id) ? <PendingBadge /> : null}</td>
+                          <td data-label="Nome">{tenant.name} {pendingIds.tenants.has(tenant.id) ? <PendingBadge /> : null} {activeTenantSet.has(tenant.id) ? <span className="status-badge paid" style={{ fontSize: '0.7rem', marginLeft: '0.35rem' }}>Em contrato</span> : null}</td>
                           <td data-label="Email">{tenant.email}</td>
                           <td data-label="CPF">{tenant.cpf || '-'}</td>
                           <td data-label="Telefone">{tenant.phone || '-'}</td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startTenantEdit(tenant)}>Editar</button>
-                            <DeleteRowButton intent="tenant.delete" tab="tenants" id={tenant.id} onOptimisticDelete={() => setTenantItems((current) => current.filter((row) => row.id !== tenant.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
+                            <DeleteRowButton intent="tenant.delete" tab="tenants" id={tenant.id} onOptimisticDelete={() => setTenantItems((current) => current.filter((row) => row.id !== tenant.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} disabled={activeTenantSet.has(tenant.id)} disabledTitle="Possui contrato ativo" />
                           </td>
                         </tr>
-                      )) : <tr><td colSpan={5}>Nenhum inquilino cadastrado.</td></tr>}
+                      )) : <tr><td colSpan={5}>Nenhum inquilino cadastrado.</td></tr>)}
                     </tbody>
                   </table>
                 </div>
@@ -1714,6 +770,18 @@ export default function AppRoute() {
                 <div className="section-header">
                   <h2>Pagamentos e Recibos</h2>
                   <div className="auth-actions">
+                    {selectedReceipts.size > 0 ? (
+                      <receiptFetcher.Form method="post" onSubmit={(event) => {
+                        if (!window.confirm(`Marcar ${selectedReceipts.size} recibo(s) como pago(s)?`)) {
+                          event.preventDefault();
+                          return;
+                        }
+                      }}>
+                        <input type="hidden" name="intent" value="receipt.batch-pay" />
+                        <input type="hidden" name="ids" value={Array.from(selectedReceipts).join(',')} />
+                        <button type="submit" className="btn btn-secondary" disabled={receiptFetcher.state !== 'idle'}>Pagar {selectedReceipts.size} selecionado(s)</button>
+                      </receiptFetcher.Form>
+                    ) : null}
                     <receiptFetcher.Form method="post" onSubmit={(event) => {
                       if (handleOfflineSubmit(event, () => applyOfflineMonthlyReceiptGeneration(), 'Geração mensal colocada na fila de sincronização.')) {
                         return;
@@ -1726,6 +794,16 @@ export default function AppRoute() {
                   </div>
                 </div>
                 <FilterBar value={receiptSearch} onChange={setReceiptSearch} placeholder="Buscar por contrato, imóvel, vencimento ou valor">
+                  <SmallSelect value={receiptMonth} onChange={(v) => setReceiptMonth(v)}>
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </SmallSelect>
+                  <SmallSelect value={receiptYear} onChange={(v) => setReceiptYear(v)}>
+                    {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 2 + i)).map((y) => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </SmallSelect>
                   <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'paid')}>
                     <option value="all">Todos</option>
                     <option value="due">A vencer</option>
@@ -1735,10 +813,23 @@ export default function AppRoute() {
                 </FilterBar>
                 <div className="table-wrap">
                   <table className="receipts-table">
-                    <thead><tr><th><SortHeader label="Contrato" active={receiptSort.key === 'tenant_name'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'tenant_name', setReceiptSort)} /></th><th><SortHeader label="Status" active={receiptSort.key === 'paid_at'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'paid_at', setReceiptSort)} /></th><th><SortHeader label="Vencimento" active={receiptSort.key === 'due_date'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'due_date', setReceiptSort)} /></th><th><SortHeader label="Pagamento" active={receiptSort.key === 'paid_at'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'paid_at', setReceiptSort)} /></th><th><SortHeader label="Valor" active={receiptSort.key === 'amount'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'amount', setReceiptSort)} /></th><th>PDF</th><th>Ações</th></tr></thead>
+                    <thead><tr>
+                      <th style={{ width: '2rem' }}><input type="checkbox" onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedReceipts(new Set(pagedReceipts.filter((r) => !r.paid_at).map((r) => r.id)));
+                        } else {
+                          setSelectedReceipts(new Set());
+                        }
+                      }} checked={pagedReceipts.length > 0 && pagedReceipts.every((r) => !r.paid_at ? selectedReceipts.has(r.id) : true) && selectedReceipts.size > 0} /></th>
+                      <th><SortHeader label="Contrato" active={receiptSort.key === 'tenant_name'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'tenant_name', setReceiptSort)} /></th><th><SortHeader label="Status" active={receiptSort.key === 'paid_at'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'paid_at', setReceiptSort)} /></th><th><SortHeader label="Vencimento" active={receiptSort.key === 'due_date'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'due_date', setReceiptSort)} /></th><th><SortHeader label="Pagamento" active={receiptSort.key === 'paid_at'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'paid_at', setReceiptSort)} /></th><th><SortHeader label="Valor" active={receiptSort.key === 'amount'} direction={receiptSort.direction} onClick={() => toggleSort(receiptSort, 'amount', setReceiptSort)} /></th><th>PDF</th><th>Ações</th></tr></thead>
                     <tbody>
                       {pagedReceipts.length ? pagedReceipts.map((receipt) => (
                         <tr key={receipt.id}>
+                          <td data-label="Sel"><input type="checkbox" checked={selectedReceipts.has(receipt.id)} disabled={!!receipt.paid_at} onChange={() => {
+                            const next = new Set(selectedReceipts);
+                            if (next.has(receipt.id)) next.delete(receipt.id); else next.add(receipt.id);
+                            setSelectedReceipts(next);
+                          }} /></td>
                           <td data-label="Contrato" className="contract-cell"><span>{receipt.tenant_name} {pendingIds.receipts.has(receipt.id) ? <PendingBadge /> : null}</span><span>{receipt.property_name}</span></td>
                           <td data-label="Status"><span className={`status-badge ${getReceiptStatus(receipt)}`}>{getReceiptStatusLabel(getReceiptStatus(receipt))}</span></td>
                           <td data-label="Vencimento">{formatDateBr(receipt.due_date)}</td>
@@ -1748,6 +839,7 @@ export default function AppRoute() {
                               {receipt.paid_at ? (
                                 <div className="row-actions">
                                   <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
+                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}&assinatura=false`} target="_blank" rel="noreferrer">PDF s/ assinatura</a>
                                   <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer" download>
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     {' '}Download
@@ -1760,7 +852,7 @@ export default function AppRoute() {
                             <DeleteRowButton intent="receipt.delete" tab="receipts" id={receipt.id} onOptimisticDelete={() => setReceiptItems((current) => current.filter((row) => row.id !== receipt.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />
                           </td>
                         </tr>
-                      )) : <tr><td colSpan={7}>Cadastre um contrato para gerar recibos.</td></tr>}
+                      )) : <tr><td colSpan={8}>Cadastre um contrato para gerar recibos.</td></tr>}
                     </tbody>
                   </table>
                 </div>
