@@ -5,3 +5,4 @@ public/contracts/
 data/
 .env
 *.tsbuildinfo
+bin/

@@ -21,9 +21,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     amount: number;
     tenant_name: string;
     property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
   }>(`
     SELECT r.id, r.due_date, r.paid_at, r.amount,
-           t.name AS tenant_name, p.name AS property_name
+           t.name AS tenant_name, p.name AS property_name,
+           p.address AS property_address, p.city AS property_city, p.state AS property_state
     FROM receipts r
     JOIN leases l ON l.id = r.lease_id
     JOIN tenants t ON t.id = l.tenant_id
@@ -39,10 +43,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response('Recibo não está pago', { status: 400 });
   }
 
+  const propertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state]
+    .filter(Boolean)
+    .join(', ');
+
   const pdfBytes = await createReceiptPdfBuffer({
     receiptId: receipt.id,
     tenantName: receipt.tenant_name,
     propertyName: receipt.property_name,
+    propertyAddress,
     dueDate: receipt.due_date,
     paidAt: receipt.paid_at,
     amount: receipt.amount,

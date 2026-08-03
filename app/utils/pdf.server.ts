@@ -9,6 +9,7 @@ type ReceiptPdfInput = {
   receiptId: string;
   tenantName: string;
   propertyName: string;
+  propertyAddress?: string;
   dueDate: string;
   paidAt: string | null;
   amount: number;
@@ -232,7 +233,8 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput) {
   cursorY -= summaryHeight + 34;
   page.drawText('Declaração', { x: cardX, y: cursorY, size: 14, font: fontBold, color: ink });
   cursorY -= 26;
-  const declarationLines = drawWrappedText(page, `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente ao aluguel do imóvel ${input.propertyName}, vinculado ao locatário ${input.tenantName}.`, {
+  const addressSuffix = input.propertyAddress ? `, na ${input.propertyAddress}` : '';
+  const declarationLines = drawWrappedText(page, `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente ao aluguel do imóvel ${input.propertyName}${addressSuffix}, vinculado ao locatário ${input.tenantName}.`, {
     x: cardX,
     y: cursorY,
     maxWidth: contentWidth,
