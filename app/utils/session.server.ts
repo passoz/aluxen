@@ -1,16 +1,16 @@
 import { createCookieSessionStorage, redirect } from '@remix-run/node';
 
-const sessionSecret = process.env.SESSION_SECRET || 'dev-session-secret';
+const sessionSecret = process.env.SESSION_SECRET || 'aluxen-persistent-dev-session-secret-key-2026';
 
 const sessionStorage = createCookieSessionStorage({
   cookie: {
     name: '__aluxen_session',
     httpOnly: true,
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: 60 * 60 * 24 * 30, // 30 days
     path: '/',
     sameSite: 'lax',
     secrets: [sessionSecret],
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.COOKIE_SECURE === 'true',
   },
 });
 

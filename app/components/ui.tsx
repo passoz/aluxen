@@ -210,10 +210,10 @@ export function SortHeader({ label, active, direction, onClick }: { label: strin
     <button type="button" className={`sort-header${active ? ' active' : ''}`} onClick={onClick}>
       <span>{label}</span>
       <span className="sort-arrows">
-        <svg className={`sort-arrow asc${active && direction === 'asc' ? ' active' : ''}`} viewBox="0 0 8 5" fill="none">
+        <svg className={`sort-arrow asc${active && direction === 'asc' ? ' active' : ''}`} width="8" height="5" viewBox="0 0 8 5" fill="none">
           <path d="M4 0L7.5 5H0.5L4 0Z" />
         </svg>
-        <svg className={`sort-arrow desc${active && direction === 'desc' ? ' active' : ''}`} viewBox="0 0 8 5" fill="none">
+        <svg className={`sort-arrow desc${active && direction === 'desc' ? ' active' : ''}`} width="8" height="5" viewBox="0 0 8 5" fill="none">
           <path d="M4 5L0.5 0H7.5L4 5Z" />
         </svg>
       </span>

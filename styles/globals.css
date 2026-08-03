@@ -537,6 +537,9 @@ main.sidebar-open {
 }
 
 .sort-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -545,10 +548,35 @@ main.sidebar-open {
     text-transform: uppercase;
     cursor: pointer;
     padding: 0;
+    white-space: nowrap;
+    vertical-align: middle;
 }
 
 .sort-header.active {
     color: var(--text);
+}
+
+.sort-arrows {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+    justify-content: center;
+}
+
+.sort-arrow {
+    width: 8px;
+    height: 5px;
+    opacity: 0.3;
+    transition: opacity 0.15s;
+}
+
+.sort-arrow path {
+    fill: currentColor;
+}
+
+.sort-arrow.active {
+    opacity: 1;
 }
 
 .pagination {
@@ -1355,19 +1383,6 @@ tr:hover { background: var(--glass-hover-bg); }
 .receipts-table td.contract-cell span + span {
     color: var(--text-muted);
     font-size: 0.85rem;
-}
-
-.receipts-table td:nth-child(5) {
-    font-weight: 600;
-}
-
-.receipts-table td:nth-child(6),
-.receipts-table td:nth-child(7) {
-    text-align: right;
-}
-
-.receipts-table td:nth-child(6) .btn {
-    margin-right: 0.25rem;
 }
 
 .receipts-section .table-wrap {
