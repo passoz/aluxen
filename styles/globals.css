@@ -687,6 +687,7 @@ main.sidebar-open {
 .table-wrap {
     width: 100%;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .page {
@@ -1358,6 +1359,7 @@ button.btn.btn-sm.btn-danger, a.btn.btn-sm.btn-danger {
 
 table {
     width: 100%;
+    min-width: 600px;
     border-collapse: collapse;
     border-spacing: 0;
 }
@@ -1428,69 +1430,6 @@ tr:hover { background: var(--glass-hover-bg); }
 
 .sidebar-backdrop {
     display: none;
-}
-
-@media (max-width: 1100px) {
-    .receipts-section .table-wrap {
-        overflow-x: visible;
-    }
-
-    .receipts-section .receipts-table {
-        display: block;
-    }
-
-    .receipts-section .receipts-table thead {
-        display: none;
-    }
-
-    .receipts-section .receipts-table tbody {
-        display: grid;
-        gap: 0.75rem;
-    }
-
-    .receipts-section .receipts-table tr {
-        background: var(--glass-bg);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid var(--glass-border);
-        border-radius: 12px;
-        padding: 0.75rem 1rem;
-    }
-
-    .receipts-section .receipts-table td {
-        display: block;
-        width: 100%;
-        border-bottom: none;
-        padding: 0.35rem 0;
-    }
-
-    .receipts-section .receipts-table td::before {
-        content: attr(data-label);
-        display: block;
-        color: var(--text-muted);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin-bottom: 0.15rem;
-        font-weight: 700;
-    }
-
-    .receipts-section td.row-actions::before {
-        content: 'Ações';
-    }
-
-    .receipts-section .row-actions {
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        padding-top: 0.5rem;
-        text-align: left;
-    }
-
-    .receipts-section .row-actions > * {
-        margin-left: 0;
-    }
 }
 
 @media (max-width: 768px) {
@@ -1587,69 +1526,7 @@ tr:hover { background: var(--glass-hover-bg); }
     .page {
         max-width: 100%;
     }
-    .table-wrap {
-        overflow-x: visible;
-    }
 
-    table,
-    thead,
-    tbody,
-    tr,
-    th,
-    td {
-        display: block;
-        width: 100%;
-    }
-    thead {
-        display: none;
-    }
-    tbody {
-        display: grid;
-        gap: 0.9rem;
-    }
-    tr {
-        background: var(--glass-bg);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid var(--glass-border);
-        border-radius: 14px;
-        padding: 0.35rem 0.85rem;
-        box-shadow: var(--glass-shadow);
-    }
-    table td {
-        border-bottom: none;
-        padding: 0.45rem 0;
-    }
-    table td::before {
-        content: attr(data-label);
-        display: block;
-        color: var(--text-muted);
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        margin-bottom: 0.2rem;
-        font-weight: 700;
-    }
-    td.row-actions::before {
-        content: 'Ações';
-    }
-    .row-actions {
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: nowrap;
-        padding-top: 0.6rem;
-        overflow-x: auto;
-        text-align: left;
-    }
-
-    .row-actions > * {
-        margin-left: 0;
-        margin-right: 0;
-    }
-    .receipts-section .btn-sm {
-        width: auto;
-    }
     .pagination {
         flex-direction: column;
         align-items: stretch;
