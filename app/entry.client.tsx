@@ -13,15 +13,9 @@ startTransition(() => {
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    let reloadedForWorkerUpdate = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!reloadedForWorkerUpdate) {
-        reloadedForWorkerUpdate = true;
-        window.location.reload();
-      }
-    });
-
-    void navigator.serviceWorker.register('/sw.js?v=3', {
+    // The manifest keeps the app installable. This worker intentionally has no
+    // offline cache or network interception, preventing stale sessions/assets.
+    void navigator.serviceWorker.register('/sw.js?v=4', {
       updateViaCache: 'none',
     });
   });
