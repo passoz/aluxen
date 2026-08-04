@@ -836,17 +836,15 @@ export default function AppRoute() {
                           <td data-label="Pagamento">{formatDateTimeBr(receipt.paid_at)}</td>
                           <td data-label="Valor">{formatCurrency(receipt.amount)}</td>
                           <td data-label="PDF">
-                              {receipt.paid_at ? (
-                                <div className="row-actions">
-                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
-                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}&assinatura=false`} target="_blank" rel="noreferrer">PDF s/ assinatura</a>
-                                  <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer" download>
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    {' '}Download
-                                  </a>
-                                </div>
-                              ) : '-'}
-                            </td>
+                            <div className="row-actions">
+                              <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">Abrir PDF</a>
+                              <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}&assinatura=false`} target="_blank" rel="noreferrer">PDF s/ assinatura</a>
+                              <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer" download>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                {' '}Download
+                              </a>
+                            </div>
+                          </td>
                           <td className="row-actions">
                             <button type="button" className="btn btn-sm btn-secondary" onClick={() => startReceiptEdit(receipt)}>Editar</button>
                             <DeleteRowButton intent="receipt.delete" tab="receipts" id={receipt.id} onOptimisticDelete={() => setReceiptItems((current) => current.filter((row) => row.id !== receipt.id))} onSettled={settleAfterMutation} queueOfflineMutation={queueOfflineMutation} />

@@ -39,10 +39,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Response('Recibo não encontrado', { status: 404 });
   }
 
-  if (!receipt.paid_at) {
-    throw new Response('Recibo não está pago', { status: 400 });
-  }
-
   const propertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state]
     .filter(Boolean)
     .join(', ');
