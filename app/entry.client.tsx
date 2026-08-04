@@ -13,6 +13,16 @@ startTransition(() => {
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js');
+    let reloadedForWorkerUpdate = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!reloadedForWorkerUpdate) {
+        reloadedForWorkerUpdate = true;
+        window.location.reload();
+      }
+    });
+
+    void navigator.serviceWorker.register('/sw.js?v=3', {
+      updateViaCache: 'none',
+    });
   });
 }
