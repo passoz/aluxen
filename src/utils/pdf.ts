@@ -53,8 +53,7 @@ function formatReceiptIssuedAt(value: Date) {
   const day = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', timeZone: PDF_TIME_ZONE }).format(date);
   const month = new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: PDF_TIME_ZONE }).format(date);
   const year = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', timeZone: PDF_TIME_ZONE }).format(date);
-  const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: PDF_TIME_ZONE }).format(date);
-  return `${day} de ${month} de ${year}, ${time}`;
+  return `${day} de ${month} de ${year}`;
 }
 
 function numberToPortuguese(value: number): string {
