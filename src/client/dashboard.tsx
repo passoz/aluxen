@@ -584,21 +584,31 @@ export function DashboardPage(initialData: DashboardProps) {
 
       <main className={collapsed ? '' : 'sidebar-open'}>
         <div className="page">
-          <div className="card page-hero">
-            <div>
-              <p className="eyebrow">Painel</p>
+          <div className="page-header">
+            <div className="page-header-text">
               <h1>
                 {tab === 'tenants'
                   ? 'Inquilinos'
                   : tab === 'properties'
                   ? 'Imóveis'
                   : tab === 'leases'
-                  ? 'Contratos'
+                  ? 'Contratos de Locação'
                   : 'Pagamentos e Recibos'}
               </h1>
               <p className="subtitle">
-                Sessão ativa para <strong>{user}</strong>.
+                Aluxen &bull; Sessão ativa para <strong>{user}</strong>
               </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <span className="status-badge paid" style={{ fontSize: '0.8125rem', padding: '0.4rem 0.8rem' }}>
+                {tab === 'tenants'
+                  ? `${tenantItems.length} inquilino(s)`
+                  : tab === 'properties'
+                  ? `${propertyItems.length} imóvel(is)`
+                  : tab === 'leases'
+                  ? `${leaseItems.filter((l) => l.status === 'active').length} contrato(s) ativo(s)`
+                  : `${receiptItems.length} recibo(s)`}
+              </span>
             </div>
           </div>
           <SyncBanner isOnline={isOnline} pendingCount={pendingSyncCount} />
