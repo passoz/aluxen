@@ -28,6 +28,7 @@ import {
   IconReceipts,
   IconLogout,
   IconSettings,
+  IconWhatsApp,
 } from '../components/icons';
 
 import type {
@@ -166,6 +167,128 @@ export function DashboardPage(initialData: DashboardProps) {
 
   const [busy, setBusy] = useState(false);
   const syncInFlight = useRef(false);
+  const [whatsappModal, setWhatsappModal] = useState<{
+    open: boolean;
+    loading: boolean;
+    type: 'receipt' | 'lease';
+    id: string;
+    phone: string;
+    formattedPhone: string;
+    tenantName: string;
+    propertyName: string;
+    message: string;
+    directUrl: string;
+    sending: boolean;
+    error?: string;
+    success?: string;
+  } | null>(null);
+
+  const openWhatsAppModal = async (type: 'receipt' | 'lease', id: string) => {
+    setWhatsappModal({
+      open: true,
+      loading: true,
+      type,
+      id,
+      phone: '',
+      formattedPhone: '',
+      tenantName: '',
+      propertyName: '',
+      message: '',
+      directUrl: '',
+      sending: false,
+    });
+
+    try {
+      const formData = new FormData();
+      formData.set('type', type);
+      formData.set('id', id);
+
+      const res = await fetch('/api/whatsapp/preview', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        phone?: string;
+        formattedPhone?: string;
+        tenantName?: string;
+        propertyName?: string;
+        message?: string;
+        directUrl?: string;
+        error?: string;
+      };
+
+      if (data.ok) {
+        setWhatsappModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                phone: data.phone || '',
+                formattedPhone: data.formattedPhone || '',
+                tenantName: data.tenantName || '',
+                propertyName: data.propertyName || '',
+                message: data.message || '',
+                directUrl: data.directUrl || '',
+              }
+            : null
+        );
+      } else {
+        setWhatsappModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                error: data.error || 'Não foi possível carregar prévia.',
+              }
+            : null
+        );
+      }
+    } catch {
+      setWhatsappModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              loading: false,
+              error: 'Erro de conexão ao carregar dados do WhatsApp.',
+            }
+          : null
+      );
+    }
+  };
+
+  const sendAutomatedWhatsApp = async () => {
+    if (!whatsappModal) return;
+    setWhatsappModal((prev) => (prev ? { ...prev, sending: true, error: undefined, success: undefined } : null));
+
+    try {
+      const formData = new FormData();
+      formData.set('to', whatsappModal.phone);
+      formData.set('message', whatsappModal.message);
+
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        body: formData,
+        credentials: 'same-origin',
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+
+      if (data.ok) {
+        setWhatsappModal((prev) =>
+          prev ? { ...prev, sending: false, success: 'Mensagem enviada com sucesso pelo robô!' } : null
+        );
+      } else {
+        setWhatsappModal((prev) =>
+          prev ? { ...prev, sending: false, error: data.error || 'Falha ao enviar mensagem.' } : null
+        );
+      }
+    } catch {
+      setWhatsappModal((prev) =>
+        prev ? { ...prev, sending: false, error: 'Erro de comunicação com o servidor.' } : null
+      );
+    }
+  };
 
   const reloadData = async () => {
     try {
@@ -887,6 +1010,16 @@ export function DashboardPage(initialData: DashboardProps) {
                               <a className="btn btn-sm btn-secondary" href={`/contract-pdf?id=${lease.id}`} target="_blank" rel="noreferrer">
                                 Contrato
                               </a>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline"
+                                style={{ color: 'var(--primary)', borderColor: 'var(--primary-tint-border)' }}
+                                onClick={() => openWhatsAppModal('lease', lease.id)}
+                                title="Enviar contrato por WhatsApp"
+                              >
+                                <span className="nav-icon" style={{ width: '13px', height: '13px' }}><IconWhatsApp /></span>
+                                WhatsApp
+                              </button>
                             </div>
                           </td>
                           <td className="row-actions">
@@ -1149,6 +1282,16 @@ export function DashboardPage(initialData: DashboardProps) {
                                 </svg>{' '}
                                 Download
                               </a>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-outline"
+                                style={{ color: 'var(--primary)', borderColor: 'var(--primary-tint-border)' }}
+                                onClick={() => openWhatsAppModal('receipt', receipt.id)}
+                                title="Enviar recibo por WhatsApp"
+                              >
+                                <span className="nav-icon" style={{ width: '13px', height: '13px' }}><IconWhatsApp /></span>
+                                WhatsApp
+                              </button>
                             </div>
                           </td>
                           <td className="row-actions">
@@ -2033,6 +2176,131 @@ export function DashboardPage(initialData: DashboardProps) {
                   Adicionar pagamento
                 </button>
               </form>
+            </Modal>
+          ) : null}
+
+          {whatsappModal?.open ? (
+            <Modal
+              title={`Enviar ${whatsappModal.type === 'receipt' ? 'Recibo' : 'Contrato'} por WhatsApp`}
+              onClose={() => setWhatsappModal(null)}
+            >
+              <div className="stack">
+                {whatsappModal.loading ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <div className="loading-spinner" />
+                    <p style={{ marginTop: '0.75rem', fontSize: '0.875rem' }}>Carregando dados e gerando links oficiais...</p>
+                  </div>
+                ) : (
+                  <>
+                    {whatsappModal.success ? <div className="success">{whatsappModal.success}</div> : null}
+                    {whatsappModal.error ? <div className="error">{whatsappModal.error}</div> : null}
+
+                    <div
+                      style={{
+                        background: 'var(--surface-subtle)',
+                        padding: '0.75rem 1rem',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      <div>
+                        <strong>Locatário:</strong> {whatsappModal.tenantName}
+                      </div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
+                        <strong>Imóvel:</strong> {whatsappModal.propertyName}
+                      </div>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="whatsapp-phone">Número de WhatsApp (com DDD)</label>
+                      <input
+                        id="whatsapp-phone"
+                        type="text"
+                        value={whatsappModal.phone}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setWhatsappModal((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  phone: val,
+                                  directUrl: `https://wa.me/${val.replace(/\D/g, '').startsWith('55') ? val.replace(/\D/g, '') : `55${val.replace(/\D/g, '')}`}?text=${encodeURIComponent(prev.message)}`,
+                                }
+                              : null
+                          );
+                        }}
+                        placeholder="(22) 99999-9999"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="whatsapp-message">Mensagem de Envio</label>
+                      <textarea
+                        id="whatsapp-message"
+                        rows={8}
+                        style={{ fontFamily: 'inherit', resize: 'vertical' }}
+                        value={whatsappModal.message}
+                        onChange={(e) => {
+                          const msg = e.target.value;
+                          setWhatsappModal((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  message: msg,
+                                  directUrl: `https://wa.me/${prev.phone.replace(/\D/g, '').startsWith('55') ? prev.phone.replace(/\D/g, '') : `55${prev.phone.replace(/\D/g, '')}`}?text=${encodeURIComponent(msg)}`,
+                                }
+                              : null
+                          );
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+                      <a
+                        href={whatsappModal.directUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-primary"
+                        style={{
+                          flex: 1,
+                          minWidth: '180px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <span className="nav-icon" style={{ width: '16px', height: '16px' }}>
+                          <IconWhatsApp />
+                        </span>
+                        Abrir no WhatsApp
+                      </a>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        disabled={whatsappModal.sending || !whatsappModal.phone}
+                        onClick={sendAutomatedWhatsApp}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                      >
+                        {whatsappModal.sending ? (
+                          <>
+                            <div className="loading-spinner" style={{ width: '14px', height: '14px' }} />
+                            Enviando via Robô...
+                          </>
+                        ) : (
+                          'Enviar via Robô (Headless)'
+                        )}
+                      </button>
+                    </div>
+
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', textAlign: 'center' }}>
+                      &bull; <strong>Abrir no WhatsApp:</strong> Abre no WhatsApp Web ou celular com a mensagem pronta para envio imediato.<br />
+                      &bull; <strong>Enviar via Robô:</strong> Dispara em segundo plano usando a automação conectada ao Chromium.
+                    </p>
+                  </>
+                )}
+              </div>
             </Modal>
           ) : null}
         </div>

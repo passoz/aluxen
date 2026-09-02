@@ -382,6 +382,68 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(urlHtml).toContain('URL pública do sistema salva com sucesso.');
   });
 
+  it('GET /api/whatsapp/status returns profile status', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/status', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Record<string, unknown>;
+    expect(typeof data['profileDir']).toBe('string');
+  });
+
+  it('POST /api/whatsapp/preview generates receipt and contract message with wa.me link', async () => {
+    // Preview de Recibo
+    const receiptForm = new FormData();
+    receiptForm.set('type', 'receipt');
+    receiptForm.set('id', createdReceiptId);
+
+    const resReceipt = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/preview', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: receiptForm,
+      })
+    );
+    expect(resReceipt.status).toBe(200);
+    const dataReceipt = (await resReceipt.json()) as Record<string, unknown>;
+    expect(dataReceipt['ok']).toBe(true);
+    expect(String(dataReceipt['message'])).toContain('Recibo de Aluguel');
+    expect(String(dataReceipt['message'])).toContain('Carlos Drummond');
+    expect(String(dataReceipt['directUrl'])).toContain('https://wa.me/55');
+
+    // Preview de Contrato
+    const leaseForm = new FormData();
+    leaseForm.set('type', 'lease');
+    leaseForm.set('id', createdLeaseId);
+
+    const resLease = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/preview', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: leaseForm,
+      })
+    );
+    expect(resLease.status).toBe(200);
+    const dataLease = (await resLease.json()) as Record<string, unknown>;
+    expect(dataLease['ok']).toBe(true);
+    expect(String(dataLease['message'])).toContain('Contrato de Locação Residencial');
+    expect(String(dataLease['directUrl'])).toContain('https://wa.me/55');
+  });
+
+  it('POST /api/whatsapp/send validates parameters', async () => {
+    const emptyForm = new FormData();
+    const res = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/send', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: emptyForm,
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
   it('POST /logout clears session and redirects to /login', async () => {
     const res = await server.fetch(
       new Request('http://localhost:3000/logout', {

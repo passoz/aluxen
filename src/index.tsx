@@ -14,7 +14,16 @@ import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr } from '
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
-import { verifyAuthToken, formatAuthCode, resolvePublicBaseUrl, getLocalIpAddress } from './utils/auth-token';
+import { verifyAuthToken, formatAuthCode, resolvePublicBaseUrl, getLocalIpAddress, generateAuthToken, getValidationUrl } from './utils/auth-token';
+import {
+  formatWhatsAppNumber,
+  buildDirectWhatsAppUrl,
+  buildReceiptWhatsAppMessage,
+  buildContractWhatsAppMessage,
+  sendWhatsAppMessageHeadless,
+  checkWhatsAppSessionStatus,
+} from './whatsapp/service';
+import { resolveProfileDir } from './whatsapp/browser';
 
 import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
@@ -967,6 +976,190 @@ app.get('/validar/contrato/:id', async (c) => {
     />
   );
   return c.html(html);
+});
+
+// ==========================================================================
+// WhatsApp API Endpoints
+// ==========================================================================
+
+app.get('/api/whatsapp/status', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const profileDir = resolveProfileDir();
+  const status = await checkWhatsAppSessionStatus();
+  return c.json({ ...status, profileDir });
+});
+
+app.post('/api/whatsapp/preview', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const body = await c.req.parseBody();
+  const type = String(body['type'] || '');
+  const id = String(body['id'] || '');
+
+  if (!id || (type !== 'receipt' && type !== 'lease')) {
+    return c.json({ error: 'Parâmetros inválidos.' }, 400);
+  }
+
+  const baseUrl = await resolvePublicBaseUrl(c);
+  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+
+  if (type === 'receipt') {
+    const receipt = await queryOne<{
+      id: string;
+      due_date: string;
+      paid_at: string | null;
+      amount: number;
+      tenant_name: string;
+      tenant_phone: string | null;
+      property_name: string;
+      property_address: string;
+      property_city: string;
+      property_state: string;
+    }>(
+      `SELECT r.id, r.due_date, r.paid_at, r.amount,
+              t.name AS tenant_name, t.phone AS tenant_phone,
+              p.name AS property_name, p.address AS property_address,
+              p.city AS property_city, p.state AS property_state
+       FROM receipts r
+       JOIN leases l ON l.id = r.lease_id
+       JOIN tenants t ON t.id = l.tenant_id
+       JOIN properties p ON p.id = l.property_id
+       WHERE r.id = ?`,
+      [id]
+    );
+
+    if (!receipt) {
+      return c.json({ error: 'Recibo não encontrado.' }, 404);
+    }
+
+    const phone = receipt.tenant_phone || '';
+    const token = generateAuthToken('receipt', receipt.id);
+    const validationUrl = await getValidationUrl('receipt', receipt.id, token, baseUrl);
+    const pdfUrl = `${baseUrl}/pdf?id=${receipt.id}`;
+    const fullPropertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state]
+      .filter(Boolean)
+      .join(', ');
+
+    const message = buildReceiptWhatsAppMessage({
+      tenantName: receipt.tenant_name,
+      propertyName: receipt.property_name,
+      propertyAddress: fullPropertyAddress,
+      dueDate: formatDateBr(receipt.due_date),
+      amount: formatCurrency(receipt.amount),
+      paidAt: receipt.paid_at ? formatDateTimeBr(receipt.paid_at) : null,
+      pdfUrl,
+      validationUrl,
+      landlordName,
+    });
+
+    const directUrl = buildDirectWhatsAppUrl(phone, message);
+
+    return c.json({
+      ok: true,
+      type: 'receipt',
+      id: receipt.id,
+      phone,
+      formattedPhone: formatWhatsAppNumber(phone),
+      tenantName: receipt.tenant_name,
+      propertyName: receipt.property_name,
+      message,
+      directUrl,
+    });
+  }
+
+  // type === 'lease'
+  const lease = await queryOne<{
+    id: string;
+    start_date: string;
+    end_date: string;
+    due_day: number;
+    rent_amount: number;
+    status: string;
+    tenant_name: string;
+    tenant_phone: string | null;
+    property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
+  }>(
+    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
+            t.name AS tenant_name, t.phone AS tenant_phone,
+            p.name AS property_name, p.address AS property_address,
+            p.city AS property_city, p.state AS property_state
+     FROM leases l
+     JOIN tenants t ON t.id = l.tenant_id
+     JOIN properties p ON p.id = l.property_id
+     WHERE l.id = ?`,
+    [id]
+  );
+
+  if (!lease) {
+    return c.json({ error: 'Contrato não encontrado.' }, 404);
+  }
+
+  const phone = lease.tenant_phone || '';
+  const token = generateAuthToken('lease', lease.id);
+  const validationUrl = await getValidationUrl('lease', lease.id, token, baseUrl);
+  const pdfUrl = `${baseUrl}/contract-pdf?id=${lease.id}`;
+  const fullPropertyAddress = [lease.property_address, lease.property_city, lease.property_state]
+    .filter(Boolean)
+    .join(', ');
+
+  const message = buildContractWhatsAppMessage({
+    tenantName: lease.tenant_name,
+    propertyName: lease.property_name,
+    propertyAddress: fullPropertyAddress,
+    startDate: formatDateBr(lease.start_date),
+    endDate: formatDateBr(lease.end_date),
+    dueDay: lease.due_day,
+    rentAmount: formatCurrency(lease.rent_amount),
+    pdfUrl,
+    validationUrl,
+    landlordName,
+  });
+
+  const directUrl = buildDirectWhatsAppUrl(phone, message);
+
+  return c.json({
+    ok: true,
+    type: 'lease',
+    id: lease.id,
+    phone,
+    formattedPhone: formatWhatsAppNumber(phone),
+    tenantName: lease.tenant_name,
+    propertyName: lease.property_name,
+    message,
+    directUrl,
+  });
+});
+
+app.post('/api/whatsapp/send', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const body = await c.req.parseBody();
+  const to = String(body['to'] || '').trim();
+  const message = String(body['message'] || '').trim();
+
+  if (!to || !message) {
+    return c.json({ error: 'Destinatário e mensagem são obrigatórios.' }, 400);
+  }
+
+  try {
+    const result = await sendWhatsAppMessageHeadless(to, message);
+    return c.json({ ok: true, result });
+  } catch (error) {
+    return c.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : 'Falha ao enviar mensagem via WhatsApp.',
+      },
+      400
+    );
+  }
 });
 
 const port = Number(process.env.PORT) || 3000;

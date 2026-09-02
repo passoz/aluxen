@@ -18,6 +18,9 @@ logs
 # caches & typescript
 .cache
 *.tsbuildinfo
+# WhatsApp profile sessions
+.whatsapp-profile/
+.profile/
 
 # SQLite database files
 *.db
