@@ -120,7 +120,11 @@ function formatDueDay(dueDay: number): string {
 }
 
 function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+  return str
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }
 
 function drawLine(page: any, x: number, y: number, width: number, color: any) {
@@ -239,7 +243,7 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   bodyLabel('Nome:', landlordName);
   cursorY -= 20;
   bodyLabel('CPF:', landlordCpf);
-  bodyText(`Endereço: Rua Alemanha, nº 132, Bairro Jardim Caiçara, ${city} - ${state}, CEP 28910-370`);
+  bodyText('Endereço: Rua Alemanha, nº 132, Bairro Jardim Caiçara, Cabo Frio - RJ, CEP 28910-370');
   cursorY -= 6;
 
   bodyText('LOCATÁRIO:', { size: 10.5 });
@@ -254,8 +258,11 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   cursorY -= 4;
 
   sectionTitle('Cláusula 1ª - DO OBJETO');
+  const propertyLocation = input.propertyAddress || input.propertyName;
+  const zipPart = input.propertyZip ? `, CEP ${input.propertyZip}` : '';
+  const statePart = state ? `, no Estado ${state === 'RJ' ? 'do Rio de Janeiro' : `de ${state}`}` : '';
   bodyText(
-    `O presente contrato tem como OBJETO o imóvel de propriedade do LOCADOR, situado na ${input.propertyAddress}, ${input.propertyName}, bairro Jardim Caiçara, cidade ${city}, CEP 28910-370, no Estado do Rio de Janeiro.`
+    `O presente contrato tem como OBJETO o imóvel de propriedade do LOCADOR, situado na ${propertyLocation}, cidade de ${city}${zipPart}${statePart}.`
   );
   bodyText(
     `Parágrafo único: O imóvel entregue na data da assinatura deste contrato, pelo LOCADOR ao LOCATÁRIO, possui as características contidas no auto de vistoria anexo, que desde já aceitam expressamente.`
