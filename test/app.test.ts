@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import server from '../src/index';
+import { generateAuthToken } from '../src/utils/auth-token';
 
 describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
   let sessionCookie = '';
@@ -374,5 +375,37 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     );
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe('/login');
+  });
+
+  it('GET /validar/recibo/:id verifies receipt authenticity', async () => {
+    const validToken = generateAuthToken('receipt', createdReceiptId);
+    const validRes = await server.fetch(new Request(`http://localhost:3000/validar/recibo/${createdReceiptId}?token=${validToken}`));
+    expect(validRes.status).toBe(200);
+    const validHtml = await validRes.text();
+    expect(validHtml).toContain('DOCUMENTO AUTÊNTICO E VÁLIDO');
+    expect(validHtml).toContain('Carlos Drummond');
+    expect(validHtml).toContain('Recibo de Pagamento de Aluguel');
+
+    // Token inválido
+    const invalidRes = await server.fetch(new Request(`http://localhost:3000/validar/recibo/${createdReceiptId}?token=token_falso_123`));
+    expect(invalidRes.status).toBe(400);
+    const invalidHtml = await invalidRes.text();
+    expect(invalidHtml).toContain('DOCUMENTO NÃO AUTENTICADO');
+  });
+
+  it('GET /validar/contrato/:id verifies contract authenticity', async () => {
+    const validToken = generateAuthToken('lease', createdLeaseId);
+    const validRes = await server.fetch(new Request(`http://localhost:3000/validar/contrato/${createdLeaseId}?token=${validToken}`));
+    expect(validRes.status).toBe(200);
+    const validHtml = await validRes.text();
+    expect(validHtml).toContain('DOCUMENTO AUTÊNTICO E VÁLIDO');
+    expect(validHtml).toContain('Contrato de Locação Residencial');
+    expect(validHtml).toContain('Carlos Drummond');
+
+    // Token inválido
+    const invalidRes = await server.fetch(new Request(`http://localhost:3000/validar/contrato/${createdLeaseId}?token=token_invalido`));
+    expect(invalidRes.status).toBe(400);
+    const invalidHtml = await invalidRes.text();
+    expect(invalidHtml).toContain('DOCUMENTO NÃO AUTENTICADO');
   });
 });

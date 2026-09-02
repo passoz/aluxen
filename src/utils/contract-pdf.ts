@@ -1,8 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import QRCode from 'qrcode';
 import { getSetting } from '../db';
-
+import { generateAuthToken, formatAuthCode, getValidationUrl } from './auth-token';
 export type ContractPdfInput = {
   leaseId: string;
   tenantName: string;
@@ -17,6 +18,7 @@ export type ContractPdfInput = {
   endDate: string;
   dueDay: number;
   rentAmount: number;
+  baseUrl?: string;
 };
 
 function formatMoney(value: number): string {
@@ -428,6 +430,73 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   cursorY -= 16;
   currentPage.drawText('RG:', { x: leftX, y: cursorY, size: 10, font: fontRegular, color: muted });
   currentPage.drawText('RG:', { x: rightX, y: cursorY, size: 10, font: fontRegular, color: muted });
+
+  // Bloco de Autenticidade Digital com QR Code
+  const token = generateAuthToken('lease', input.leaseId);
+  const authCode = formatAuthCode(token);
+  const validationUrl = getValidationUrl('lease', input.leaseId, token, input.baseUrl);
+
+  const qrBuffer = await QRCode.toBuffer(validationUrl, {
+    errorCorrectionLevel: 'M',
+    type: 'png',
+    margin: 1,
+    width: 140,
+  });
+  const qrImage = await pdf.embedPng(qrBuffer);
+
+  ensureSpace(85);
+  cursorY -= 30;
+  const boxHeight = 66;
+  currentPage.drawRectangle({
+    x: margin,
+    y: cursorY - boxHeight,
+    width: contentWidth,
+    height: boxHeight,
+    color: rgb(0.97, 0.985, 0.98),
+    borderColor: rgb(0.82, 0.88, 0.86),
+    borderWidth: 1,
+  });
+
+  const qrSize = 50;
+  currentPage.drawImage(qrImage, {
+    x: margin + 8,
+    y: cursorY - boxHeight + 8,
+    width: qrSize,
+    height: qrSize,
+  });
+
+  const blockTextX = margin + qrSize + 18;
+  currentPage.drawText('Validação de Autenticidade Digital', {
+    x: blockTextX,
+    y: cursorY - 18,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.13, 0.45, 0.38),
+  });
+  currentPage.drawText(
+    'Este contrato possui registro eletrônico oficial. Aponte a câmera para consultar a autenticidade e vigência.',
+    {
+      x: blockTextX,
+      y: cursorY - 32,
+      size: 8,
+      font: fontRegular,
+      color: ink,
+    }
+  );
+  currentPage.drawText(`Chave: ${authCode}`, {
+    x: blockTextX,
+    y: cursorY - 45,
+    size: 8,
+    font: fontBold,
+    color: ink,
+  });
+  currentPage.drawText(validationUrl, {
+    x: blockTextX,
+    y: cursorY - 57,
+    size: 7,
+    font: fontRegular,
+    color: muted,
+  });
 
   return await pdf.save();
 }

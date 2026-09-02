@@ -1,8 +1,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import QRCode from 'qrcode';
 import { getSetting } from '../db';
-
+import { generateAuthToken, formatAuthCode, getValidationUrl } from './auth-token';
 const PDF_TIME_ZONE = 'America/Sao_Paulo';
 
 export type ReceiptPdfInput = {
@@ -14,6 +15,7 @@ export type ReceiptPdfInput = {
   paidAt: string | null;
   amount: number;
   signature?: boolean;
+  baseUrl?: string;
 };
 
 type FontLike = {
@@ -284,9 +286,59 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   page.drawLine({ start: { x: signatureLineX, y: signatureY - 10 }, end: { x: signatureLineX + signatureLineWidth, y: signatureY - 10 }, thickness: 1, color: border });
   page.drawText(signerName, { x: cardX + (contentWidth - signerNameWidth) / 2, y: signatureY - 26, size: 11, font: fontBold, color: ink });
   page.drawText(signerCpf, { x: cardX + (contentWidth - signerCpfWidth) / 2, y: signatureY - 42, size: 10, font: fontRegular, color: muted });
+  // Bloco de Autenticidade Digital com QR Code
+  const token = generateAuthToken('receipt', input.receiptId);
+  const authCode = formatAuthCode(token);
+  const validationUrl = getValidationUrl('receipt', input.receiptId, token, input.baseUrl);
+
+  const qrBuffer = await QRCode.toBuffer(validationUrl, {
+    errorCorrectionLevel: 'M',
+    type: 'png',
+    margin: 1,
+    width: 140,
+  });
+  const qrImage = await pdf.embedPng(qrBuffer);
 
   page.drawLine({ start: { x: cardX, y: 92 }, end: { x: cardX + contentWidth, y: 92 }, thickness: 1, color: border });
-  page.drawText('Documento gerado automaticamente.', { x: cardX, y: 68, size: 10, font: fontRegular, color: muted });
+
+  const qrSize = 58;
+  const qrY = 24;
+  page.drawImage(qrImage, {
+    x: cardX,
+    y: qrY,
+    width: qrSize,
+    height: qrSize,
+  });
+
+  const textX = cardX + qrSize + 12;
+  page.drawText('Validação de Autenticidade Digital', {
+    x: textX,
+    y: qrY + 44,
+    size: 9.5,
+    font: fontBold,
+    color: accent,
+  });
+  page.drawText('Aponte a câmera do celular para verificar o registro oficial deste recibo no servidor.', {
+    x: textX,
+    y: qrY + 31,
+    size: 8,
+    font: fontRegular,
+    color: ink,
+  });
+  page.drawText(`Chave: ${authCode}`, {
+    x: textX,
+    y: qrY + 18,
+    size: 8,
+    font: fontBold,
+    color: ink,
+  });
+  page.drawText(validationUrl, {
+    x: textX,
+    y: qrY + 6,
+    size: 7,
+    font: fontRegular,
+    color: muted,
+  });
 
   return await pdf.save();
 }

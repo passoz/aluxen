@@ -118,6 +118,8 @@ export async function initializeDatabase(): Promise<void> {
       try { client.run("ALTER TABLE leases ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); } catch {}
       try { client.run('ALTER TABLE receipts ADD COLUMN generated_key TEXT'); } catch {}
       try { client.run('ALTER TABLE receipts ADD COLUMN updated_at TEXT'); } catch {}
+      try { client.run('ALTER TABLE leases ADD COLUMN auth_token TEXT'); } catch {}
+      try { client.run('ALTER TABLE receipts ADD COLUMN auth_token TEXT'); } catch {}
 
       // Seed do usuário administrador
       const seedUsername = process.env.SEED_USERNAME || 'passoz';

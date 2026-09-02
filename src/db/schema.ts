@@ -42,6 +42,7 @@ export const leases = sqliteTable('leases', {
   dueDay: integer('due_day').notNull().default(1),
   rentAmount: real('rent_amount').notNull(),
   status: text('status').notNull().default('active'),
+  authToken: text('auth_token'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 });
@@ -56,6 +57,7 @@ export const receipts = sqliteTable('receipts', {
   amount: real('amount').notNull(),
   pdfPath: text('pdf_path'),
   generatedKey: text('generated_key'),
+  authToken: text('auth_token'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at'),
 }, (table) => [

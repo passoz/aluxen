@@ -10,14 +10,16 @@ import { initializeDatabase, query, queryOne, execute, getSetting, setSetting } 
 import { createId } from './utils/id';
 import { loginUser, changePassword } from './utils/auth';
 import { getUserId, requireUserId, setUserSession, clearUserSession } from './utils/session';
-import { getDaysInMonth } from './utils/format';
+import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr } from './utils/format';
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
+import { verifyAuthToken, formatAuthCode } from './utils/auth-token';
 
 import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
 import { SettingsPage } from './client/settings';
+import { VerificationPage } from './client/verify';
 import type { Tenant, Property, Lease, Receipt, Tab, MutationResponse } from './types/dashboard';
 
 // Garantir que o banco de dados e o bundle do cliente estão prontos
@@ -51,7 +53,7 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Template HTML idêntico ao root.tsx de main
-function renderHtml(title: string, page: 'dashboard' | 'login' | 'settings', props: Record<string, unknown>, content: React.ReactElement): string {
+function renderHtml(title: string, page: 'dashboard' | 'login' | 'settings' | 'verify', props: Record<string, unknown>, content: React.ReactElement): string {
   const renderedContent = renderToString(content);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -709,8 +711,8 @@ app.get('/pdf', async (c) => {
     paidAt: receipt.paid_at,
     amount: receipt.amount,
     signature: showSignature,
+    baseUrl: new URL(c.req.url).origin,
   });
-
   return new Response(pdfBytes as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
@@ -773,14 +775,175 @@ app.get('/contract-pdf', async (c) => {
     endDate: lease.end_date,
     dueDay: lease.due_day,
     rentAmount: lease.rent_amount,
+    baseUrl: new URL(c.req.url).origin,
   });
-
   return new Response(pdfBytes as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="contrato-${lease.id}.pdf"`,
     },
   });
+});
+
+// Validação Pública de Recibo
+app.get('/validar/recibo/:id', async (c) => {
+  const id = c.req.param('id');
+  const token = c.req.query('token') || '';
+  const now = new Date();
+  const verifiedAt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeStyle: 'short' }).format(now);
+
+  const isValidToken = verifyAuthToken('receipt', id, token);
+  if (!isValidToken) {
+    const html = renderHtml(
+      'Aluxen | Autenticidade do Recibo',
+      'verify',
+      {},
+      <VerificationPage valid={false} error="Chave de autenticação inválida ou documento não autenticado." verifiedAt={verifiedAt} />
+    );
+    return c.html(html, 400);
+  }
+
+  const receipt = await queryOne<{
+    id: string;
+    due_date: string;
+    paid_at: string | null;
+    amount: number;
+    tenant_name: string;
+    tenant_cpf: string | null;
+    property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
+  }>(
+    `SELECT r.id, r.due_date, r.paid_at, r.amount,
+            t.name AS tenant_name, t.cpf AS tenant_cpf,
+            p.name AS property_name, p.address AS property_address,
+            p.city AS property_city, p.state AS property_state
+     FROM receipts r
+     JOIN leases l ON l.id = r.lease_id
+     JOIN tenants t ON t.id = l.tenant_id
+     JOIN properties p ON p.id = l.property_id
+     WHERE r.id = ?`,
+    [id]
+  );
+
+  if (!receipt) {
+    const html = renderHtml(
+      'Aluxen | Autenticidade do Recibo',
+      'verify',
+      {},
+      <VerificationPage valid={false} error="Recibo não localizado na base oficial de registros." verifiedAt={verifiedAt} />
+    );
+    return c.html(html, 404);
+  }
+
+  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const fullPropertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state].filter(Boolean).join(', ');
+
+  const html = renderHtml(
+    'Aluxen | Autenticidade do Recibo',
+    'verify',
+    {},
+    <VerificationPage
+      valid={true}
+      type="receipt"
+      id={receipt.id}
+      authCode={formatAuthCode(token)}
+      tenantName={receipt.tenant_name}
+      tenantCpf={receipt.tenant_cpf || undefined}
+      propertyName={receipt.property_name}
+      propertyAddress={fullPropertyAddress}
+      landlordName={landlordName}
+      amount={formatCurrency(receipt.amount)}
+      amountRaw={receipt.amount}
+      dueDate={formatDateBr(receipt.due_date)}
+      paidAt={formatDateTimeBr(receipt.paid_at)}
+      verifiedAt={verifiedAt}
+    />
+  );
+  return c.html(html);
+});
+
+// Validação Pública de Contrato
+app.get('/validar/contrato/:id', async (c) => {
+  const id = c.req.param('id');
+  const token = c.req.query('token') || '';
+  const now = new Date();
+  const verifiedAt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long', timeStyle: 'short' }).format(now);
+
+  const isValidToken = verifyAuthToken('lease', id, token);
+  if (!isValidToken) {
+    const html = renderHtml(
+      'Aluxen | Autenticidade do Contrato',
+      'verify',
+      {},
+      <VerificationPage valid={false} error="Chave de autenticação inválida ou documento não autenticado." verifiedAt={verifiedAt} />
+    );
+    return c.html(html, 400);
+  }
+
+  const lease = await queryOne<{
+    id: string;
+    start_date: string;
+    end_date: string;
+    due_day: number;
+    rent_amount: number;
+    status: string;
+    tenant_name: string;
+    tenant_cpf: string | null;
+    property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
+  }>(
+    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
+            t.name AS tenant_name, t.cpf AS tenant_cpf,
+            p.name AS property_name, p.address AS property_address,
+            p.city AS property_city, p.state AS property_state
+     FROM leases l
+     JOIN tenants t ON t.id = l.tenant_id
+     JOIN properties p ON p.id = l.property_id
+     WHERE l.id = ?`,
+    [id]
+  );
+
+  if (!lease) {
+    const html = renderHtml(
+      'Aluxen | Autenticidade do Contrato',
+      'verify',
+      {},
+      <VerificationPage valid={false} error="Contrato não localizado na base oficial de registros." verifiedAt={verifiedAt} />
+    );
+    return c.html(html, 404);
+  }
+
+  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const fullPropertyAddress = [lease.property_address, lease.property_city, lease.property_state].filter(Boolean).join(', ');
+
+  const html = renderHtml(
+    'Aluxen | Autenticidade do Contrato',
+    'verify',
+    {},
+    <VerificationPage
+      valid={true}
+      type="lease"
+      id={lease.id}
+      authCode={formatAuthCode(token)}
+      tenantName={lease.tenant_name}
+      tenantCpf={lease.tenant_cpf || undefined}
+      propertyName={lease.property_name}
+      propertyAddress={fullPropertyAddress}
+      landlordName={landlordName}
+      amount={formatCurrency(lease.rent_amount)}
+      amountRaw={lease.rent_amount}
+      startDate={formatDateBr(lease.start_date)}
+      endDate={formatDateBr(lease.end_date)}
+      dueDay={lease.due_day}
+      status={lease.status}
+      verifiedAt={verifiedAt}
+    />
+  );
+  return c.html(html);
 });
 
 const port = Number(process.env.PORT) || 3000;
