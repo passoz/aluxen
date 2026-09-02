@@ -1,0 +1,32 @@
+# dependencies (bun install)
+node_modules
+
+# output & builds
+out
+dist
+*.tgz
+
+# logs
+logs
+*.log
+
+# environment
+.env
+.env.*
+!.env.example
+
+# caches & typescript
+.cache
+*.tsbuildinfo
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode
