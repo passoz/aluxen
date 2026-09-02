@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.tsx",
+    "build": "bun run src/build-client.ts",
     "start": "bun src/index.tsx",
     "test": "bun test",
     "db:generate": "drizzle-kit generate",
@@ -14,11 +15,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.5"
+    "hono": "^4.13.5",
+    "pdf-lib": "^1.17.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^3.0.0",
     "@types/bun": "latest",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
     "drizzle-kit": "^0.31.10",
     "typescript": "^5.8.2"
   }

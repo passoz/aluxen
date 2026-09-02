@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex } from 'drizzle-orm/sqlite-core';
 import { relations, sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -58,7 +58,9 @@ export const receipts = sqliteTable('receipts', {
   generatedKey: text('generated_key'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at'),
-});
+}, (table) => [
+  uniqueIndex('receipts_generated_key_idx').on(table.generatedKey),
+]);
 
 export const settings = sqliteTable('settings', {
   key: text('key').primaryKey(),

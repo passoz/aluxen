@@ -1,21 +1,83 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
-import { count, desc, eq } from 'drizzle-orm';
-import { db } from './db';
-import { leases, properties, receipts, tenants } from './db/schema';
-import { runMigrations } from './db/migrate';
-import { Home } from './views/home';
-import { TenantsPage } from './views/tenants';
-import { PropertiesPage } from './views/properties';
-import { LeasesPage } from './views/leases';
-import { ReceiptsPage } from './views/receipts';
+import { serveStatic } from 'hono/bun';
+import React from 'react';
+import { renderToString } from 'react-dom/server';
+import { existsSync } from 'fs';
+import path from 'path';
 
-// Executar migrações do SQLite na inicialização
-runMigrations();
+import { initializeDatabase, query, queryOne, execute, getSetting, setSetting } from './db';
+import { createId } from './utils/id';
+import { loginUser, changePassword } from './utils/auth';
+import { getUserId, requireUserId, setUserSession, clearUserSession } from './utils/session';
+import { getDaysInMonth } from './utils/format';
+import { createReceiptPdfBuffer } from './utils/pdf';
+import { createContractPdfBuffer } from './utils/contract-pdf';
+import { buildClientBundle } from './build-client';
+
+import { DashboardPage, type DashboardProps } from './client/dashboard';
+import { LoginPage } from './client/login';
+import { SettingsPage } from './client/settings';
+import type { Tenant, Property, Lease, Receipt, Tab, MutationResponse } from './types/dashboard';
+
+// Garantir que o banco de dados e o bundle do cliente estão prontos
+await initializeDatabase();
+if (!existsSync(path.join(process.cwd(), 'public', 'dist', 'client.js'))) {
+  await buildClientBundle();
+}
 
 const app = new Hono();
 
 app.use('*', logger());
+
+// Servir arquivos estáticos (CSS, JS compilado, ícones, imagens)
+app.use('/*', serveStatic({ root: './public' }));
+
+// Rate limit em memória para login
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 5;
+const RATE_LIMIT_WINDOW = 60_000;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT_MAX) return false;
+  entry.count++;
+  return true;
+}
+
+// Template HTML idêntico ao root.tsx de main
+function renderHtml(title: string, page: 'dashboard' | 'login' | 'settings', props: Record<string, unknown>, content: React.ReactElement): string {
+  const renderedContent = renderToString(content);
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#85e6c0" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Aluxen" />
+    <title>${title}</title>
+    <link rel="stylesheet" href="/styles/globals.css" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+  </head>
+  <body>
+    <div id="root">${renderedContent}</div>
+    <script id="__DATA__" type="application/json">${JSON.stringify({ page, props })}</script>
+    <script>
+      window.__INITIAL_DATA__ = JSON.parse(document.getElementById('__DATA__').textContent);
+    </script>
+    <script src="/dist/client.js" defer></script>
+  </body>
+</html>`;
+}
 
 // Healthcheck API
 app.get('/api/health', (c) => {
@@ -29,236 +91,700 @@ app.get('/api/health', (c) => {
   });
 });
 
-// Dashboard / Home
-app.get('/', async (c) => {
-  const [
-    tenantsCountRes,
-    propertiesCountRes,
-    leasesCountRes,
-    receiptsCountRes,
-    recentTenants,
-    recentProperties,
-  ] = await Promise.all([
-    db.select({ value: count() }).from(tenants),
-    db.select({ value: count() }).from(properties),
-    db.select({ value: count() }).from(leases).where(eq(leases.status, 'active')),
-    db.select({ value: count() }).from(receipts),
-    db.select().from(tenants).orderBy(desc(tenants.createdAt)).limit(5),
-    db.select().from(properties).orderBy(desc(properties.createdAt)).limit(5),
+// Raiz: Redireciona conforme autenticação
+app.get('/', (c) => {
+  const userId = getUserId(c);
+  if (userId) {
+    return c.redirect('/dashboard?tab=tenants');
+  }
+  return c.redirect('/login');
+});
+
+// Login - GET
+app.get('/login', (c) => {
+  const userId = getUserId(c);
+  if (userId) {
+    return c.redirect('/dashboard?tab=tenants');
+  }
+  const html = renderHtml('Aluxen | Entrar', 'login', {}, <LoginPage />);
+  return c.html(html);
+});
+
+// Login - POST
+app.post('/login', async (c) => {
+  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
+  if (!checkRateLimit(ip)) {
+    const html = renderHtml(
+      'Aluxen | Entrar',
+      'login',
+      { error: 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.' },
+      <LoginPage error="Muitas tentativas. Aguarde 1 minuto para tentar novamente." />
+    );
+    return c.html(html, 429);
+  }
+
+  const body = await c.req.parseBody();
+  const username = String(body['username'] || '').trim();
+  const password = String(body['password'] || '');
+
+  if (!username || !password) {
+    const html = renderHtml('Aluxen | Entrar', 'login', { error: 'Informe usuário e senha.' }, <LoginPage error="Informe usuário e senha." />);
+    return c.html(html, 400);
+  }
+
+  const user = await loginUser(username, password);
+  if (!user) {
+    const html = renderHtml('Aluxen | Entrar', 'login', { error: 'Credenciais inválidas.' }, <LoginPage error="Credenciais inválidas." />);
+    return c.html(html, 401);
+  }
+
+  setUserSession(c, user.id);
+  return c.redirect('/dashboard?tab=tenants');
+});
+
+// Logout
+app.post('/logout', (c) => {
+  clearUserSession(c);
+  return c.redirect('/login');
+});
+
+app.get('/logout', (c) => {
+  clearUserSession(c);
+  return c.redirect('/login');
+});
+
+// Dashboard - GET
+app.get('/dashboard', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) {
+    return c.redirect('/login');
+  }
+
+  const urlTab = c.req.query('tab') as Tab;
+  const tab: Tab = ['tenants', 'properties', 'leases', 'receipts'].includes(urlTab) ? urlTab : 'tenants';
+
+  const [user, tenants, properties, leases, receipts, activeTenantIds] = await Promise.all([
+    queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]),
+    query<Tenant>('SELECT id, name, email, phone, cpf FROM tenants ORDER BY created_at DESC, name'),
+    query<Property>('SELECT id, name, address, city, state, zip FROM properties ORDER BY created_at DESC, name'),
+    query<Lease>(`
+      SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
+             t.name AS tenant_name, p.name AS property_name
+      FROM leases l
+      JOIN tenants t ON t.id = l.tenant_id
+      JOIN properties p ON p.id = l.property_id
+      ORDER BY l.status, l.created_at DESC
+    `),
+    query<Receipt>(`
+      SELECT r.id, r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.generated_key,
+             t.name AS tenant_name, p.name AS property_name
+      FROM receipts r
+      JOIN leases l ON l.id = r.lease_id
+      JOIN tenants t ON t.id = l.tenant_id
+      JOIN properties p ON p.id = l.property_id
+      ORDER BY r.created_at DESC
+    `),
+    query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM leases WHERE status = ?', ['active']),
   ]);
 
-  return c.html(
-    <Home
-      stats={{
-        tenantsCount: tenantsCountRes[0]?.value ?? 0,
-        propertiesCount: propertiesCountRes[0]?.value ?? 0,
-        activeLeasesCount: leasesCountRes[0]?.value ?? 0,
-        receiptsCount: receiptsCountRes[0]?.value ?? 0,
-      }}
-      recentTenants={recentTenants}
-      recentProperties={recentProperties}
-    />
+  const dashboardData: DashboardProps = {
+    tab,
+    user: user?.username || 'admin',
+    tenants,
+    properties,
+    leases,
+    receipts,
+    activeTenantIds: activeTenantIds.map((r) => r.tenant_id),
+  };
+
+  if (c.req.query('json') === 'true') {
+    return c.json(dashboardData);
+  }
+
+  const html = renderHtml(
+    'Aluxen | Painel',
+    'dashboard',
+    dashboardData as unknown as Record<string, unknown>,
+    <DashboardPage {...dashboardData} />
   );
+  return c.html(html);
 });
 
-// --- Inquilinos ---
-app.get('/tenants', async (c) => {
-  const allTenants = await db.select().from(tenants).orderBy(desc(tenants.createdAt));
-  return c.html(<TenantsPage tenants={allTenants} />);
-});
-
-app.post('/tenants', async (c) => {
-  const body = await c.req.parseBody();
-  const name = String(body['name'] || '').trim();
-  const email = String(body['email'] || '').trim();
-  const phone = body['phone'] ? String(body['phone']).trim() : null;
-  const cpf = body['cpf'] ? String(body['cpf']).trim() : null;
-
-  if (!name || !email) {
-    const allTenants = await db.select().from(tenants).orderBy(desc(tenants.createdAt));
-    return c.html(<TenantsPage tenants={allTenants} error="Nome e e-mail são obrigatórios." />, 400);
+// Dashboard - POST (Mutation handler de todas as ações de main)
+app.post('/dashboard', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) {
+    return c.json<MutationResponse>({ error: 'Sessão expirada.' }, 401);
   }
 
-  const id = crypto.randomUUID();
-  await db.insert(tenants).values({
-    id,
-    name,
-    email,
-    phone,
-    cpf,
-  });
+  const formData = await c.req.parseBody();
+  const intent = String(formData['intent'] || '');
 
-  return c.redirect('/tenants');
-});
+  try {
+    switch (intent) {
+      case 'tenant.create': {
+        const id = String(formData['id'] || createId());
+        const name = String(formData['name'] || '').trim();
+        const email = String(formData['email'] || '').trim();
+        const phone = String(formData['phone'] || '').trim();
+        const cpf = String(formData['cpf'] || '').trim();
+        if (!name || !email) throw new Error('Nome e email são obrigatórios.');
+        await execute('INSERT INTO tenants (id, name, email, phone, cpf) VALUES (?, ?, ?, ?, ?)', [
+          id,
+          name,
+          email,
+          phone || null,
+          cpf || null,
+        ]);
+        break;
+      }
+      case 'tenant.update': {
+        const id = String(formData['id'] || '');
+        const name = String(formData['name'] || '').trim();
+        const email = String(formData['email'] || '').trim();
+        const phone = String(formData['phone'] || '').trim();
+        const cpf = String(formData['cpf'] || '').trim();
+        if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
+        await execute("UPDATE tenants SET name = ?, email = ?, phone = ?, cpf = ?, updated_at = datetime('now') WHERE id = ?", [
+          name,
+          email,
+          phone || null,
+          cpf || null,
+          id,
+        ]);
+        break;
+      }
+      case 'tenant.delete': {
+        const tenantId = String(formData['id']);
+        const activeLease = await queryOne<{ id: string }>('SELECT id FROM leases WHERE tenant_id = ? AND status = ?', [
+          tenantId,
+          'active',
+        ]);
+        if (activeLease) throw new Error('Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.');
+        await execute('DELETE FROM tenants WHERE id = ?', [tenantId]);
+        break;
+      }
+      case 'property.create': {
+        const id = String(formData['id'] || createId());
+        const name = String(formData['name'] || '').trim();
+        const address = String(formData['address'] || '').trim();
+        const city = String(formData['city'] || '').trim();
+        const state = String(formData['state'] || '').trim();
+        const zip = String(formData['zip'] || '').trim();
+        if (!name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
+        await execute('INSERT INTO properties (id, name, address, city, state, zip) VALUES (?, ?, ?, ?, ?, ?)', [
+          id,
+          name,
+          address,
+          city,
+          state,
+          zip || null,
+        ]);
+        break;
+      }
+      case 'property.update': {
+        const id = String(formData['id'] || '');
+        const name = String(formData['name'] || '').trim();
+        const address = String(formData['address'] || '').trim();
+        const city = String(formData['city'] || '').trim();
+        const state = String(formData['state'] || '').trim();
+        const zip = String(formData['zip'] || '').trim();
+        if (!id || !name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
+        await execute("UPDATE properties SET name = ?, address = ?, city = ?, state = ?, zip = ?, updated_at = datetime('now') WHERE id = ?", [
+          name,
+          address,
+          city,
+          state,
+          zip || null,
+          id,
+        ]);
+        break;
+      }
+      case 'property.delete': {
+        await execute('DELETE FROM properties WHERE id = ?', [String(formData['id'])]);
+        break;
+      }
+      case 'lease.create': {
+        const id = String(formData['id'] || createId());
+        const tenantId = String(formData['tenant_id'] || '');
+        const propertyId = String(formData['property_id'] || '');
+        const startDate = String(formData['start_date'] || '');
+        const endDate = String(formData['end_date'] || '');
+        const dueDay = Number(formData['due_day']);
+        const rentAmount = Number(formData['rent_amount']);
+        if (!tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
+          throw new Error('Preencha todos os campos do contrato.');
+        }
+        await execute('INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+          id,
+          tenantId,
+          propertyId,
+          startDate,
+          endDate,
+          dueDay,
+          rentAmount,
+        ]);
+        break;
+      }
+      case 'lease.update': {
+        const id = String(formData['id'] || '');
+        const tenantId = String(formData['tenant_id'] || '');
+        const propertyId = String(formData['property_id'] || '');
+        const startDate = String(formData['start_date'] || '');
+        const endDate = String(formData['end_date'] || '');
+        const dueDay = Number(formData['due_day']);
+        const rentAmount = Number(formData['rent_amount']);
+        if (!id || !tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
+          throw new Error('Preencha todos os campos do contrato.');
+        }
+        await execute("UPDATE leases SET tenant_id = ?, property_id = ?, start_date = ?, end_date = ?, due_day = ?, rent_amount = ?, updated_at = datetime('now') WHERE id = ?", [
+          tenantId,
+          propertyId,
+          startDate,
+          endDate,
+          dueDay,
+          rentAmount,
+          id,
+        ]);
+        break;
+      }
+      case 'lease.terminate': {
+        await execute("UPDATE leases SET status = 'terminated', updated_at = datetime('now') WHERE id = ?", [String(formData['id'])]);
+        break;
+      }
+      case 'lease.reactivate': {
+        await execute("UPDATE leases SET status = 'active', updated_at = datetime('now') WHERE id = ?", [String(formData['id'])]);
+        break;
+      }
+      case 'lease.delete': {
+        await execute('DELETE FROM leases WHERE id = ?', [String(formData['id'])]);
+        break;
+      }
+      case 'receipt.create':
+      case 'receipt.update': {
+        const id = String(formData['id'] || createId());
+        const leaseId = String(formData['lease_id'] || '');
+        const dueDate = String(formData['due_date'] || '');
+        const paidAt = String(formData['paid_at'] || '');
+        const amount = Number(formData['amount']);
+        if (!leaseId || !dueDate || !Number.isFinite(amount)) throw new Error('Preencha contrato, vencimento e valor.');
 
-app.post('/tenants/:id/delete', async (c) => {
-  const id = c.req.param('id');
-  await db.delete(tenants).where(eq(tenants.id, id));
-  return c.redirect('/tenants');
-});
+        const lease = await queryOne<{ tenant_name: string; property_name: string }>(
+          `SELECT t.name AS tenant_name, p.name AS property_name
+           FROM leases l
+           JOIN tenants t ON t.id = l.tenant_id
+           JOIN properties p ON p.id = l.property_id
+           WHERE l.id = ?`,
+          [leaseId]
+        );
+        if (!lease) throw new Error('Contrato não encontrado.');
 
-// --- Imóveis ---
-app.get('/properties', async (c) => {
-  const allProperties = await db.select().from(properties).orderBy(desc(properties.createdAt));
-  return c.html(<PropertiesPage properties={allProperties} />);
-});
+        const pdfPath = null;
 
-app.post('/properties', async (c) => {
-  const body = await c.req.parseBody();
-  const name = String(body['name'] || '').trim();
-  const address = String(body['address'] || '').trim();
-  const city = String(body['city'] || '').trim();
-  const state = String(body['state'] || '').trim().toUpperCase();
-  const zip = body['zip'] ? String(body['zip']).trim() : null;
+        if (intent === 'receipt.create') {
+          await execute('INSERT INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path) VALUES (?, ?, ?, ?, ?, ?)', [
+            id,
+            leaseId,
+            dueDate,
+            paidAt || null,
+            amount,
+            pdfPath,
+          ]);
+        } else {
+          await execute('UPDATE receipts SET lease_id = ?, due_date = ?, paid_at = ?, amount = ?, pdf_path = ? WHERE id = ?', [
+            leaseId,
+            dueDate,
+            paidAt || null,
+            amount,
+            pdfPath,
+            id,
+          ]);
+        }
+        break;
+      }
+      case 'receipt.generate-monthly': {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+        const monthStart = `${monthKey}-01`;
+        const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
+        const activeLeases = await query<Lease>(
+          `SELECT id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, '' AS tenant_name, '' AS property_name, status
+           FROM leases
+           WHERE status = 'active' AND start_date <= ? AND end_date >= ?`,
+          [monthEnd, monthStart]
+        );
 
-  if (!name || !address || !city || !state) {
-    const allProperties = await db.select().from(properties).orderBy(desc(properties.createdAt));
-    return c.html(<PropertiesPage properties={allProperties} error="Preencha os campos obrigatórios." />, 400);
+        for (const lease of activeLeases) {
+          const dueDay = Math.min(Number(lease.due_day) || 1, getDaysInMonth(year, month));
+          const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
+          await execute(
+            'INSERT OR IGNORE INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path, generated_key) VALUES (?, ?, ?, NULL, ?, NULL, ?)',
+            [createId(), lease.id, dueDate, lease.rent_amount, `${lease.id}:${monthKey}`]
+          );
+        }
+        break;
+      }
+      case 'receipt.delete': {
+        await execute('DELETE FROM receipts WHERE id = ?', [String(formData['id'])]);
+        break;
+      }
+      case 'receipt.batch-pay': {
+        const ids = (formData['ids'] || '').toString().split(',').filter(Boolean);
+        if (!ids.length) throw new Error('Nenhum recibo selecionado.');
+        const now = new Date();
+        const paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(
+          now.getHours()
+        ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        for (const receiptId of ids) {
+          await execute("UPDATE receipts SET paid_at = ?, updated_at = datetime('now') WHERE id = ? AND paid_at IS NULL", [
+            paidAt,
+            receiptId,
+          ]);
+        }
+        break;
+      }
+      default:
+        throw new Error('Ação inválida.');
+    }
+  } catch (error) {
+    return c.json<MutationResponse>({ error: error instanceof Error ? error.message : 'Não foi possível salvar.' }, 400);
   }
 
-  const id = crypto.randomUUID();
-  await db.insert(properties).values({
-    id,
-    name,
-    address,
-    city,
-    state,
-    zip,
-  });
-
-  return c.redirect('/properties');
+  return c.json<MutationResponse>({ ok: true });
 });
 
-app.post('/properties/:id/delete', async (c) => {
-  const id = c.req.param('id');
-  await db.delete(properties).where(eq(properties.id, id));
-  return c.redirect('/properties');
+// Configurações - GET
+app.get('/settings', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
+
+  const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  const settingsProps = {
+    landlordName: (await getSetting('landlord_name')) || 'Fernando Passos',
+    landlordCpf: (await getSetting('landlord_cpf')) || '075.898.017-55',
+    landlordEmail: (await getSetting('landlord_email')) || '',
+    username: user?.username || '',
+  };
+
+  const html = renderHtml('Aluxen | Configurações', 'settings', settingsProps, <SettingsPage {...settingsProps} />);
+  return c.html(html);
 });
 
-// --- Locações ---
-app.get('/leases', async (c) => {
-  const [allLeases, allTenants, allProperties] = await Promise.all([
-    db.query.leases.findMany({
-      with: {
-        tenant: true,
-        property: true,
-      },
-      orderBy: [desc(leases.createdAt)],
-    }),
-    db.select().from(tenants).orderBy(tenants.name),
-    db.select().from(properties).orderBy(properties.name),
+// Configurações - POST
+app.post('/settings', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
+
+  const formData = await c.req.parseBody();
+  const intent = String(formData['intent'] || '');
+
+  const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  let landlordName = (await getSetting('landlord_name')) || 'Fernando Passos';
+  let landlordCpf = (await getSetting('landlord_cpf')) || '075.898.017-55';
+  let landlordEmail = (await getSetting('landlord_email')) || '';
+
+  try {
+    if (intent === 'save-landlord') {
+      const name = String(formData['name'] || '').trim();
+      const cpf = String(formData['cpf'] || '').trim();
+      const email = String(formData['email'] || '').trim();
+      if (!name) throw new Error('Nome do locador é obrigatório.');
+      await setSetting('landlord_name', name);
+      await setSetting('landlord_cpf', cpf);
+      await setSetting('landlord_email', email);
+      landlordName = name;
+      landlordCpf = cpf;
+      landlordEmail = email;
+
+      const html = renderHtml(
+        'Aluxen | Configurações',
+        'settings',
+        { landlordName, landlordCpf, landlordEmail, username: user?.username || '', message: 'Dados salvos com sucesso.' },
+        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} message="Dados salvos com sucesso." />
+      );
+      return c.html(html);
+    }
+
+    if (intent === 'change-password') {
+      const currentPassword = String(formData['current_password'] || '');
+      const newPassword = String(formData['new_password'] || '');
+      const confirmPassword = String(formData['confirm_password'] || '');
+      if (newPassword !== confirmPassword) throw new Error('Nova senha e confirmação não conferem.');
+      await changePassword(userId, currentPassword, newPassword);
+
+      const html = renderHtml(
+        'Aluxen | Configurações',
+        'settings',
+        { landlordName, landlordCpf, landlordEmail, username: user?.username || '', message: 'Senha alterada com sucesso.' },
+        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} message="Senha alterada com sucesso." />
+      );
+      return c.html(html);
+    }
+
+    throw new Error('Ação inválida.');
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Erro ao salvar.';
+    const html = renderHtml(
+      'Aluxen | Configurações',
+      'settings',
+      { landlordName, landlordCpf, landlordEmail, username: user?.username || '', error: errorMsg },
+      <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} error={errorMsg} />
+    );
+    return c.html(html, 400);
+  }
+});
+
+// Exportar Backup JSON
+app.get('/export', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
+
+  const [tenants, properties, leases, receipts] = await Promise.all([
+    query('SELECT * FROM tenants'),
+    query('SELECT * FROM properties'),
+    query('SELECT * FROM leases'),
+    query('SELECT id, lease_id, due_date, paid_at, amount, created_at FROM receipts'),
   ]);
 
-  return c.html(
-    <LeasesPage
-      leases={allLeases}
-      tenants={allTenants}
-      properties={allProperties}
-    />
-  );
+  const data = {
+    exportedAt: new Date().toISOString(),
+    tenants,
+    properties,
+    leases,
+    receipts,
+  };
+
+  const filename = `aluxen-backup-${new Date().toISOString().split('T')[0]}.json`;
+  return new Response(JSON.stringify(data, null, 2), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
 });
 
-app.post('/leases', async (c) => {
-  const body = await c.req.parseBody();
-  const tenantId = String(body['tenantId'] || '').trim();
-  const propertyId = String(body['propertyId'] || '').trim();
-  const startDate = String(body['startDate'] || '').trim();
-  const endDate = String(body['endDate'] || '').trim();
-  const dueDay = parseInt(String(body['dueDay'] || '5'), 10);
-  const rentAmount = parseFloat(String(body['rentAmount'] || '0'));
+// Importar Backup JSON
+app.post('/import', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
 
-  if (!tenantId || !propertyId || !startDate || !endDate || isNaN(rentAmount)) {
-    return c.redirect('/leases');
+  const body = await c.req.parseBody();
+  const file = body['file'] as File | undefined;
+
+  if (!file) {
+    return c.text('Arquivo não enviado.', 400);
   }
 
-  const id = crypto.randomUUID();
-  await db.insert(leases).values({
-    id,
-    tenantId,
-    propertyId,
-    startDate,
-    endDate,
-    dueDay,
-    rentAmount,
-    status: 'active',
-  });
-
-  return c.redirect('/leases');
-});
-
-app.post('/leases/:id/delete', async (c) => {
-  const id = c.req.param('id');
-  await db.delete(leases).where(eq(leases.id, id));
-  return c.redirect('/leases');
-});
-
-// --- Recibos ---
-app.get('/receipts', async (c) => {
-  const [allReceipts, activeLeases] = await Promise.all([
-    db.query.receipts.findMany({
-      with: {
-        lease: {
-          with: {
-            tenant: true,
-            property: true,
-          },
-        },
-      },
-      orderBy: [desc(receipts.dueDate)],
-    }),
-    db.query.leases.findMany({
-      where: eq(leases.status, 'active'),
-      with: {
-        tenant: true,
-        property: true,
-      },
-    }),
-  ]);
-
-  return c.html(
-    <ReceiptsPage
-      receipts={allReceipts}
-      activeLeases={activeLeases}
-    />
-  );
-});
-
-app.post('/receipts', async (c) => {
-  const body = await c.req.parseBody();
-  const leaseId = String(body['leaseId'] || '').trim();
-  const dueDate = String(body['dueDate'] || '').trim();
-  const amount = parseFloat(String(body['amount'] || '0'));
-
-  if (!leaseId || !dueDate || isNaN(amount)) {
-    return c.redirect('/receipts');
+  let content: string;
+  try {
+    content = await file.text();
+  } catch {
+    return c.text('Não foi possível ler o arquivo.', 400);
   }
 
-  const id = crypto.randomUUID();
-  await db.insert(receipts).values({
-    id,
-    leaseId,
-    dueDate,
-    amount,
+  interface BackupData {
+    tenants: { id: string; name: string; email: string; phone: string | null; created_at: string; updated_at: string }[];
+    properties: { id: string; name: string; address: string; city: string; state: string; zip: string | null; created_at: string; updated_at: string }[];
+    leases: { id: string; tenant_id: string; property_id: string; start_date: string; end_date: string; due_day: number; rent_amount: number; created_at: string; updated_at: string }[];
+    receipts: { id: string; lease_id: string; due_date: string; paid_at: string | null; amount: number; pdf_path: string | null; created_at: string }[];
+  }
+
+  let data: BackupData;
+  try {
+    data = JSON.parse(content);
+  } catch {
+    return c.text('Arquivo JSON inválido.', 400);
+  }
+
+  if (!data.tenants || !data.properties || !data.leases || !data.receipts) {
+    return c.text('Formato de backup inválido.', 400);
+  }
+
+  try {
+    const idMap = {
+      tenants: new Map<string, string>(),
+      properties: new Map<string, string>(),
+      leases: new Map<string, string>(),
+    };
+
+    for (const t of data.tenants) {
+      const newId = createId();
+      idMap.tenants.set(t.id, newId);
+      await execute(
+        'INSERT INTO tenants (id, name, email, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [newId, t.name, t.email, t.phone, t.created_at, t.updated_at]
+      );
+    }
+
+    for (const p of data.properties) {
+      const newId = createId();
+      idMap.properties.set(p.id, newId);
+      await execute(
+        'INSERT INTO properties (id, name, address, city, state, zip, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [newId, p.name, p.address, p.city, p.state, p.zip, p.created_at, p.updated_at]
+      );
+    }
+
+    for (const l of data.leases) {
+      const newId = createId();
+      idMap.leases.set(l.id, newId);
+      await execute(
+        'INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          newId,
+          idMap.tenants.get(l.tenant_id) || l.tenant_id,
+          idMap.properties.get(l.property_id) || l.property_id,
+          l.start_date,
+          l.end_date,
+          l.due_day ?? 1,
+          l.rent_amount,
+          l.created_at,
+          l.updated_at,
+        ]
+      );
+    }
+
+    for (const r of data.receipts) {
+      const newId = createId();
+      await execute(
+        'INSERT INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [newId, idMap.leases.get(r.lease_id) || r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.created_at]
+      );
+    }
+  } catch (error) {
+    return c.text(error instanceof Error ? error.message : 'Erro ao importar dados.', 400);
+  }
+
+  return c.redirect('/dashboard?tab=tenants&toast=importado');
+});
+
+// Emissão de Recibo em PDF
+app.get('/pdf', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
+
+  const id = c.req.query('id');
+  const showSignature = c.req.query('assinatura') !== 'false';
+
+  if (!id) {
+    return c.text('ID inválido', 400);
+  }
+
+  const receipt = await queryOne<{
+    id: string;
+    due_date: string;
+    paid_at: string | null;
+    amount: number;
+    tenant_name: string;
+    property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
+  }>(
+    `SELECT r.id, r.due_date, r.paid_at, r.amount,
+            t.name AS tenant_name, p.name AS property_name,
+            p.address AS property_address, p.city AS property_city, p.state AS property_state
+     FROM receipts r
+     JOIN leases l ON l.id = r.lease_id
+     JOIN tenants t ON t.id = l.tenant_id
+     JOIN properties p ON p.id = l.property_id
+     WHERE r.id = ?`,
+    [id]
+  );
+
+  if (!receipt) {
+    return c.text('Recibo não encontrado', 404);
+  }
+
+  const propertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state].filter(Boolean).join(', ');
+
+  const pdfBytes = await createReceiptPdfBuffer({
+    receiptId: receipt.id,
+    tenantName: receipt.tenant_name,
+    propertyName: receipt.property_name,
+    propertyAddress,
+    dueDate: receipt.due_date,
+    paidAt: receipt.paid_at,
+    amount: receipt.amount,
+    signature: showSignature,
   });
 
-  return c.redirect('/receipts');
+  return new Response(pdfBytes as BodyInit, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="recibo-${receipt.id}.pdf"`,
+    },
+  });
 });
 
-app.post('/receipts/:id/pay', async (c) => {
-  const id = c.req.param('id');
-  const today = new Date().toISOString().split('T')[0]!;
-  await db.update(receipts).set({ paidAt: today }).where(eq(receipts.id, id));
-  return c.redirect('/receipts');
-});
+// Emissão de Contrato de Locação em PDF
+app.get('/contract-pdf', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
 
-app.post('/receipts/:id/delete', async (c) => {
-  const id = c.req.param('id');
-  await db.delete(receipts).where(eq(receipts.id, id));
-  return c.redirect('/receipts');
+  const id = c.req.query('id');
+  if (!id) {
+    return c.text('ID inválido', 400);
+  }
+
+  const lease = await queryOne<{
+    id: string;
+    start_date: string;
+    end_date: string;
+    due_day: number;
+    rent_amount: number;
+    tenant_name: string;
+    tenant_phone: string | null;
+    tenant_cpf: string | null;
+    property_name: string;
+    property_address: string;
+    property_city: string;
+    property_state: string;
+    property_zip: string | null;
+  }>(
+    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount,
+            t.name AS tenant_name, t.phone AS tenant_phone, t.cpf AS tenant_cpf,
+            p.name AS property_name, p.address AS property_address,
+            p.city AS property_city, p.state AS property_state, p.zip AS property_zip
+     FROM leases l
+     JOIN tenants t ON t.id = l.tenant_id
+     JOIN properties p ON p.id = l.property_id
+     WHERE l.id = ?`,
+    [id]
+  );
+
+  if (!lease) {
+    return c.text('Contrato não encontrado', 404);
+  }
+
+  const pdfBytes = await createContractPdfBuffer({
+    leaseId: lease.id,
+    tenantName: lease.tenant_name,
+    tenantPhone: lease.tenant_phone || '',
+    tenantCpf: lease.tenant_cpf || '',
+    propertyName: lease.property_name,
+    propertyAddress: lease.property_address,
+    propertyCity: lease.property_city,
+    propertyState: lease.property_state,
+    propertyZip: lease.property_zip || '',
+    startDate: lease.start_date,
+    endDate: lease.end_date,
+    dueDay: lease.due_day,
+    rentAmount: lease.rent_amount,
+  });
+
+  return new Response(pdfBytes as BodyInit, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="contrato-${lease.id}.pdf"`,
+    },
+  });
 });
 
 const port = Number(process.env.PORT) || 3000;
-console.log(`🚀 Servidor rodando em http://localhost:${port}`);
+console.log(`🚀 Aluxen rodando em http://localhost:${port}`);
 
 export default {
   port,
