@@ -397,15 +397,15 @@ p, span, td, th {
 }
 
 /* Sidebar Utility Buttons */
-.data-btn, .theme-toggle {
+.data-btn, .theme-toggle, .sidebar-footer .nav-link, .sidebar-footer form button {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.625rem 0.875rem;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   border-radius: var(--radius-md);
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
+  background: transparent;
+  border: 1px solid transparent;
   width: 100%;
   cursor: pointer;
   font-size: 0.875rem;
@@ -414,14 +414,15 @@ p, span, td, th {
   transition: all 0.15s ease;
 }
 
-.data-btn:hover, .theme-toggle:hover {
-  background: var(--surface-hover);
+.data-btn:hover, .theme-toggle:hover, .sidebar-footer .nav-link:hover, .sidebar-footer form button:hover {
+  background: var(--surface-subtle);
   color: var(--text);
-  border-color: var(--text-muted);
 }
 
 .sidebar:not(.open) .data-btn,
-.sidebar:not(.open) .theme-toggle {
+.sidebar:not(.open) .theme-toggle,
+.sidebar:not(.open) .sidebar-footer .nav-link,
+.sidebar:not(.open) .sidebar-footer form button {
   justify-content: center;
   padding: 0;
   width: 44px;
@@ -858,12 +859,18 @@ input[type="checkbox"] {
 }
 
 /* Custom Select & Date Pickers */
-.custom-select, .custom-date-picker, .small-select {
+.custom-select, .custom-date-picker {
   position: relative;
   width: 100%;
 }
 
-.select-display, .date-picker-display, .small-select-display {
+.small-select {
+  position: relative;
+  width: auto;
+  flex-shrink: 0;
+}
+
+.select-display, .date-picker-display {
   width: 100%;
   padding: 0.625rem 0.875rem;
   border-radius: var(--radius-md);
@@ -879,8 +886,45 @@ input[type="checkbox"] {
   transition: border-color 0.15s ease;
 }
 
+.small-select-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  width: auto;
+  height: 38px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
 .select-display:hover, .date-picker-display:hover, .small-select-display:hover {
   border-color: var(--text-muted);
+}
+
+.select-display svg,
+.date-picker-display svg,
+.small-select-display svg {
+  width: 14px;
+  height: 14px;
+  max-width: 14px;
+  max-height: 14px;
+  flex-shrink: 0;
+}
+
+.select-display svg path,
+.date-picker-display svg path,
+.small-select-display svg path {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .select-dropdown, .date-picker-dropdown, .small-select-dropdown {
