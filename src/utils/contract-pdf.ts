@@ -434,7 +434,7 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   // Bloco de Autenticidade Digital com QR Code
   const token = generateAuthToken('lease', input.leaseId);
   const authCode = formatAuthCode(token);
-  const validationUrl = getValidationUrl('lease', input.leaseId, token, input.baseUrl);
+  const validationUrl = await getValidationUrl('lease', input.leaseId, token, input.baseUrl);
 
   const qrBuffer = await QRCode.toBuffer(validationUrl, {
     errorCorrectionLevel: 'M',

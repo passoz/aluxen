@@ -364,6 +364,22 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(postRes.status).toBe(200);
     const updatedHtml = await postRes.text();
     expect(updatedHtml).toContain('Dados salvos com sucesso.');
+
+    // Atualizar URL pública do sistema
+    const urlForm = new FormData();
+    urlForm.set('intent', 'save-app-url');
+    urlForm.set('app_url', 'https://aluxen.evolucsia.com');
+
+    const urlRes = await server.fetch(
+      new Request('http://localhost:3000/settings', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: urlForm,
+      })
+    );
+    expect(urlRes.status).toBe(200);
+    const urlHtml = await urlRes.text();
+    expect(urlHtml).toContain('URL pública do sistema salva com sucesso.');
   });
 
   it('POST /logout clears session and redirects to /login', async () => {

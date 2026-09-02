@@ -463,10 +463,14 @@ app.get('/settings', async (c) => {
   if (!userId) return c.redirect('/login');
 
   const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  const lanIp = getLocalIpAddress();
+  const currentPort = process.env.PORT || '3000';
   const settingsProps = {
     landlordName: (await getSetting('landlord_name')) || 'Fernando Passos',
     landlordCpf: (await getSetting('landlord_cpf')) || '075.898.017-55',
     landlordEmail: (await getSetting('landlord_email')) || '',
+    appUrl: (await getSetting('app_url')) || '',
+    detectedLanUrl: lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000',
     username: user?.username || '',
   };
 
@@ -483,9 +487,14 @@ app.post('/settings', async (c) => {
   const intent = String(formData['intent'] || '');
 
   const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  const lanIp = getLocalIpAddress();
+  const currentPort = process.env.PORT || '3000';
+  const detectedLanUrl = lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000';
+
   let landlordName = (await getSetting('landlord_name')) || 'Fernando Passos';
   let landlordCpf = (await getSetting('landlord_cpf')) || '075.898.017-55';
   let landlordEmail = (await getSetting('landlord_email')) || '';
+  let appUrl = (await getSetting('app_url')) || '';
 
   try {
     if (intent === 'save-landlord') {
@@ -503,8 +512,22 @@ app.post('/settings', async (c) => {
       const html = renderHtml(
         'Aluxen | Configurações',
         'settings',
-        { landlordName, landlordCpf, landlordEmail, username: user?.username || '', message: 'Dados salvos com sucesso.' },
-        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} message="Dados salvos com sucesso." />
+        { landlordName, landlordCpf, landlordEmail, appUrl, detectedLanUrl, username: user?.username || '', message: 'Dados salvos com sucesso.' },
+        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} appUrl={appUrl} detectedLanUrl={detectedLanUrl} username={user?.username || ''} message="Dados salvos com sucesso." />
+      );
+      return c.html(html);
+    }
+
+    if (intent === 'save-app-url') {
+      const url = String(formData['app_url'] || '').trim();
+      await setSetting('app_url', url);
+      appUrl = url;
+
+      const html = renderHtml(
+        'Aluxen | Configurações',
+        'settings',
+        { landlordName, landlordCpf, landlordEmail, appUrl, detectedLanUrl, username: user?.username || '', message: 'URL pública do sistema salva com sucesso.' },
+        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} appUrl={appUrl} detectedLanUrl={detectedLanUrl} username={user?.username || ''} message="URL pública do sistema salva com sucesso." />
       );
       return c.html(html);
     }
@@ -519,8 +542,8 @@ app.post('/settings', async (c) => {
       const html = renderHtml(
         'Aluxen | Configurações',
         'settings',
-        { landlordName, landlordCpf, landlordEmail, username: user?.username || '', message: 'Senha alterada com sucesso.' },
-        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} message="Senha alterada com sucesso." />
+        { landlordName, landlordCpf, landlordEmail, appUrl, detectedLanUrl, username: user?.username || '', message: 'Senha alterada com sucesso.' },
+        <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} appUrl={appUrl} detectedLanUrl={detectedLanUrl} username={user?.username || ''} message="Senha alterada com sucesso." />
       );
       return c.html(html);
     }
@@ -531,8 +554,8 @@ app.post('/settings', async (c) => {
     const html = renderHtml(
       'Aluxen | Configurações',
       'settings',
-      { landlordName, landlordCpf, landlordEmail, username: user?.username || '', error: errorMsg },
-      <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} username={user?.username || ''} error={errorMsg} />
+      { landlordName, landlordCpf, landlordEmail, appUrl, detectedLanUrl, username: user?.username || '', error: errorMsg },
+      <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} appUrl={appUrl} detectedLanUrl={detectedLanUrl} username={user?.username || ''} error={errorMsg} />
     );
     return c.html(html, 400);
   }
@@ -711,7 +734,7 @@ app.get('/pdf', async (c) => {
     paidAt: receipt.paid_at,
     amount: receipt.amount,
     signature: showSignature,
-    baseUrl: resolvePublicBaseUrl(c),
+    baseUrl: await resolvePublicBaseUrl(c),
   });
   return new Response(pdfBytes as BodyInit, {
     headers: {
@@ -775,7 +798,7 @@ app.get('/contract-pdf', async (c) => {
     endDate: lease.end_date,
     dueDay: lease.due_day,
     rentAmount: lease.rent_amount,
-    baseUrl: resolvePublicBaseUrl(c),
+    baseUrl: await resolvePublicBaseUrl(c),
   });
   return new Response(pdfBytes as BodyInit, {
     headers: {

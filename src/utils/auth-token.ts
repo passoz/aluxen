@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import os from 'node:os';
+import { getSetting } from '../db';
 
 const SECRET = process.env.SESSION_SECRET || 'aluxen-authenticity-secret-key-2026';
 export const DEFAULT_PRODUCTION_URL = 'https://aluxen.evolucsia.com';
@@ -25,17 +26,25 @@ export function getLocalIpAddress(): string | null {
   return null;
 }
 
-export function resolvePublicBaseUrl(c?: { req: { header: (name: string) => string | undefined; url: string } }): string {
-  // 1. Variável de ambiente explícita tem prioridade máxima
+export async function resolvePublicBaseUrl(c?: { req: { header: (name: string) => string | undefined; url: string } }): Promise<string> {
+  // 1. Configuração salva no banco de dados (página de Configurações)
+  try {
+    const dbSetting = await getSetting('app_url');
+    if (dbSetting && dbSetting.trim()) {
+      return dbSetting.trim().replace(/\/$/, '');
+    }
+  } catch {}
+
+  // 2. Variável de ambiente explícita
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
 
-  // 2. Em produção, o padrão absoluto é aluxen.evolucsia.com
+  // 3. Em produção, o padrão absoluto é aluxen.evolucsia.com
   if (process.env.NODE_ENV === 'production') {
     return DEFAULT_PRODUCTION_URL;
   }
 
-  // 3. Se vier requisição através de domínio público (Proxy reverso / Host real)
+  // 4. Se vier requisição através de domínio público (Proxy reverso / Host real)
   if (c) {
     const forwardedHost = c.req.header('x-forwarded-host');
     const host = forwardedHost || c.req.header('host');
@@ -45,7 +54,7 @@ export function resolvePublicBaseUrl(c?: { req: { header: (name: string) => stri
     }
   }
 
-  // 4. Em desenvolvimento local: usa o IP da rede Wi-Fi/LAN (ex: http://192.168.10.115:3000)
+  // 5. Em desenvolvimento local: usa o IP da rede Wi-Fi/LAN (ex: http://192.168.10.115:3000)
   // para que qualquer celular na mesma rede consiga escanear o QR Code e abrir na hora!
   const lanIp = getLocalIpAddress();
   const port = process.env.PORT || '3000';
@@ -72,8 +81,8 @@ export function formatAuthCode(token: string): string {
   return `AUTH-${part1}-${part2}-${part3}-${part4}`;
 }
 
-export function getValidationUrl(type: 'receipt' | 'lease', id: string, token: string, baseUrl?: string): string {
-  const base = baseUrl || resolvePublicBaseUrl();
+export async function getValidationUrl(type: 'receipt' | 'lease', id: string, token: string, baseUrl?: string): Promise<string> {
+  const base = baseUrl || (await resolvePublicBaseUrl());
   const path = type === 'receipt' ? 'recibo' : 'contrato';
   return `${base.replace(/\/$/, '')}/validar/${path}/${id}?token=${token}`;
 }

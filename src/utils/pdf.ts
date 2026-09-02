@@ -289,7 +289,7 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   // Bloco de Autenticidade Digital com QR Code
   const token = generateAuthToken('receipt', input.receiptId);
   const authCode = formatAuthCode(token);
-  const validationUrl = getValidationUrl('receipt', input.receiptId, token, input.baseUrl);
+  const validationUrl = await getValidationUrl('receipt', input.receiptId, token, input.baseUrl);
 
   const qrBuffer = await QRCode.toBuffer(validationUrl, {
     errorCorrectionLevel: 'M',
