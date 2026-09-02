@@ -14,7 +14,7 @@ import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr } from '
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
-import { verifyAuthToken, formatAuthCode } from './utils/auth-token';
+import { verifyAuthToken, formatAuthCode, resolvePublicBaseUrl, getLocalIpAddress } from './utils/auth-token';
 
 import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
@@ -711,7 +711,7 @@ app.get('/pdf', async (c) => {
     paidAt: receipt.paid_at,
     amount: receipt.amount,
     signature: showSignature,
-    baseUrl: new URL(c.req.url).origin,
+    baseUrl: resolvePublicBaseUrl(c),
   });
   return new Response(pdfBytes as BodyInit, {
     headers: {
@@ -775,7 +775,7 @@ app.get('/contract-pdf', async (c) => {
     endDate: lease.end_date,
     dueDay: lease.due_day,
     rentAmount: lease.rent_amount,
-    baseUrl: new URL(c.req.url).origin,
+    baseUrl: resolvePublicBaseUrl(c),
   });
   return new Response(pdfBytes as BodyInit, {
     headers: {
@@ -947,8 +947,11 @@ app.get('/validar/contrato/:id', async (c) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-console.log(`🚀 Aluxen rodando em http://localhost:${port}`);
-
+const lanIp = getLocalIpAddress();
+console.log(`🚀 Aluxen rodando localmente em http://localhost:${port}`);
+if (lanIp) {
+  console.log(`📱 Acesso pelo celular (mesmo Wi-Fi): http://${lanIp}:${port}`);
+}
 export default {
   port,
   fetch: app.fetch,
