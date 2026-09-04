@@ -1,4 +1,4 @@
-CREATE TABLE `leases` (
+CREATE TABLE IF NOT EXISTS `leases` (
 	`id` text PRIMARY KEY NOT NULL,
 	`tenant_id` text NOT NULL,
 	`property_id` text NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE `leases` (
 	FOREIGN KEY (`property_id`) REFERENCES `properties`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `properties` (
+CREATE TABLE IF NOT EXISTS `properties` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`address` text NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE `properties` (
 	`updated_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `receipts` (
+CREATE TABLE IF NOT EXISTS `receipts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`lease_id` text NOT NULL,
 	`due_date` text NOT NULL,
@@ -37,12 +37,12 @@ CREATE TABLE `receipts` (
 	FOREIGN KEY (`lease_id`) REFERENCES `leases`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `settings` (
+CREATE TABLE IF NOT EXISTS `settings` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `tenants` (
+CREATE TABLE IF NOT EXISTS `tenants` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`email` text NOT NULL,
@@ -52,11 +52,11 @@ CREATE TABLE `tenants` (
 	`updated_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`username` text NOT NULL,
 	`password_hash` text NOT NULL,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `users_username_unique` ON `users` (`username`);
+CREATE UNIQUE INDEX IF NOT EXISTS `users_username_unique` ON `users` (`username`);

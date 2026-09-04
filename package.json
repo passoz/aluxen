@@ -11,7 +11,7 @@
     "whatsapp:login": "bun run src/whatsapp/login.ts",
     "db:seed": "bun run src/db/seed-demo.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "bun run src/db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit"

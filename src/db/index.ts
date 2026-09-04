@@ -6,6 +6,7 @@ import path from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import * as schema from './schema';
 import { createId } from '../utils/id';
+import { runMigrations } from './migrate';
 
 declare global {
   var __aluxenSqlite: Database | undefined;
@@ -44,75 +45,16 @@ export const db = drizzle(sqlite, { schema });
 export async function initializeDatabase(): Promise<void> {
   if (!global.__aluxenDbInit) {
     global.__aluxenDbInit = (async () => {
+      // 1. Executa migrações Drizzle garantindo que tabelas e colunas estejam na versão mais recente
+      runMigrations();
+
       const client = getSqlite();
 
-      client.run(`
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          password_hash TEXT NOT NULL,
-          created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `);
-
-      client.run(`
-        CREATE TABLE IF NOT EXISTS tenants (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          email TEXT NOT NULL,
-          phone TEXT,
-          cpf TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `);
-
-      client.run(`
-        CREATE TABLE IF NOT EXISTS properties (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          address TEXT NOT NULL,
-          city TEXT NOT NULL,
-          state TEXT NOT NULL,
-          zip TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `);
-
-      client.run(`
-        CREATE TABLE IF NOT EXISTS leases (
-          id TEXT PRIMARY KEY,
-          tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-          property_id TEXT NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
-          start_date TEXT NOT NULL,
-          end_date TEXT NOT NULL,
-          due_day INTEGER NOT NULL DEFAULT 1,
-          rent_amount REAL NOT NULL,
-          status TEXT NOT NULL DEFAULT 'active',
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `);
-
-      client.run(`
-        CREATE TABLE IF NOT EXISTS receipts (
-          id TEXT PRIMARY KEY,
-          lease_id TEXT NOT NULL REFERENCES leases(id) ON DELETE CASCADE,
-          due_date TEXT NOT NULL,
-          paid_at TEXT,
-          amount REAL NOT NULL,
-          pdf_path TEXT,
-          generated_key TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT
-        )
-      `);
-
+      // 2. Garantias adicionais de compatibilidade e idempotência
       client.run('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
       client.run('CREATE UNIQUE INDEX IF NOT EXISTS receipts_generated_key_idx ON receipts(generated_key)');
 
-      // Migrações incrementais de colunas caso antigo
+      // Migrações incrementais de colunas caso venham de schemas anteriores
       try { client.run('ALTER TABLE leases ADD COLUMN due_day INTEGER NOT NULL DEFAULT 1'); } catch {}
       try { client.run('ALTER TABLE tenants ADD COLUMN cpf TEXT'); } catch {}
       try { client.run("ALTER TABLE leases ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); } catch {}

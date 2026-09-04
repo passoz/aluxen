@@ -1,0 +1,12 @@
+node_modules
+.git
+.cache
+tmp
+*.log
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+.whatsapp-profile
+.profile
+data
