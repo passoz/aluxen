@@ -8,6 +8,9 @@ services:
     volumes:
       - aluxen-data:/data
     environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
       - DB_DIR=/data
       - SESSION_SECRET=${SESSION_SECRET:-production-secret-change-me}
       - SEED_USERNAME=${SEED_USERNAME:-passoz}

@@ -1,14 +1,19 @@
-FROM node:20-alpine
+FROM oven/bun:1.4-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci
+# Install dependencies
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
 
+# Copy project source and build client bundle
 COPY . .
-
-RUN npm run build
+RUN bun run build
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+
+CMD ["bun", "src/index.tsx"]

@@ -1,8 +1,35 @@
-node_modules/
-build/
-public/receipts/
-public/contracts/
-data/
+# dependencies (bun install)
+node_modules
+
+# output & builds
+out
+dist
+*.tgz
+
+# logs
+logs
+*.log
+
+# environment
 .env
+.env.*
+!.env.example
+
+# caches & typescript
+.cache
 *.tsbuildinfo
-bin/
+# WhatsApp profile sessions
+.whatsapp-profile/
+.profile/
+
+# SQLite database files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+data/
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode
