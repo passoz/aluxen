@@ -362,18 +362,18 @@ export function SmallSelect({ value, onChange, children }: { value: string; onCh
   );
 }
 
-function getPopoverPlacement(triggerRect: DOMRect, popoverHeight: number): { dropup: boolean; maxHeight: number } {
+function getPopoverPlacement(triggerRect: DOMRect, popoverHeight: number): { dropup: boolean; maxHeight: number; alignRight: boolean } {
   const margin = 16;
   const spaceAbove = Math.max(0, triggerRect.top - margin);
   const spaceBelow = Math.max(0, window.innerHeight - triggerRect.bottom - margin);
   const fitsBelow = spaceBelow >= popoverHeight;
   const fitsAbove = spaceAbove >= popoverHeight;
 
-  if (fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove)) {
-    return { dropup: false, maxHeight: spaceBelow };
-  }
+  const dropup = fitsBelow ? false : fitsAbove ? true : spaceAbove > spaceBelow;
+  const maxHeight = dropup ? spaceAbove : spaceBelow;
+  const alignRight = triggerRect.left + 290 > (typeof window !== 'undefined' ? window.innerWidth : 1000) && triggerRect.right >= 280;
 
-  return { dropup: true, maxHeight: spaceAbove };
+  return { dropup, maxHeight, alignRight };
 }
 
 export function DatePickerInput({
@@ -382,6 +382,7 @@ export function DatePickerInput({
   value,
   onChange,
   label,
+  required,
 }: {
   id: string;
   name: string;
@@ -396,7 +397,14 @@ export function DatePickerInput({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [dropup, setDropup] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(320);
+  const [alignRight, setAlignRight] = useState(false);
+  const [maxDropdownHeight, setMaxDropdownHeight] = useState(340);
+
+  useEffect(() => {
+    if (value) {
+      setViewDate(parseLocalDate(value));
+    }
+  }, [value]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -414,7 +422,8 @@ export function DatePickerInput({
       const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
       const placement = getPopoverPlacement(rect, dropdownHeight + 8);
       setDropup(placement.dropup);
-      setMaxDropdownHeight(Math.max(120, placement.maxHeight));
+      setAlignRight(placement.alignRight);
+      setMaxDropdownHeight(Math.max(160, placement.maxHeight));
     }
   }, [isOpen]);
 
@@ -425,6 +434,11 @@ export function DatePickerInput({
 
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDay }, (_, i) => i);
+
+  const currentYear = new Date().getFullYear();
+  const startYear = Math.min(year, currentYear - 30);
+  const endYear = Math.max(year, currentYear + 20);
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
 
   const selectDate = (day: number) => {
     const newDate = new Date(year, month, day);
@@ -457,17 +471,52 @@ export function DatePickerInput({
           </svg>
         </button>
         {isOpen && (
-          <div ref={dropdownRef} className={`date-picker-dropdown ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
+          <div
+            ref={dropdownRef}
+            className={`date-picker-dropdown ${dropup ? 'dropup' : ''} ${alignRight ? 'align-right' : ''}`}
+            style={{ maxHeight: `${maxDropdownHeight}px` }}
+          >
             <div className="date-picker-header">
-              <button type="button" onClick={prevMonth}>
+              <button type="button" className="date-picker-nav" onClick={prevMonth} title="Mês anterior" aria-label="Mês anterior">
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M15 18L9 12L15 6" />
                 </svg>
               </button>
-              <span>
-                {monthNames[month]} {year}
-              </span>
-              <button type="button" onClick={nextMonth}>
+              <div className="date-picker-selectors">
+                <select
+                  className="date-picker-select"
+                  value={month}
+                  onChange={(e) => {
+                    const newMonth = parseInt(e.target.value, 10);
+                    setViewDate(new Date(year, newMonth, 1));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Selecionar mês"
+                >
+                  {monthNames.map((name, index) => (
+                    <option key={name} value={index}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="date-picker-select date-picker-select-year"
+                  value={year}
+                  onChange={(e) => {
+                    const newYear = parseInt(e.target.value, 10);
+                    setViewDate(new Date(newYear, month, 1));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Selecionar ano"
+                >
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" className="date-picker-nav" onClick={nextMonth} title="Próximo mês" aria-label="Próximo mês">
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M9 18L15 12L9 6" />
                 </svg>
@@ -489,6 +538,31 @@ export function DatePickerInput({
                 );
               })}
             </div>
+            <div className="date-picker-footer">
+              <button
+                type="button"
+                className="btn-text-sm"
+                onClick={() => {
+                  const today = new Date();
+                  setViewDate(today);
+                  selectDate(today.getDate());
+                }}
+              >
+                Hoje
+              </button>
+              {!required && value ? (
+                <button
+                  type="button"
+                  className="btn-text-sm text-muted"
+                  onClick={() => {
+                    onChange('');
+                    setIsOpen(false);
+                  }}
+                >
+                  Limpar
+                </button>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
@@ -502,12 +576,14 @@ export function DateTimePickerInput({
   value,
   onChange,
   label,
+  required,
 }: {
   id: string;
   name: string;
   value: string;
   onChange: (value: string) => void;
   label: string;
+  required?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => (value ? parseLocalDateTime(value) : new Date()));
@@ -516,7 +592,14 @@ export function DateTimePickerInput({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [dropup, setDropup] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(360);
+  const [alignRight, setAlignRight] = useState(false);
+  const [maxDropdownHeight, setMaxDropdownHeight] = useState(380);
+
+  useEffect(() => {
+    if (value) {
+      setViewDate(parseLocalDateTime(value));
+    }
+  }, [value]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -535,7 +618,8 @@ export function DateTimePickerInput({
       const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
       const placement = getPopoverPlacement(rect, dropdownHeight + 8);
       setDropup(placement.dropup);
-      setMaxDropdownHeight(Math.max(140, placement.maxHeight));
+      setAlignRight(placement.alignRight);
+      setMaxDropdownHeight(Math.max(160, placement.maxHeight));
     }
   }, [isOpen, showTime]);
 
@@ -550,14 +634,25 @@ export function DateTimePickerInput({
   const minutes = Array.from({ length: 60 }, (_, i) => i);
 
   const currentDate = value ? parseLocalDateTime(value) : new Date();
+  const selectedDay = currentDate.getDate();
   const selectedHour = currentDate.getHours();
   const selectedMinute = currentDate.getMinutes();
 
-  const selectDateTime = (day: number, hour?: number, minute?: number) => {
-    const newDate = new Date(year, month, day, hour ?? selectedHour, minute ?? selectedMinute);
+  const currentYear = new Date().getFullYear();
+  const startYear = Math.min(year, currentYear - 30);
+  const endYear = Math.max(year, currentYear + 20);
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
+
+  const selectDay = (day: number) => {
+    const newDate = new Date(year, month, day, selectedHour, selectedMinute);
     onChange(formatLocalDateTime(newDate));
     setIsOpen(false);
     setShowTime(false);
+  };
+
+  const updateTime = (hour: number, minute: number) => {
+    const newDate = new Date(year, month, selectedDay, hour, minute);
+    onChange(formatLocalDateTime(newDate));
   };
 
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
@@ -583,17 +678,52 @@ export function DateTimePickerInput({
           </svg>
         </button>
         {isOpen && (
-          <div ref={dropdownRef} className={`date-picker-dropdown datetime ${dropup ? 'dropup' : ''}`} style={{ maxHeight: `${maxDropdownHeight}px` }}>
+          <div
+            ref={dropdownRef}
+            className={`date-picker-dropdown datetime ${dropup ? 'dropup' : ''} ${alignRight ? 'align-right' : ''}`}
+            style={{ maxHeight: `${maxDropdownHeight}px` }}
+          >
             <div className="date-picker-header">
-              <button type="button" onClick={prevMonth}>
+              <button type="button" className="date-picker-nav" onClick={prevMonth} title="Mês anterior" aria-label="Mês anterior">
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M15 18L9 12L15 6" />
                 </svg>
               </button>
-              <span>
-                {monthNames[month]} {year}
-              </span>
-              <button type="button" onClick={nextMonth}>
+              <div className="date-picker-selectors">
+                <select
+                  className="date-picker-select"
+                  value={month}
+                  onChange={(e) => {
+                    const newMonth = parseInt(e.target.value, 10);
+                    setViewDate(new Date(year, newMonth, 1));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Selecionar mês"
+                >
+                  {monthNames.map((name, index) => (
+                    <option key={name} value={index}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="date-picker-select date-picker-select-year"
+                  value={year}
+                  onChange={(e) => {
+                    const newYear = parseInt(e.target.value, 10);
+                    setViewDate(new Date(newYear, month, 1));
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Selecionar ano"
+                >
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button type="button" className="date-picker-nav" onClick={nextMonth} title="Próximo mês" aria-label="Próximo mês">
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d="M9 18L15 12L9 6" />
                 </svg>
@@ -609,7 +739,7 @@ export function DateTimePickerInput({
               {days.map((day) => {
                 const isSelected = value && formatLocalDate(new Date(year, month, day)) === value?.split('T')[0];
                 return (
-                  <button key={day} type="button" className={isSelected ? 'selected' : ''} onClick={() => selectDateTime(day)}>
+                  <button key={day} type="button" className={isSelected ? 'selected' : ''} onClick={() => selectDay(day)}>
                     {day}
                   </button>
                 );
@@ -617,7 +747,7 @@ export function DateTimePickerInput({
             </div>
             <div className="time-picker-section">
               <button type="button" className="time-toggle" onClick={() => setShowTime(!showTime)}>
-                <span>Horário</span>
+                <span>Horário: {String(selectedHour).padStart(2, '0')}:{String(selectedMinute).padStart(2, '0')}</span>
                 <svg viewBox="0 0 24 24" fill="none">
                   <path d={showTime ? 'M18 15L12 9L6 15' : 'M6 9L12 15L18 9'} />
                 </svg>
@@ -626,31 +756,59 @@ export function DateTimePickerInput({
                 <div className="time-picker-grid">
                   <select
                     value={selectedHour}
-                    onChange={(e) => selectDateTime(daysInMonth, parseInt(e.target.value, 10), selectedMinute)}
+                    onChange={(e) => updateTime(parseInt(e.target.value, 10), selectedMinute)}
                     className="time-select"
                   >
                     {hours.map((h) => (
                       <option key={h} value={h}>
-                        {h.toString().padStart(2, '0')}
+                        {h.toString().padStart(2, '0')}h
                       </option>
                     ))}
                   </select>
                   <span>:</span>
                   <select
                     value={selectedMinute}
-                    onChange={(e) => selectDateTime(daysInMonth, selectedHour, parseInt(e.target.value, 10))}
+                    onChange={(e) => updateTime(selectedHour, parseInt(e.target.value, 10))}
                     className="time-select"
                   >
                     {minutes
                       .filter((_, i) => i % 5 === 0)
                       .map((m) => (
                         <option key={m} value={m}>
-                          {m.toString().padStart(2, '0')}
+                          {m.toString().padStart(2, '0')}m
                         </option>
                       ))}
                   </select>
                 </div>
               )}
+            </div>
+            <div className="date-picker-footer">
+              <button
+                type="button"
+                className="btn-text-sm"
+                onClick={() => {
+                  const now = new Date();
+                  setViewDate(now);
+                  onChange(formatLocalDateTime(now));
+                  setIsOpen(false);
+                  setShowTime(false);
+                }}
+              >
+                Agora
+              </button>
+              {!required && value ? (
+                <button
+                  type="button"
+                  className="btn-text-sm text-muted"
+                  onClick={() => {
+                    onChange('');
+                    setIsOpen(false);
+                    setShowTime(false);
+                  }}
+                >
+                  Limpar
+                </button>
+              ) : null}
             </div>
           </div>
         )}
