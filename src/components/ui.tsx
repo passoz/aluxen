@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Tab, QueuePayload, SortDirection } from '../types/dashboard';
+import type { LoginState } from '../whatsapp/types';
 import {
   formatMoneyInput,
   normalizeMoneyInput,
@@ -1021,5 +1022,200 @@ export function CustomSelect({
         )}
       </div>
     </div>
+  );
+}
+
+export interface WhatsAppConnectModalProps {
+  open: boolean;
+  onClose: () => void;
+  onSuccess?: () => void;
+}
+
+export function WhatsAppConnectModal({ open, onClose, onSuccess }: WhatsAppConnectModalProps) {
+  const [state, setState] = useState<LoginState>({ status: 'starting', message: 'Iniciando...' });
+  const [cancelling, setCancelling] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let timer: any = null;
+    let active = true;
+
+    const start = async () => {
+      try {
+        const res = await fetch('/api/whatsapp/login/start', { method: 'POST', credentials: 'same-origin' });
+        const data = await res.json();
+        if (active && data.state) {
+          setState(data.state);
+        }
+      } catch {
+        if (active) setState({ status: 'error', error: 'Erro de conexão ao iniciar WhatsApp.' });
+      }
+
+      timer = setInterval(async () => {
+        if (!active) return;
+        try {
+          const res = await fetch('/api/whatsapp/login/status', { credentials: 'same-origin' });
+          const data = await res.json();
+          if (active && data.state) {
+            setState(data.state);
+            if (data.state.status === 'connected') {
+              clearInterval(timer);
+              onSuccess?.();
+            }
+          }
+        } catch {}
+      }, 1800);
+    };
+
+    void start();
+
+    return () => {
+      active = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    try {
+      await fetch('/api/whatsapp/login/cancel', { method: 'POST', credentials: 'same-origin' });
+    } catch {}
+    setCancelling(false);
+    onClose();
+  };
+
+  return (
+    <Modal title="Conectar WhatsApp ao Aluxen" onClose={handleCancel}>
+      <div className="stack" style={{ textAlign: 'center', padding: '0.5rem 0' }}>
+        {state.status === 'starting' && (
+          <div style={{ padding: '2rem 1rem' }}>
+            <div className="loading-spinner" style={{ margin: '0 auto 1rem' }} />
+            <p style={{ fontWeight: 600, fontSize: '1rem' }}>Iniciando WhatsApp Web...</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+              Carregando o navegador e gerando o QR Code seguro.
+            </p>
+          </div>
+        )}
+
+        {state.status === 'scan_qr' && state.qrCode && (
+          <div className="stack" style={{ alignItems: 'center' }}>
+            <div
+              style={{
+                background: 'var(--surface-subtle)',
+                padding: '0.75rem 1rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.85rem',
+                textAlign: 'left',
+                width: '100%',
+                maxWidth: 380,
+                lineHeight: 1.5,
+              }}
+            >
+              <strong>Como conectar:</strong>
+              <ol style={{ margin: '0.375rem 0 0', paddingLeft: '1.25rem' }}>
+                <li>Abra o <strong>WhatsApp</strong> no seu celular</li>
+                <li>Toque em <strong>Configurações</strong> ou Menu <strong>(⋮)</strong></li>
+                <li>Selecione <strong>Aparelhos conectados</strong></li>
+                <li>Toque em <strong>Conectar um aparelho</strong> e aponte para a tela</li>
+              </ol>
+            </div>
+
+            <div
+              style={{
+                background: '#ffffff',
+                padding: '1rem',
+                borderRadius: 'var(--radius-lg)',
+                border: '2px solid var(--border)',
+                display: 'inline-block',
+                boxShadow: 'var(--shadow-md)',
+                margin: '0.75rem auto',
+              }}
+            >
+              <img
+                src={state.qrCode}
+                alt="QR Code do WhatsApp"
+                style={{ width: 240, height: 240, display: 'block' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)', fontWeight: 500, fontSize: '0.875rem' }}>
+              <div className="loading-spinner" style={{ width: 14, height: 14 }} />
+              <span>Aguardando leitura do QR Code pelo celular...</span>
+            </div>
+          </div>
+        )}
+
+        {state.status === 'syncing' && (
+          <div style={{ padding: '2rem 1rem' }}>
+            <div className="loading-spinner" style={{ margin: '0 auto 1rem' }} />
+            <p style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--primary)' }}>
+              QR Code lido com sucesso!
+            </p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
+              Sincronizando conversas e gravando chaves de autenticação...
+            </p>
+          </div>
+        )}
+
+        {state.status === 'connected' && (
+          <div style={{ padding: '2rem 1rem' }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: 'var(--primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1rem',
+                fontSize: '1.75rem',
+              }}
+            >
+              ✓
+            </div>
+            <h3 style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>WhatsApp Conectado!</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', maxWidth: 360, margin: '0 auto 1.5rem' }}>
+              O robô do Aluxen está autenticado e pronto para disparar recibos e contratos de forma automática.
+            </p>
+            <button type="button" className="btn btn-primary" onClick={onClose} style={{ minWidth: 140 }}>
+              Concluir
+            </button>
+          </div>
+        )}
+
+        {state.status === 'error' && (
+          <div style={{ padding: '1.5rem 1rem' }}>
+            <div className="error" style={{ textAlign: 'left', marginBottom: '1rem' }}>
+              {state.error || 'Ocorreu um erro durante a conexão com o WhatsApp.'}
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setState({ status: 'starting', message: 'Tentando novamente...' });
+                void fetch('/api/whatsapp/login/start', { method: 'POST', credentials: 'same-origin' })
+                  .then((res) => res.json())
+                  .then((d) => d.state && setState(d.state));
+              }}
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {state.status !== 'connected' && (
+          <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '0.75rem', display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn btn-outline" onClick={handleCancel} disabled={cancelling}>
+              {cancelling ? 'Cancelando...' : 'Cancelar'}
+            </button>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }

@@ -20,7 +20,9 @@ import {
   SmallSelect,
   Pagination,
   LoadingRow,
+  WhatsAppConnectModal,
 } from '../components/ui';
+import type { WhatsAppStatus } from '../whatsapp/types';
 import {
   IconTenants,
   IconProperties,
@@ -182,8 +184,23 @@ export function DashboardPage(initialData: DashboardProps) {
     error?: string;
     success?: string;
   } | null>(null);
+  const [connectWhatsappOpen, setConnectWhatsappOpen] = useState(false);
+  const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
+
+  const loadWhatsAppStatus = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/whatsapp/status', { credentials: 'same-origin' });
+      const data = (await res.json()) as WhatsAppStatus;
+      setWhatsappStatus(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void loadWhatsAppStatus();
+  }, [loadWhatsAppStatus]);
 
   const openWhatsAppModal = async (type: 'receipt' | 'lease', id: string) => {
+    void loadWhatsAppStatus();
     setWhatsappModal({
       open: true,
       loading: true,
@@ -260,6 +277,10 @@ export function DashboardPage(initialData: DashboardProps) {
 
   const sendAutomatedWhatsApp = async () => {
     if (!whatsappModal) return;
+    if (whatsappStatus && !whatsappStatus.isLoggedIn) {
+      setConnectWhatsappOpen(true);
+      return;
+    }
     setWhatsappModal((prev) => (prev ? { ...prev, sending: true, error: undefined, success: undefined } : null));
 
     try {
@@ -279,9 +300,17 @@ export function DashboardPage(initialData: DashboardProps) {
           prev ? { ...prev, sending: false, success: 'Mensagem enviada com sucesso pelo robô!' } : null
         );
       } else {
+        const isLoginErr =
+          data.error?.includes('expirada') ||
+          data.error?.includes('autenticado') ||
+          data.error?.includes('Nenhum') ||
+          data.error?.includes('encontrado');
         setWhatsappModal((prev) =>
           prev ? { ...prev, sending: false, error: data.error || 'Falha ao enviar mensagem.' } : null
         );
+        if (isLoginErr) {
+          setConnectWhatsappOpen(true);
+        }
       }
     } catch {
       setWhatsappModal((prev) =>
@@ -2211,6 +2240,44 @@ export function DashboardPage(initialData: DashboardProps) {
                       </div>
                     </div>
 
+                    {whatsappStatus ? (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.625rem 0.875rem',
+                          borderRadius: 'var(--radius-md)',
+                          background: whatsappStatus.isLoggedIn
+                            ? 'rgba(16, 185, 129, 0.08)'
+                            : 'rgba(239, 68, 68, 0.08)',
+                          border: `1px solid ${whatsappStatus.isLoggedIn ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`,
+                          fontSize: '0.8125rem',
+                          gap: '0.5rem',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.875rem' }}>{whatsappStatus.isLoggedIn ? '🟢' : '🔴'}</span>
+                          <span>
+                            {whatsappStatus.isLoggedIn
+                              ? 'Robô conectado e pronto para envio automático.'
+                              : 'Robô do WhatsApp desconectado.'}
+                          </span>
+                        </div>
+                        {!whatsappStatus.isLoggedIn && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline"
+                            onClick={() => setConnectWhatsappOpen(true)}
+                            style={{ padding: '0.25rem 0.625rem', fontSize: '0.75rem' }}
+                          >
+                            Conectar WhatsApp (QR Code)
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+
                     <div className="form-group">
                       <label htmlFor="whatsapp-phone">Número de WhatsApp (com DDD)</label>
                       <input
@@ -2303,6 +2370,14 @@ export function DashboardPage(initialData: DashboardProps) {
               </div>
             </Modal>
           ) : null}
+
+          <WhatsAppConnectModal
+            open={connectWhatsappOpen}
+            onClose={() => setConnectWhatsappOpen(false)}
+            onSuccess={() => {
+              void loadWhatsAppStatus();
+            }}
+          />
         </div>
       </main>
     </div>

@@ -7,6 +7,9 @@ export function resolveProfileDir(): string {
   if (process.env.WHATSAPP_PROFILE_DIR) {
     return resolve(process.env.WHATSAPP_PROFILE_DIR);
   }
+  if (process.env.DB_DIR) {
+    return resolve(process.env.DB_DIR, '.whatsapp-profile');
+  }
   const siblingProfile = resolve(process.cwd(), '../whatsapp/.profile');
   if (existsSync(siblingProfile)) {
     return siblingProfile;
@@ -23,6 +26,15 @@ export class SessionExpiredError extends Error {
   constructor(message = 'WhatsApp Web não autenticado ou sessão expirada.') {
     super(message);
     this.name = 'SessionExpiredError';
+  }
+}
+
+export function isChromiumAvailable(): boolean {
+  try {
+    findBrowserBinary();
+    return true;
+  } catch {
+    return false;
   }
 }
 

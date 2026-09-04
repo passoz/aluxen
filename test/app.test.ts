@@ -486,4 +486,40 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     const invalidHtml = await invalidRes.text();
     expect(invalidHtml).toContain('DOCUMENTO NÃO AUTENTICADO');
   });
+
+  it('GET /api/whatsapp/login/status and POST /api/whatsapp/login/cancel lifecycle', async () => {
+    const statusRes = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/login/status', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(statusRes.status).toBe(200);
+    const statusData = (await statusRes.json()) as { ok: boolean; state: { status: string } };
+    expect(statusData.ok).toBe(true);
+    expect(['idle', 'starting', 'scan_qr', 'error']).toContain(statusData.state.status);
+
+    const cancelRes = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/login/cancel', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(cancelRes.status).toBe(200);
+    const cancelData = (await cancelRes.json()) as { ok: boolean; state: { status: string } };
+    expect(cancelData.ok).toBe(true);
+    expect(cancelData.state.status).toBe('idle');
+  });
+
+  it('POST /api/whatsapp/logout resets profile and returns ok', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/logout', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean; message: string };
+    expect(data.ok).toBe(true);
+    expect(data.message).toContain('desconectado');
+  });
 });

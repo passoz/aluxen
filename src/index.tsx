@@ -22,6 +22,7 @@ import {
   buildContractWhatsAppMessage,
   sendWhatsAppMessageHeadless,
   checkWhatsAppSessionStatus,
+  whatsappLoginManager,
 } from './whatsapp/service';
 import { resolveProfileDir } from './whatsapp/browser';
 
@@ -989,6 +990,38 @@ app.get('/api/whatsapp/status', async (c) => {
   const profileDir = resolveProfileDir();
   const status = await checkWhatsAppSessionStatus();
   return c.json({ ...status, profileDir });
+});
+
+app.post('/api/whatsapp/login/start', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const state = await whatsappLoginManager.startLogin();
+  return c.json({ ok: true, state });
+});
+
+app.get('/api/whatsapp/login/status', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const state = whatsappLoginManager.getState();
+  return c.json({ ok: true, state });
+});
+
+app.post('/api/whatsapp/login/cancel', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  await whatsappLoginManager.cancelLogin();
+  return c.json({ ok: true, state: whatsappLoginManager.getState() });
+});
+
+app.post('/api/whatsapp/logout', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  await whatsappLoginManager.logout();
+  return c.json({ ok: true, message: 'WhatsApp desconectado com sucesso.' });
 });
 
 app.post('/api/whatsapp/preview', async (c) => {

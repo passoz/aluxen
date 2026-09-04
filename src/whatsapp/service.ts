@@ -1,7 +1,8 @@
-import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError } from './browser';
+import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError, isChromiumAvailable } from './browser';
 import type { SendResult, WhatsAppStatus } from './types';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+export { whatsappLoginManager } from './login-manager';
 
 export function formatWhatsAppNumber(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -92,13 +93,14 @@ export async function checkWhatsAppSessionStatus(deep = false): Promise<WhatsApp
   const profileDir = resolveProfileDir();
   const hasProfileDir = existsSync(profileDir);
   const hasDefaultDir = existsSync(path.join(profileDir, 'Default'));
+  const chromiumAvailable = isChromiumAvailable();
 
   if (!hasProfileDir || !hasDefaultDir) {
-    return { isLoggedIn: false, hasQRCode: false };
+    return { isLoggedIn: false, hasQRCode: false, chromiumAvailable, profileDir };
   }
 
   if (!deep) {
-    return { isLoggedIn: true, hasQRCode: false };
+    return { isLoggedIn: true, hasQRCode: false, chromiumAvailable, profileDir };
   }
 
   let browser;
@@ -106,7 +108,7 @@ export async function checkWhatsAppSessionStatus(deep = false): Promise<WhatsApp
     browser = await launchBrowser({ headless: true });
     await openWhatsApp(browser, { headless: true, silent: true });
     await browser.close();
-    return { isLoggedIn: true, hasQRCode: false };
+    return { isLoggedIn: true, hasQRCode: false, chromiumAvailable, profileDir };
   } catch (err) {
     if (browser) {
       try {
@@ -114,9 +116,9 @@ export async function checkWhatsAppSessionStatus(deep = false): Promise<WhatsApp
       } catch {}
     }
     if (err instanceof SessionExpiredError) {
-      return { isLoggedIn: false, hasQRCode: true };
+      return { isLoggedIn: false, hasQRCode: true, chromiumAvailable, profileDir };
     }
-    return { isLoggedIn: false, hasQRCode: false };
+    return { isLoggedIn: false, hasQRCode: false, chromiumAvailable, profileDir };
   }
 }
 
