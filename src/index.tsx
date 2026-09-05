@@ -697,14 +697,20 @@ app.post('/import', async (c) => {
 
 // Emissão de Recibo em PDF
 app.get('/pdf', async (c) => {
-  const userId = requireUserId(c);
-  if (!userId) return c.redirect('/login');
-
   const id = c.req.query('id');
+  const token = c.req.query('token');
   const showSignature = c.req.query('assinatura') !== 'false';
 
   if (!id) {
     return c.text('ID inválido', 400);
+  }
+
+  const userId = getUserId(c);
+  const isTokenValid = token ? verifyAuthToken('receipt', id, token) : false;
+
+  // Permite acesso se o usuário estiver logado (administrador) OU se possuir token de autenticação válido (inquilino)
+  if (!userId && !isTokenValid) {
+    return c.redirect('/login');
   }
 
   const receipt = await queryOne<{
@@ -756,12 +762,19 @@ app.get('/pdf', async (c) => {
 
 // Emissão de Contrato de Locação em PDF
 app.get('/contract-pdf', async (c) => {
-  const userId = requireUserId(c);
-  if (!userId) return c.redirect('/login');
-
   const id = c.req.query('id');
+  const token = c.req.query('token');
+
   if (!id) {
     return c.text('ID inválido', 400);
+  }
+
+  const userId = getUserId(c);
+  const isTokenValid = token ? verifyAuthToken('lease', id, token) : false;
+
+  // Permite acesso se o usuário estiver logado (administrador) OU se possuir token de autenticação válido (inquilino)
+  if (!userId && !isTokenValid) {
+    return c.redirect('/login');
   }
 
   const lease = await queryOne<{
@@ -881,6 +894,7 @@ app.get('/validar/recibo/:id', async (c) => {
       valid={true}
       type="receipt"
       id={receipt.id}
+      token={token}
       authCode={formatAuthCode(token)}
       tenantName={receipt.tenant_name}
       tenantCpf={receipt.tenant_cpf || undefined}
@@ -961,6 +975,7 @@ app.get('/validar/contrato/:id', async (c) => {
       valid={true}
       type="lease"
       id={lease.id}
+      token={token}
       authCode={formatAuthCode(token)}
       tenantName={lease.tenant_name}
       tenantCpf={lease.tenant_cpf || undefined}
@@ -1071,7 +1086,7 @@ app.post('/api/whatsapp/preview', async (c) => {
     const phone = receipt.tenant_phone || '';
     const token = generateAuthToken('receipt', receipt.id);
     const validationUrl = await getValidationUrl('receipt', receipt.id, token, baseUrl);
-    const pdfUrl = `${baseUrl}/pdf?id=${receipt.id}`;
+    const pdfUrl = `${baseUrl}/pdf?id=${receipt.id}&token=${token}`;
     const fullPropertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state]
       .filter(Boolean)
       .join(', ');
@@ -1136,7 +1151,7 @@ app.post('/api/whatsapp/preview', async (c) => {
   const phone = lease.tenant_phone || '';
   const token = generateAuthToken('lease', lease.id);
   const validationUrl = await getValidationUrl('lease', lease.id, token, baseUrl);
-  const pdfUrl = `${baseUrl}/contract-pdf?id=${lease.id}`;
+  const pdfUrl = `${baseUrl}/contract-pdf?id=${lease.id}&token=${token}`;
   const fullPropertyAddress = [lease.property_address, lease.property_city, lease.property_state]
     .filter(Boolean)
     .join(', ');

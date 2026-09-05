@@ -487,6 +487,28 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(invalidHtml).toContain('DOCUMENTO NÃO AUTENTICADO');
   });
 
+  it('GET /pdf and GET /contract-pdf allow public access with valid token without login', async () => {
+    // 1. Acesso sem login e sem token redireciona para /login
+    const unauthReceipt = await server.fetch(new Request(`http://localhost:3000/pdf?id=${createdReceiptId}`));
+    expect(unauthReceipt.status).toBe(302);
+    expect(unauthReceipt.headers.get('location')).toBe('/login');
+
+    const unauthContract = await server.fetch(new Request(`http://localhost:3000/contract-pdf?id=${createdLeaseId}`));
+    expect(unauthContract.status).toBe(302);
+    expect(unauthContract.headers.get('location')).toBe('/login');
+
+    // 2. Acesso sem login mas COM token válido retorna 200 PDF para o inquilino
+    const receiptToken = generateAuthToken('receipt', createdReceiptId);
+    const publicReceiptRes = await server.fetch(new Request(`http://localhost:3000/pdf?id=${createdReceiptId}&token=${receiptToken}`));
+    expect(publicReceiptRes.status).toBe(200);
+    expect(publicReceiptRes.headers.get('content-type')).toBe('application/pdf');
+
+    const leaseToken = generateAuthToken('lease', createdLeaseId);
+    const publicContractRes = await server.fetch(new Request(`http://localhost:3000/contract-pdf?id=${createdLeaseId}&token=${leaseToken}`));
+    expect(publicContractRes.status).toBe(200);
+    expect(publicContractRes.headers.get('content-type')).toBe('application/pdf');
+  });
+
   it('GET /api/whatsapp/login/status and POST /api/whatsapp/login/cancel lifecycle', async () => {
     const statusRes = await server.fetch(
       new Request('http://localhost:3000/api/whatsapp/login/status', {

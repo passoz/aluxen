@@ -6,6 +6,7 @@ export interface VerificationData {
   valid: boolean;
   type?: VerifyDocType;
   id?: string;
+  token?: string;
   authCode?: string;
   tenantName?: string;
   tenantCpf?: string;
@@ -154,6 +155,36 @@ export function VerificationPage(props: VerificationData) {
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
               Consulta realizada em <strong>{props.verifiedAt}</strong>.
             </div>
+
+            {props.id && props.token ? (
+              <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+                <a
+                  href={isReceipt ? `/pdf?id=${props.id}&token=${props.token}` : `/contract-pdf?id=${props.id}&token=${props.token}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-primary"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    padding: '0.75rem 1.5rem',
+                    fontSize: '0.95rem',
+                    width: '100%',
+                    maxWidth: '360px',
+                    textDecoration: 'none',
+                    margin: '0 auto',
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  {isReceipt ? 'Visualizar / Baixar Recibo (PDF)' : 'Visualizar / Baixar Contrato (PDF)'}
+                </a>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div>
