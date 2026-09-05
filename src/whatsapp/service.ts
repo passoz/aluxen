@@ -1,4 +1,4 @@
-import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError, isChromiumAvailable } from './browser';
+import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError, isChromiumAvailable, DESKTOP_USER_AGENT } from './browser';
 import type { SendResult, WhatsAppStatus } from './types';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -130,49 +130,92 @@ export async function sendWhatsAppMessageHeadless(to: string, message: string): 
 
   const browser = await launchBrowser({ headless: true });
   try {
-    const page = await openWhatsApp(browser, { headless: true, silent: false });
+    const pages = await browser.pages();
+    const page = pages[0] || (await browser.newPage());
+    await page.setUserAgent(DESKTOP_USER_AGENT);
 
     const url = `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
     console.log(`[WhatsApp] Navegando para conversa com ${cleanNumber}...`);
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
-    const sendButtonLoaded = await page
-      .waitForSelector(
-        'button span[data-icon="send"], button[aria-label*="Enviar" i], footer [role="textbox"]',
-        { timeout: 35000 }
-      )
-      .catch(() => null);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    if (!sendButtonLoaded) {
-      throw new Error(`Não foi possível carregar a conversa com ${cleanNumber}. Verifique se o número possui WhatsApp.`);
+    // 1. Aguardar o carregamento da conversa e do botão de envio (ou alerta de número inválido)
+    const sendBtnSelector =
+      'button[aria-label="Enviar"], button span[data-icon="wds-ic-send-filled"], button span[data-icon="send"]';
+
+    await page.waitForFunction(
+      (btnSel) => {
+        const dialog = document.querySelector('[role="dialog"]');
+        if (
+          dialog &&
+          ((dialog as HTMLElement).innerText.includes('inválido') ||
+            (dialog as HTMLElement).innerText.includes('invalid'))
+        ) {
+          return true;
+        }
+        const sendBtn = document.querySelector(btnSel)?.closest('button');
+        return sendBtn && !sendBtn.disabled;
+      },
+      { timeout: 45000 },
+      sendBtnSelector
+    );
+
+    // 2. Verificar se o número de telefone é inválido
+    const isInvalid = await page.evaluate(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      return (
+        dialog &&
+        ((dialog as HTMLElement).innerText.includes('inválido') ||
+          (dialog as HTMLElement).innerText.includes('invalid'))
+      );
+    });
+
+    if (isInvalid) {
+      throw new Error(`O número "${to}" não está registrado no WhatsApp ou o formato é inválido.`);
     }
 
-    await Bun.sleep(1500);
+    await Bun.sleep(1000);
 
-    const clicked = await page.evaluate(() => {
-      const sendBtn = document.querySelector(
-        'button span[data-icon="send"], button[aria-label*="Enviar" i]'
-      )?.closest('button');
-
+    // 3. Clicar no botão Enviar real
+    const sent = await page.evaluate((btnSel) => {
+      const sendBtn = document.querySelector(btnSel)?.closest('button');
       if (sendBtn) {
         sendBtn.click();
         return true;
       }
-
-      const input = document.querySelector('footer div[role="textbox"]');
-      if (input) {
-        (input as HTMLElement).focus();
-        return 'pressEnter';
-      }
-
       return false;
-    });
+    }, sendBtnSelector);
 
-    if (clicked === 'pressEnter') {
-      await page.keyboard.press('Enter');
+    if (!sent) {
+      // Fallback: focar no textbox e pressionar Enter
+      const input = await page.$('footer [contenteditable="true"][role="textbox"]');
+      if (input) {
+        await input.focus();
+        await page.keyboard.press('Enter');
+      } else {
+        throw new Error('Não foi possível localizar o botão de envio no WhatsApp Web.');
+      }
     }
 
-    await Bun.sleep(2000);
+    console.log('[WhatsApp] Mensagem disparada. Aguardando transmissão pelo WebSocket...');
+
+    // 4. Aguardar a confirmação de envio (relógio pendente desaparece e vira check)
+    // Dá até 15 segundos para o WhatsApp Web confirmar a transmissão aos servidores
+    for (let i = 0; i < 15; i++) {
+      await Bun.sleep(1000);
+      const isStillPending = await page.evaluate(() => {
+        const pending = document.querySelector('span[data-icon="msg-time"], [aria-label*="Pendente" i]');
+        return !!pending;
+      });
+
+      if (!isStillPending) {
+        console.log(`[WhatsApp] Mensagem transmitida com sucesso aos servidores em ${i + 1}s.`);
+        break;
+      }
+    }
+
+    // Intervalo de segurança extra para flush do socket antes de fechar o navegador
+    await Bun.sleep(3000);
 
     return {
       success: true,
