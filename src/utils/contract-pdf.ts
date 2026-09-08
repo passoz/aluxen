@@ -240,12 +240,17 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   sectionTitle('IDENTIFICAÇÃO DAS PARTES CONTRATANTES');
 
   bodyText('LOCADOR:', { size: 10.5 });
-  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
-  const landlordCpf = (await getSetting('landlord_cpf')) || '075.898.017-55';
+  const landlordName = (await getSetting('landlord_name')) || 'Locador';
+  const landlordCpf = (await getSetting('landlord_cpf')) || '';
+  const landlordAddress = await getSetting('landlord_address');
   bodyLabel('Nome:', landlordName);
   cursorY -= 20;
-  bodyLabel('CPF:', landlordCpf);
-  bodyText('Endereço: Rua Alemanha, nº 132, Bairro Jardim Caiçara, Cabo Frio - RJ, CEP 28910-370');
+  if (landlordCpf) {
+    bodyLabel('CPF:', landlordCpf);
+  }
+  if (landlordAddress) {
+    bodyText(`Endereço: ${landlordAddress}`);
+  }
   cursorY -= 6;
 
   bodyText('LOCATÁRIO:', { size: 10.5 });

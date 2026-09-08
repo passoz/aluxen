@@ -289,14 +289,16 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
 
   const signatureLineWidth = 220;
   const signatureLineX = cardX + (contentWidth - signatureLineWidth) / 2;
-  const signerName = (await getSetting('landlord_name')) || 'Fernando Passos';
-  const signerCpfRaw = (await getSetting('landlord_cpf')) || '075.898.017-55';
-  const signerCpf = `CPF ${signerCpfRaw}`;
+  const signerName = (await getSetting('landlord_name')) || 'Locador';
+  const signerCpfRaw = (await getSetting('landlord_cpf')) || '';
+  const signerCpf = signerCpfRaw ? `CPF ${signerCpfRaw}` : '';
   const signerNameWidth = fontBold.widthOfTextAtSize(signerName, 11);
-  const signerCpfWidth = fontRegular.widthOfTextAtSize(signerCpf, 10);
+  const signerCpfWidth = signerCpf ? fontRegular.widthOfTextAtSize(signerCpf, 10) : 0;
   page.drawLine({ start: { x: signatureLineX, y: signatureY - 10 }, end: { x: signatureLineX + signatureLineWidth, y: signatureY - 10 }, thickness: 1, color: border });
   page.drawText(signerName, { x: cardX + (contentWidth - signerNameWidth) / 2, y: signatureY - 26, size: 11, font: fontBold, color: ink });
-  page.drawText(signerCpf, { x: cardX + (contentWidth - signerCpfWidth) / 2, y: signatureY - 42, size: 10, font: fontRegular, color: muted });
+  if (signerCpf) {
+    page.drawText(signerCpf, { x: cardX + (contentWidth - signerCpfWidth) / 2, y: signatureY - 42, size: 10, font: fontRegular, color: muted });
+  }
   // Bloco de Autenticidade Digital com QR Code
   const token = generateAuthToken('receipt', input.receiptId);
   const authCode = formatAuthCode(token);

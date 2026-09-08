@@ -16,7 +16,7 @@ Port 1:1 em funcionalidade, comportamento e visual do sistema de gestão de loca
 
 1. **Autenticação (`/login`, `/logout`)**:
    - Rate limit configurável (máximo de 5 tentativas por minuto por IP).
-   - Usuário admin padrão semeado automaticamente: `passoz` / `Dt32btop@` (configurável via `SEED_USERNAME` e `SEED_PASSWORD`).
+   - Usuário admin padrão semeado automaticamente: `passoz` / `senha-de-teste` (configurável via `SEED_USERNAME` e `SEED_PASSWORD`).
    - Bloqueio de rotas protegidas e redirecionamento de usuários autenticados.
 
 2. **Painel Principal (`/dashboard`)**:

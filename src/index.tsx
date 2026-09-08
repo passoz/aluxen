@@ -476,8 +476,8 @@ app.get('/settings', async (c) => {
   const lanIp = getLocalIpAddress();
   const currentPort = process.env.PORT || '3000';
   const settingsProps = {
-    landlordName: (await getSetting('landlord_name')) || 'Fernando Passos',
-    landlordCpf: (await getSetting('landlord_cpf')) || '075.898.017-55',
+    landlordName: (await getSetting('landlord_name')) || 'Locador',
+    landlordCpf: (await getSetting('landlord_cpf')) || '',
     landlordEmail: (await getSetting('landlord_email')) || '',
     appUrl: (await getSetting('app_url')) || '',
     detectedLanUrl: lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000',
@@ -501,8 +501,8 @@ app.post('/settings', async (c) => {
   const currentPort = process.env.PORT || '3000';
   const detectedLanUrl = lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000';
 
-  let landlordName = (await getSetting('landlord_name')) || 'Fernando Passos';
-  let landlordCpf = (await getSetting('landlord_cpf')) || '075.898.017-55';
+  let landlordName = (await getSetting('landlord_name')) || 'Locador';
+  let landlordCpf = (await getSetting('landlord_cpf')) || '';
   let landlordEmail = (await getSetting('landlord_email')) || '';
   let appUrl = (await getSetting('app_url')) || '';
 
@@ -883,7 +883,7 @@ app.get('/validar/recibo/:id', async (c) => {
     return c.html(html, 404);
   }
 
-  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const landlordName = (await getSetting('landlord_name')) || 'Locador';
   const fullPropertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state].filter(Boolean).join(', ');
 
   const html = renderHtml(
@@ -964,7 +964,7 @@ app.get('/validar/contrato/:id', async (c) => {
     return c.html(html, 404);
   }
 
-  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const landlordName = (await getSetting('landlord_name')) || 'Locador';
   const fullPropertyAddress = [lease.property_address, lease.property_city, lease.property_state].filter(Boolean).join(', ');
 
   const html = renderHtml(
@@ -1052,7 +1052,7 @@ app.post('/api/whatsapp/preview', async (c) => {
   }
 
   const baseUrl = await resolvePublicBaseUrl(c);
-  const landlordName = (await getSetting('landlord_name')) || 'Fernando Henrique Passos de Souza';
+  const landlordName = (await getSetting('landlord_name')) || 'Locador';
 
   if (type === 'receipt') {
     const receipt = await queryOne<{

@@ -14,9 +14,9 @@ export async function seedDemoData(): Promise<void> {
   client.run('DELETE FROM tenants');
 
   // Configurações do Locador
-  await setSetting('landlord_name', 'Fernando Henrique Passos de Souza');
-  await setSetting('landlord_cpf', '075.898.017-55');
-  await setSetting('landlord_email', 'contato@evolucsia.com');
+  await setSetting('landlord_name', 'Locador Demonstração');
+  await setSetting('landlord_cpf', '000.000.000-00');
+  await setSetting('landlord_email', 'demo@aluxen.local');
 
   // 1. Inquilinos
   const t1 = createId();
@@ -62,7 +62,7 @@ export async function seedDemoData(): Promise<void> {
   );
   await execute(
     'INSERT INTO properties (id, name, address, city, state, zip) VALUES (?, ?, ?, ?, ?, ?)',
-    [p3, 'Cobertura Caiçara', 'Rua Alemanha, 132, Cobertura 01, Jardim Caiçara', 'Cabo Frio', 'RJ', '28910-370']
+    [p3, 'Cobertura Caiçara', 'Rua das Palmeiras, 300, Cobertura 01, Jardim Caiçara', 'Cabo Frio', 'RJ', '28910-370']
   );
   await execute(
     'INSERT INTO properties (id, name, address, city, state, zip) VALUES (?, ?, ?, ?, ?, ?)',
@@ -128,7 +128,7 @@ export async function seedDemoData(): Promise<void> {
   console.log('- 4 Imóveis cadastrados');
   console.log('- 4 Contratos de Locação (3 ativos, 1 encerrado)');
   console.log('- 6 Recibos de Pagamento (3 pagos, 2 a vencer, 1 vencido)');
-  console.log('- Usuário: passoz | Senha: Dt32btop@');
+  console.log('- Usuário: passoz | Senha: senha-de-teste');
 }
 
 if (import.meta.main) {

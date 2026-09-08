@@ -82,7 +82,7 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
   it('POST /login with seed credentials authenticates and sets session cookie', async () => {
     const formData = new FormData();
     formData.set('username', 'passoz');
-    formData.set('password', 'Dt32btop@');
+    formData.set('password', 'senha-de-teste');
 
     const res = await server.fetch(
       new Request('http://localhost:3000/login', {
@@ -385,9 +385,9 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     // Atualizar locador
     const postForm = new FormData();
     postForm.set('intent', 'save-landlord');
-    postForm.set('name', 'Fernando Henrique Passos de Souza');
-    postForm.set('cpf', '075.898.017-55');
-    postForm.set('email', 'contato@evolucsia.com');
+    postForm.set('name', 'Locador Teste');
+    postForm.set('cpf', '000.000.000-00');
+    postForm.set('email', 'locador@teste.local');
 
     const postRes = await server.fetch(
       new Request('http://localhost:3000/settings', {

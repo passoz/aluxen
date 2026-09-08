@@ -13,14 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV CHROMIUM_PATH=/usr/bin/chromium
 
-# Install dependencies
+# Install production dependencies
 COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --production
 
-# Copy project source and build client bundle
-COPY . .
+# Copy only application runtime files and build client bundle
+COPY tsconfig.json ./
+COPY drizzle/ ./drizzle/
+COPY public/ ./public/
+COPY src/ ./src/
 RUN bun run build
-
 EXPOSE 3000
 
 ENV NODE_ENV=production

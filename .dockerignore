@@ -1,12 +1,80 @@
-node_modules
+# Version control
 .git
-.cache
-tmp
-*.log
+.github
+.gitignore
+.gitattributes
+
+# Environment files and secrets (CRITICAL: prevents leaking local credentials)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.cert
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+
+# Docker and Compose configurations
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Documentation and project notes
+README.md
+*.md
+docs/
+
+# Tests and fixtures (contains test credentials and personal mock data)
+test/
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# Local SQLite databases, journals, dumps, and backups
 *.db
 *.db-journal
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite3
+*.db3
+*.bak
+*.backup
+/*.sql
+*.dump
+data/
+aluxen-backup*.json
+
+# WhatsApp profiles, browser sessions and tokens
 .whatsapp-profile
+.whatsapp-profile/
 .profile
-data
+.profile/
+whatsapp-session/
+**/.whatsapp*
+**/.profile*
+
+# Dependencies and caches
+node_modules
+.cache
+tmp
+logs
+*.log
+*.tsbuildinfo
+coverage
+out
+
+# OS and IDE configuration
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tooling configs
+drizzle.config.ts

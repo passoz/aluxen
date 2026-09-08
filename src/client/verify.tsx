@@ -93,7 +93,7 @@ export function VerificationPage(props: VerificationData) {
 
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Locador:</span>
-                <span>{props.landlordName || 'Fernando Henrique Passos de Souza'}</span>
+                <span>{props.landlordName || 'Locador'}</span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>

@@ -63,31 +63,29 @@ export async function initializeDatabase(): Promise<void> {
       try { client.run('ALTER TABLE leases ADD COLUMN auth_token TEXT'); } catch {}
       try { client.run('ALTER TABLE receipts ADD COLUMN auth_token TEXT'); } catch {}
 
-      // Seed do usuário administrador
+      // Seed do usuário administrador (apenas se não existir usuário cadastrado)
       const seedUsername = process.env.SEED_USERNAME || 'passoz';
-      const seedPassword = process.env.SEED_PASSWORD || 'Dt32btop@';
+      const seedPassword = process.env.SEED_PASSWORD || 'senha-de-teste';
       const passwordHash = await bcrypt.hash(seedPassword, 10);
 
       const existing = client.query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?').get(seedUsername);
-      if (existing) {
-        client.query('UPDATE users SET password_hash = ? WHERE username = ?').run(passwordHash, seedUsername);
-      } else {
+      if (!existing) {
         const legacy = client.query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?').get('admin');
         if (legacy) {
-          client.query('UPDATE users SET username = ?, password_hash = ? WHERE username = ?').run(seedUsername, passwordHash, 'admin');
+          client.query('UPDATE users SET username = ? WHERE username = ?').run(seedUsername, 'admin');
         } else {
           client.query('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)').run(createId(), seedUsername, passwordHash);
         }
       }
 
-      // Seed de configurações padrão
+      // Seed de configurações padrão (sem dados pessoais sensíveis)
       const defaultLandlordName = client.query<{ value: string }, [string]>('SELECT value FROM settings WHERE key = ?').get('landlord_name');
       if (!defaultLandlordName) {
-        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_name', 'Fernando Passos');
+        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_name', process.env.DEFAULT_LANDLORD_NAME || 'Locador');
       }
       const defaultLandlordCpf = client.query<{ value: string }, [string]>('SELECT value FROM settings WHERE key = ?').get('landlord_cpf');
       if (!defaultLandlordCpf) {
-        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_cpf', '075.898.017-55');
+        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_cpf', process.env.DEFAULT_LANDLORD_CPF || '');
       }
     })();
   }

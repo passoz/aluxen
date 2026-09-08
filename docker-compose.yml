@@ -12,9 +12,9 @@ services:
       - HOST=0.0.0.0
       - PORT=3000
       - DB_DIR=/data
-      - SESSION_SECRET=${SESSION_SECRET:-production-secret-change-me}
+      - SESSION_SECRET=${SESSION_SECRET:-aluxen-session-secret-change-in-production}
       - SEED_USERNAME=${SEED_USERNAME:-passoz}
-      - SEED_PASSWORD=${SEED_PASSWORD:-Dt32btop@}
+      - SEED_PASSWORD=${SEED_PASSWORD:-senha-de-teste}
 
 volumes:
   aluxen-data:

@@ -52,7 +52,7 @@ ${params.validationUrl}
 
 Qualquer dúvida, estou à disposição!
 Atenciosamente,
-*${params.landlordName || 'Fernando Henrique Passos de Souza'}*`;
+*${params.landlordName || 'Locador'}*`;
 }
 
 export interface ContractMessageParams {
@@ -86,7 +86,7 @@ ${params.validationUrl}
 
 Qualquer dúvida, estou à disposição!
 Atenciosamente,
-*${params.landlordName || 'Fernando Henrique Passos de Souza'}*`;
+*${params.landlordName || 'Locador'}*`;
 }
 
 export async function checkWhatsAppSessionStatus(deep = false): Promise<WhatsAppStatus> {
