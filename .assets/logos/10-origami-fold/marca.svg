@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c10-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="c10-fold-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#047857"/>
+      <stop offset="100%" stop-color="#065F46"/>
+    </linearGradient>
+    <linearGradient id="c10-fold-2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="c10-fold-3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="c10-fold-4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A7F3D0"/>
+      <stop offset="100%" stop-color="#6EE7B7"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#c10-bg)"/>
+  <g transform="translate(0, 10)">
+    <!-- Origami Facet 1: Left Base Column -->
+    <polygon points="120,380 200,380 256,220 200,220" fill="url(#c10-fold-1)"/>
+    <!-- Origami Facet 2: Left Apex Gable -->
+    <polygon points="200,220 256,220 256,90 200,160" fill="url(#c10-fold-2)"/>
+    <!-- Origami Facet 3: Right Apex Gable -->
+    <polygon points="256,90 312,160 256,220" fill="url(#c10-fold-4)"/>
+    <!-- Origami Facet 4: Right Downward Slope & Column -->
+    <polygon points="256,220 312,160 392,380 312,380" fill="url(#c10-fold-3)"/>
+    <!-- Origami Central Fold (Translucent Crossbar) -->
+    <polygon points="186,300 326,300 300,260 212,260" fill="#022C22" opacity="0.8"/>
+    <!-- Apex Corner Light Sheen -->
+    <polygon points="256,90 268,118 256,128 244,118" fill="#FFFFFF" opacity="0.9"/>
+  </g>
+</svg>

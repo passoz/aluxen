@@ -4,8 +4,27 @@ export function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
-export function getReceiptStatus(receipt: Pick<Receipt, 'paid_at' | 'due_date'>) {
-  if (receipt.paid_at) return 'paid';
+export function getReceiptStatus(receipt: {
+  paid_at: string | null;
+  due_date: string;
+  amount?: string | number;
+  paid_amount?: string | number | null;
+}): 'paid' | 'partial' | 'due' | 'overdue' {
+  const totalAmount = Number(receipt.amount) || 0;
+  const hasExplicitPaidAmount = receipt.paid_amount != null && receipt.paid_amount !== '';
+  const paidAmount = hasExplicitPaidAmount ? Number(receipt.paid_amount) : (receipt.paid_at ? totalAmount : 0);
+
+  if (hasExplicitPaidAmount && paidAmount > 0 && totalAmount > 0) {
+    if (paidAmount < totalAmount) {
+      return 'partial';
+    }
+    return 'paid';
+  }
+
+  if (receipt.paid_at) {
+    return 'paid';
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueDate = new Date(`${receipt.due_date}T00:00:00`);
@@ -14,6 +33,7 @@ export function getReceiptStatus(receipt: Pick<Receipt, 'paid_at' | 'due_date'>)
 
 export function getReceiptStatusLabel(status: string) {
   if (status === 'paid') return 'Pago';
+  if (status === 'partial') return 'Parcial';
   if (status === 'overdue') return 'Vencido';
   return 'A vencer';
 }

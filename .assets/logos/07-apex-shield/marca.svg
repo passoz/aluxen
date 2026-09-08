@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c7-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
+      <stop offset="100%" stop-color="#0B1528"/>
+    </linearGradient>
+    <linearGradient id="c7-shield-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="c7-shield-right" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+    <linearGradient id="c7-emerald-check" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#c7-bg)"/>
+  <g transform="translate(0, 12)">
+    <!-- Outer Shield Silhouette -->
+    <path d="M 256 80 L 128 150 L 128 270 C 128 350, 184 416, 256 440 L 256 80 Z" fill="url(#c7-shield-left)"/>
+    <path d="M 256 80 L 384 150 L 384 270 C 384 350, 328 416, 256 440 L 256 80 Z" fill="url(#c7-shield-right)"/>
+    <!-- Inner Residential Gabled Apex (Shapes 'A') -->
+    <path d="M 256 140 L 180 200 L 206 230 L 256 190 L 306 230 L 332 200 Z" fill="#F8FAFC"/>
+    <!-- Verification Checkpoint Diamond (Digital Signature Trust) -->
+    <polygon points="256,236 286,276 256,316 226,276" fill="url(#c7-emerald-check)"/>
+    <!-- Checkmark inside diamond -->
+    <polyline points="244,276 252,284 268,266" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

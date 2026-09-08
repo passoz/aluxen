@@ -62,6 +62,48 @@ export async function initializeDatabase(): Promise<void> {
       try { client.run('ALTER TABLE receipts ADD COLUMN updated_at TEXT'); } catch {}
       try { client.run('ALTER TABLE leases ADD COLUMN auth_token TEXT'); } catch {}
       try { client.run('ALTER TABLE receipts ADD COLUMN auth_token TEXT'); } catch {}
+      try { client.run('ALTER TABLE receipts ADD COLUMN tenant_id TEXT'); } catch {}
+      try { client.run('ALTER TABLE receipts ADD COLUMN property_id TEXT'); } catch {}
+      try { client.run("ALTER TABLE receipts ADD COLUMN category TEXT NOT NULL DEFAULT 'rent'"); } catch {}
+      try { client.run('ALTER TABLE receipts ADD COLUMN description TEXT'); } catch {}
+      try { client.run('ALTER TABLE receipts ADD COLUMN paid_amount REAL'); } catch {}
+
+      // Permitir recibos avulsos sem lease_id caso venha de schema antigo
+      try {
+        const receiptCols = client.query<{ name: string; notnull: number }, []>("PRAGMA table_info('receipts')").all();
+        const leaseCol = receiptCols.find((c) => c.name === 'lease_id');
+        if (leaseCol && leaseCol.notnull === 1) {
+          client.run('PRAGMA foreign_keys=OFF;');
+          client.run(`CREATE TABLE __new_receipts (
+            id text PRIMARY KEY NOT NULL,
+            lease_id text,
+            tenant_id text,
+            property_id text,
+            category text NOT NULL DEFAULT 'rent',
+            description text,
+            due_date text NOT NULL,
+            paid_at text,
+            amount real NOT NULL,
+            paid_amount real,
+            pdf_path text,
+            generated_key text,
+            auth_token text,
+            created_at text DEFAULT (datetime('now')) NOT NULL,
+            updated_at text,
+            FOREIGN KEY (lease_id) REFERENCES leases(id) ON UPDATE no action ON DELETE cascade,
+            FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON UPDATE no action ON DELETE set null,
+            FOREIGN KEY (property_id) REFERENCES properties(id) ON UPDATE no action ON DELETE set null
+          );`);
+          client.run(`INSERT INTO __new_receipts (id, lease_id, due_date, paid_at, amount, pdf_path, generated_key, auth_token, created_at, updated_at)
+            SELECT id, lease_id, due_date, paid_at, amount, pdf_path, generated_key, auth_token, created_at, updated_at FROM receipts;`);
+          client.run('DROP TABLE receipts;');
+          client.run('ALTER TABLE __new_receipts RENAME TO receipts;');
+          client.run('CREATE UNIQUE INDEX IF NOT EXISTS receipts_generated_key_idx ON receipts(generated_key);');
+          client.run('PRAGMA foreign_keys=ON;');
+        }
+      } catch (err) {
+        console.warn('Receipts schema alignment notice:', err);
+      }
 
       // Seed do usuário administrador (apenas se não existir usuário cadastrado)
       const seedUsername = process.env.SEED_USERNAME || 'passoz';

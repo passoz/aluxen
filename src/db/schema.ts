@@ -50,11 +50,17 @@ export const leases = sqliteTable('leases', {
 export const receipts = sqliteTable('receipts', {
   id: text('id').primaryKey(),
   leaseId: text('lease_id')
-    .notNull()
     .references(() => leases.id, { onDelete: 'cascade' }),
+  tenantId: text('tenant_id')
+    .references(() => tenants.id, { onDelete: 'set null' }),
+  propertyId: text('property_id')
+    .references(() => properties.id, { onDelete: 'set null' }),
+  category: text('category').notNull().default('rent'),
+  description: text('description'),
   dueDate: text('due_date').notNull(),
   paidAt: text('paid_at'),
   amount: real('amount').notNull(),
+  paidAmount: real('paid_amount'),
   pdfPath: text('pdf_path'),
   generatedKey: text('generated_key'),
   authToken: text('auth_token'),
@@ -72,10 +78,12 @@ export const settings = sqliteTable('settings', {
 // Relacionamentos
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   leases: many(leases),
+  receipts: many(receipts),
 }));
 
 export const propertiesRelations = relations(properties, ({ many }) => ({
   leases: many(leases),
+  receipts: many(receipts),
 }));
 
 export const leasesRelations = relations(leases, ({ one, many }) => ({
@@ -94,6 +102,14 @@ export const receiptsRelations = relations(receipts, ({ one }) => ({
   lease: one(leases, {
     fields: [receipts.leaseId],
     references: [leases.id],
+  }),
+  tenant: one(tenants, {
+    fields: [receipts.tenantId],
+    references: [tenants.id],
+  }),
+  property: one(properties, {
+    fields: [receipts.propertyId],
+    references: [properties.id],
   }),
 }));
 

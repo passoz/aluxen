@@ -55,6 +55,21 @@ export function runMigrations(customMigrationsFolder?: string) {
                 .query('INSERT INTO __drizzle_migrations ("hash", "created_at") VALUES (?, ?)')
                 .run(hash, entry.when);
             }
+          } else if (entry.tag === '0002_fair_absorbing_man') {
+            const receiptCols = sqlite
+              .query<{ name: string; notnull: number }, []>("PRAGMA table_info('receipts')")
+              .all();
+            const hasCategory = receiptCols.some((c) => c.name === 'category');
+            const leaseCol = receiptCols.find((c) => c.name === 'lease_id');
+            const isLeaseNullable = leaseCol ? leaseCol.notnull === 0 : false;
+
+            if (hasCategory && isLeaseNullable) {
+              const sqlContent = fs.readFileSync(migrationSqlPath, 'utf-8');
+              const hash = crypto.createHash('sha256').update(sqlContent).digest('hex');
+              sqlite
+                .query('INSERT INTO __drizzle_migrations ("hash", "created_at") VALUES (?, ?)')
+                .run(hash, entry.when);
+            }
           }
         }
       }

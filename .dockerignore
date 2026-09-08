@@ -26,6 +26,7 @@ Dockerfile*
 README.md
 *.md
 docs/
+.assets/
 
 # Tests and fixtures (contains test credentials and personal mock data)
 test/

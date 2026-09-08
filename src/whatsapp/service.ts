@@ -25,6 +25,11 @@ export interface ReceiptMessageParams {
   propertyAddress?: string;
   dueDate: string;
   amount: string;
+  paidAmount?: string;
+  paidAmountRaw?: number;
+  amountRaw?: number;
+  category?: string;
+  description?: string;
   paidAt?: string | null;
   pdfUrl: string;
   validationUrl: string;
@@ -32,15 +37,28 @@ export interface ReceiptMessageParams {
 }
 
 export function buildReceiptWhatsAppMessage(params: ReceiptMessageParams): string {
-  const isPaid = !!params.paidAt;
-  const statusLine = isPaid ? `✅ *Status*: Quitado em ${params.paidAt}` : '⏳ *Status*: Aguardando pagamento';
+  const isExtra = params.category === 'extra' || !!params.description;
+  const isPartial = params.paidAmountRaw != null && params.amountRaw != null && params.paidAmountRaw > 0 && params.paidAmountRaw < params.amountRaw;
+  const isPaid = !!params.paidAt && !isPartial;
+
+  let statusLine = '⏳ *Status*: Aguardando pagamento';
+  if (isPartial) {
+    statusLine = `🟡 *Status*: Pagamento parcial (${params.paidAmount} de ${params.amount})${params.paidAt ? ` registrado em ${params.paidAt}` : ''}`;
+  } else if (isPaid) {
+    statusLine = `✅ *Status*: Quitado em ${params.paidAt}`;
+  }
+
+  const docTitle = isExtra ? (params.description ? `Recibo - ${params.description}` : 'Recibo de Pagamento') : 'Recibo de Aluguel';
+  const subjectIntro = isExtra
+    ? `Segue o comprovante referente a *${params.description || 'cobrança avulsa'}*${params.propertyName ? ` (Imóvel: *${params.propertyName}*)` : ''}:`
+    : `Segue o comprovante do seu aluguel referente ao imóvel *${params.propertyName}*:`;
 
   return `Olá, *${params.tenantName}*! Tudo bem?
 
-Segue o comprovante do seu aluguel referente ao imóvel *${params.propertyName}*:
+${subjectIntro}
 
-📄 *Recibo de Aluguel*
-💰 *Valor*: ${params.amount}
+📄 *${docTitle}*
+💰 *Valor*: ${params.amount}${isPartial ? `\n💵 *Valor Pago*: ${params.paidAmount}` : ''}
 📅 *Vencimento*: ${params.dueDate}
 ${statusLine}
 

@@ -30,10 +30,15 @@ export type Lease = {
 
 export type Receipt = {
   id: string;
-  lease_id: string;
+  lease_id?: string | null;
+  tenant_id?: string | null;
+  property_id?: string | null;
+  category?: 'rent' | 'extra';
+  description?: string | null;
   due_date: string;
   paid_at: string | null;
   amount: string;
+  paid_amount?: string | null;
   pdf_path: string | null;
   generated_key: string | null;
   tenant_name: string;

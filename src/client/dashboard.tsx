@@ -572,9 +572,14 @@ export function DashboardPage(initialData: DashboardProps) {
       nextReceipts.unshift({
         id: createId(),
         lease_id: lease.id,
+        tenant_id: lease.tenant_id,
+        property_id: lease.property_id,
+        category: 'rent',
+        description: null,
         due_date: `${monthKey}-${String(dueDay).padStart(2, '0')}`,
         paid_at: null,
         amount: lease.rent_amount,
+        paid_amount: null,
         pdf_path: null,
         generated_key: generatedKey,
         tenant_name: lease.tenant_name,
@@ -618,7 +623,7 @@ export function DashboardPage(initialData: DashboardProps) {
   function startReceiptEdit(item: Receipt) {
     setReceiptDraft({
       id: item.id,
-      lease_id: item.lease_id,
+      lease_id: item.lease_id || '',
       due_date: item.due_date,
       paid_at: item.paid_at ? item.paid_at.slice(0, 16) : '',
       amount: item.amount,

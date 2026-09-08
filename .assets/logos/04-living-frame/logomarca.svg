@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c4-lm-top" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <linearGradient id="c4-lm-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="c4-lm-portal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark on Left -->
+  <g transform="translate(50, 30) scale(0.35)">
+    <rect width="512" height="512" rx="112" fill="#0B0F19"/>
+    <g transform="translate(256, 256)">
+      <polygon points="0,-160 138,-80 0,0 -138,-80" fill="url(#c4-lm-top)"/>
+      <polygon points="-138,-80 0,0 0,160 -138,80" fill="url(#c4-lm-left)"/>
+      <polygon points="0,0 138,-80 138,80 0,160" fill="#1E293B"/>
+      <polygon points="24,24 80,-8 80,104 24,136" fill="url(#c4-lm-portal)"/>
+      <line x1="0" y1="-160" x2="0" y2="0" stroke="#6EE7B7" stroke-width="3"/>
+    </g>
+  </g>
+  <!-- Typography on Right -->
+  <g transform="translate(265, 0)">
+    <text x="0" y="128" font-family="system-ui, -apple-system, 'Inter', 'Plus Jakarta Sans', sans-serif" font-size="76" font-weight="800" letter-spacing="-0.04em" fill="#0F172A">
+      alux<tspan fill="#059669">en</tspan>
+    </text>
+    <text x="4" y="165" font-family="system-ui, -apple-system, Inter, sans-serif" font-size="13" font-weight="700" letter-spacing="0.4em" fill="#64748B">
+      SPATIAL PROPERTY PLATFORM
+    </text>
+  </g>
+</svg>

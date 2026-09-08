@@ -188,12 +188,16 @@ app.get('/dashboard', async (c) => {
       ORDER BY l.status, l.created_at DESC
     `),
     query<Receipt>(`
-      SELECT r.id, r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.generated_key,
-             t.name AS tenant_name, p.name AS property_name
+      SELECT r.id, r.lease_id, r.tenant_id, r.property_id, r.category, r.description,
+             r.due_date, r.paid_at, r.amount, r.paid_amount, r.pdf_path, r.generated_key,
+             COALESCE(t.name, rt.name, '') AS tenant_name,
+             COALESCE(p.name, rp.name, '') AS property_name
       FROM receipts r
-      JOIN leases l ON l.id = r.lease_id
-      JOIN tenants t ON t.id = l.tenant_id
-      JOIN properties p ON p.id = l.property_id
+      LEFT JOIN leases l ON l.id = r.lease_id
+      LEFT JOIN tenants t ON t.id = l.tenant_id
+      LEFT JOIN properties p ON p.id = l.property_id
+      LEFT JOIN tenants rt ON rt.id = r.tenant_id
+      LEFT JOIN properties rp ON rp.id = r.property_id
       ORDER BY r.created_at DESC
     `),
     query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM leases WHERE status = ?', ['active']),
@@ -375,43 +379,106 @@ app.post('/dashboard', async (c) => {
       case 'receipt.create':
       case 'receipt.update': {
         const id = String(formData['id'] || createId());
-        const leaseId = String(formData['lease_id'] || '');
+        const leaseId = formData['lease_id'] ? String(formData['lease_id']) : null;
+        let tenantId = formData['tenant_id'] ? String(formData['tenant_id']) : null;
+        let propertyId = formData['property_id'] ? String(formData['property_id']) : null;
+        const category = String(formData['category'] || (leaseId ? 'rent' : 'extra'));
+        const description = formData['description'] ? String(formData['description']).trim() : null;
         const dueDate = String(formData['due_date'] || '');
-        const paidAt = String(formData['paid_at'] || '');
+        let paidAt = formData['paid_at'] ? String(formData['paid_at']).trim() : null;
         const amount = Number(formData['amount']);
-        if (!leaseId || !dueDate || !Number.isFinite(amount)) throw new Error('Preencha contrato, vencimento e valor.');
+        const rawPaidAmount = formData['paid_amount'] != null && String(formData['paid_amount']).trim() !== ''
+          ? Number(formData['paid_amount'])
+          : null;
 
-        const lease = await queryOne<{ tenant_name: string; property_name: string }>(
-          `SELECT t.name AS tenant_name, p.name AS property_name
-           FROM leases l
-           JOIN tenants t ON t.id = l.tenant_id
-           JOIN properties p ON p.id = l.property_id
-           WHERE l.id = ?`,
-          [leaseId]
-        );
-        if (!lease) throw new Error('Contrato não encontrado.');
+        if (!dueDate || !Number.isFinite(amount)) throw new Error('Preencha vencimento e valor.');
+        if (category === 'rent' && !leaseId) throw new Error('Selecione um contrato para recebimento de aluguel.');
+        if (category === 'extra' && !description) throw new Error('Informe a descrição para cobrança avulsa.');
+
+        if (leaseId) {
+          const lease = await queryOne<{ tenant_id: string; property_id: string }>(
+            'SELECT tenant_id, property_id FROM leases WHERE id = ?',
+            [leaseId]
+          );
+          if (lease) {
+            tenantId = lease.tenant_id;
+            propertyId = lease.property_id;
+          }
+        }
+
+        let paidAmount = rawPaidAmount;
+        if (paidAmount != null && paidAmount > 0 && !paidAt) {
+          const now = new Date();
+          paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(
+            now.getHours()
+          ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        } else if (paidAt && (paidAmount == null || paidAmount === 0)) {
+          paidAmount = amount;
+        }
 
         const pdfPath = null;
 
         if (intent === 'receipt.create') {
-          await execute('INSERT INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path) VALUES (?, ?, ?, ?, ?, ?)', [
-            id,
-            leaseId,
-            dueDate,
-            paidAt || null,
-            amount,
-            pdfPath,
-          ]);
+          await execute(
+            `INSERT INTO receipts (id, lease_id, tenant_id, property_id, category, description, due_date, paid_at, amount, paid_amount, pdf_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              id,
+              leaseId,
+              tenantId,
+              propertyId,
+              category,
+              description,
+              dueDate,
+              paidAt || null,
+              amount,
+              paidAmount != null ? paidAmount : null,
+              pdfPath,
+            ]
+          );
         } else {
-          await execute('UPDATE receipts SET lease_id = ?, due_date = ?, paid_at = ?, amount = ?, pdf_path = ? WHERE id = ?', [
-            leaseId,
-            dueDate,
-            paidAt || null,
-            amount,
-            pdfPath,
-            id,
-          ]);
+          await execute(
+            `UPDATE receipts
+             SET lease_id = ?, tenant_id = ?, property_id = ?, category = ?, description = ?,
+                 due_date = ?, paid_at = ?, amount = ?, paid_amount = ?, pdf_path = ?, updated_at = datetime('now')
+             WHERE id = ?`,
+            [
+              leaseId,
+              tenantId,
+              propertyId,
+              category,
+              description,
+              dueDate,
+              paidAt || null,
+              amount,
+              paidAmount != null ? paidAmount : null,
+              pdfPath,
+              id,
+            ]
+          );
         }
+        break;
+      }
+      case 'receipt.pay': {
+        const id = String(formData['id']);
+        const receipt = await queryOne<{ amount: number; paid_amount: number | null }>('SELECT amount, paid_amount FROM receipts WHERE id = ?', [id]);
+        if (!receipt) throw new Error('Recibo não encontrado.');
+
+        const payAmount = formData['pay_amount'] != null && String(formData['pay_amount']).trim() !== ''
+          ? Number(formData['pay_amount'])
+          : receipt.amount;
+        let paidAt = formData['paid_at'] ? String(formData['paid_at']).trim() : null;
+        if (!paidAt) {
+          const now = new Date();
+          paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(
+            now.getHours()
+          ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        }
+        await execute("UPDATE receipts SET paid_at = ?, paid_amount = ?, updated_at = datetime('now') WHERE id = ?", [
+          paidAt,
+          payAmount,
+          id,
+        ]);
         break;
       }
       case 'receipt.generate-monthly': {
@@ -432,8 +499,8 @@ app.post('/dashboard', async (c) => {
           const dueDay = Math.min(Number(lease.due_day) || 1, getDaysInMonth(year, month));
           const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
           await execute(
-            'INSERT OR IGNORE INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path, generated_key) VALUES (?, ?, ?, NULL, ?, NULL, ?)',
-            [createId(), lease.id, dueDate, lease.rent_amount, `${lease.id}:${monthKey}`]
+            'INSERT OR IGNORE INTO receipts (id, lease_id, tenant_id, property_id, category, description, due_date, paid_at, amount, pdf_path, generated_key) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?)',
+            [createId(), lease.id, lease.tenant_id, lease.property_id, 'rent', null, dueDate, lease.rent_amount, `${lease.id}:${monthKey}`]
           );
         }
         break;
@@ -450,7 +517,7 @@ app.post('/dashboard', async (c) => {
           now.getHours()
         ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         for (const receiptId of ids) {
-          await execute("UPDATE receipts SET paid_at = ?, updated_at = datetime('now') WHERE id = ? AND paid_at IS NULL", [
+          await execute("UPDATE receipts SET paid_at = ?, paid_amount = amount, updated_at = datetime('now') WHERE id = ?", [
             paidAt,
             receiptId,
           ]);
@@ -718,19 +785,27 @@ app.get('/pdf', async (c) => {
     due_date: string;
     paid_at: string | null;
     amount: number;
+    paid_amount: number | null;
+    category: string;
+    description: string | null;
     tenant_name: string;
     property_name: string;
     property_address: string;
     property_city: string;
     property_state: string;
   }>(
-    `SELECT r.id, r.due_date, r.paid_at, r.amount,
-            t.name AS tenant_name, p.name AS property_name,
-            p.address AS property_address, p.city AS property_city, p.state AS property_state
+    `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
+            COALESCE(t.name, rt.name, '') AS tenant_name,
+            COALESCE(p.name, rp.name, '') AS property_name,
+            COALESCE(p.address, rp.address, '') AS property_address,
+            COALESCE(p.city, rp.city, '') AS property_city,
+            COALESCE(p.state, rp.state, '') AS property_state
      FROM receipts r
-     JOIN leases l ON l.id = r.lease_id
-     JOIN tenants t ON t.id = l.tenant_id
-     JOIN properties p ON p.id = l.property_id
+     LEFT JOIN leases l ON l.id = r.lease_id
+     LEFT JOIN tenants t ON t.id = l.tenant_id
+     LEFT JOIN properties p ON p.id = l.property_id
+     LEFT JOIN tenants rt ON rt.id = r.tenant_id
+     LEFT JOIN properties rp ON rp.id = r.property_id
      WHERE r.id = ?`,
     [id]
   );
@@ -743,12 +818,15 @@ app.get('/pdf', async (c) => {
 
   const pdfBytes = await createReceiptPdfBuffer({
     receiptId: receipt.id,
-    tenantName: receipt.tenant_name,
-    propertyName: receipt.property_name,
+    tenantName: receipt.tenant_name || 'Locatário',
+    propertyName: receipt.property_name || '',
     propertyAddress,
+    category: receipt.category,
+    description: receipt.description,
     dueDate: receipt.due_date,
     paidAt: receipt.paid_at,
     amount: receipt.amount,
+    paidAmount: receipt.paid_amount != null ? Number(receipt.paid_amount) : null,
     signature: showSignature,
     baseUrl: await resolvePublicBaseUrl(c),
   });
@@ -854,6 +932,9 @@ app.get('/validar/recibo/:id', async (c) => {
     due_date: string;
     paid_at: string | null;
     amount: number;
+    paid_amount: number | null;
+    category: string;
+    description: string | null;
     tenant_name: string;
     tenant_cpf: string | null;
     property_name: string;
@@ -861,14 +942,19 @@ app.get('/validar/recibo/:id', async (c) => {
     property_city: string;
     property_state: string;
   }>(
-    `SELECT r.id, r.due_date, r.paid_at, r.amount,
-            t.name AS tenant_name, t.cpf AS tenant_cpf,
-            p.name AS property_name, p.address AS property_address,
-            p.city AS property_city, p.state AS property_state
+    `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
+            COALESCE(t.name, rt.name, '') AS tenant_name,
+            COALESCE(t.cpf, rt.cpf, '') AS tenant_cpf,
+            COALESCE(p.name, rp.name, '') AS property_name,
+            COALESCE(p.address, rp.address, '') AS property_address,
+            COALESCE(p.city, rp.city, '') AS property_city,
+            COALESCE(p.state, rp.state, '') AS property_state
      FROM receipts r
-     JOIN leases l ON l.id = r.lease_id
-     JOIN tenants t ON t.id = l.tenant_id
-     JOIN properties p ON p.id = l.property_id
+     LEFT JOIN leases l ON l.id = r.lease_id
+     LEFT JOIN tenants t ON t.id = l.tenant_id
+     LEFT JOIN properties p ON p.id = l.property_id
+     LEFT JOIN tenants rt ON rt.id = r.tenant_id
+     LEFT JOIN properties rp ON rp.id = r.property_id
      WHERE r.id = ?`,
     [id]
   );
@@ -903,6 +989,10 @@ app.get('/validar/recibo/:id', async (c) => {
       landlordName={landlordName}
       amount={formatCurrency(receipt.amount)}
       amountRaw={receipt.amount}
+      paidAmount={receipt.paid_amount != null ? formatCurrency(receipt.paid_amount) : undefined}
+      paidAmountRaw={receipt.paid_amount != null ? Number(receipt.paid_amount) : undefined}
+      category={receipt.category}
+      description={receipt.description || undefined}
       dueDate={formatDateBr(receipt.due_date)}
       paidAt={formatDateTimeBr(receipt.paid_at)}
       verifiedAt={verifiedAt}
@@ -1060,6 +1150,9 @@ app.post('/api/whatsapp/preview', async (c) => {
       due_date: string;
       paid_at: string | null;
       amount: number;
+      paid_amount: number | null;
+      category: string;
+      description: string | null;
       tenant_name: string;
       tenant_phone: string | null;
       property_name: string;
@@ -1067,14 +1160,19 @@ app.post('/api/whatsapp/preview', async (c) => {
       property_city: string;
       property_state: string;
     }>(
-      `SELECT r.id, r.due_date, r.paid_at, r.amount,
-              t.name AS tenant_name, t.phone AS tenant_phone,
-              p.name AS property_name, p.address AS property_address,
-              p.city AS property_city, p.state AS property_state
+      `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
+              COALESCE(t.name, rt.name, '') AS tenant_name,
+              COALESCE(t.phone, rt.phone, '') AS tenant_phone,
+              COALESCE(p.name, rp.name, '') AS property_name,
+              COALESCE(p.address, rp.address, '') AS property_address,
+              COALESCE(p.city, rp.city, '') AS property_city,
+              COALESCE(p.state, rp.state, '') AS property_state
        FROM receipts r
-       JOIN leases l ON l.id = r.lease_id
-       JOIN tenants t ON t.id = l.tenant_id
-       JOIN properties p ON p.id = l.property_id
+       LEFT JOIN leases l ON l.id = r.lease_id
+       LEFT JOIN tenants t ON t.id = l.tenant_id
+       LEFT JOIN properties p ON p.id = l.property_id
+       LEFT JOIN tenants rt ON rt.id = r.tenant_id
+       LEFT JOIN properties rp ON rp.id = r.property_id
        WHERE r.id = ?`,
       [id]
     );
@@ -1092,11 +1190,16 @@ app.post('/api/whatsapp/preview', async (c) => {
       .join(', ');
 
     const message = buildReceiptWhatsAppMessage({
-      tenantName: receipt.tenant_name,
-      propertyName: receipt.property_name,
+      tenantName: receipt.tenant_name || 'Locatário',
+      propertyName: receipt.property_name || '',
       propertyAddress: fullPropertyAddress,
       dueDate: formatDateBr(receipt.due_date),
       amount: formatCurrency(receipt.amount),
+      paidAmount: receipt.paid_amount != null ? formatCurrency(receipt.paid_amount) : undefined,
+      paidAmountRaw: receipt.paid_amount != null ? Number(receipt.paid_amount) : undefined,
+      amountRaw: Number(receipt.amount),
+      category: receipt.category,
+      description: receipt.description || undefined,
       paidAt: receipt.paid_at ? formatDateTimeBr(receipt.paid_at) : null,
       pdfUrl,
       validationUrl,

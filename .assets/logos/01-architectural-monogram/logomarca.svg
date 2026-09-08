@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c1-lm-col-left" x1="0%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#047857"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="c1-lm-col-right" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="c1-lm-keystone" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="100%" stop-color="#A7F3D0"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark on Left -->
+  <g transform="translate(50, 30) scale(0.35)">
+    <rect width="512" height="512" rx="112" fill="#0F172A"/>
+    <g transform="translate(0, 8)">
+      <path d="M 256 80 L 128 392 L 204 392 L 256 244 L 256 80 Z" fill="url(#c1-lm-col-left)"/>
+      <path d="M 256 80 L 256 244 L 308 392 L 384 392 L 256 80 Z" fill="url(#c1-lm-col-right)"/>
+      <path d="M 218 392 L 218 316 C 218 295 235 278 256 278 C 277 278 294 295 294 316 L 294 392 Z" fill="#0F172A"/>
+      <path d="M 186 320 L 326 320 L 316 292 L 196 292 Z" fill="#059669" opacity="0.9"/>
+      <polygon points="256,160 276,192 256,224 236,192" fill="url(#c1-lm-keystone)"/>
+      <polygon points="256,80 272,112 256,124 240,112" fill="#34D399"/>
+    </g>
+  </g>
+  <!-- Typography on Right -->
+  <g transform="translate(265, 0)">
+    <text x="0" y="128" font-family="system-ui, -apple-system, 'Plus Jakarta Sans', Inter, sans-serif" font-size="70" font-weight="900" letter-spacing="0.14em" fill="#0F172A">
+      ALUX<tspan fill="#059669">EN</tspan>
+    </text>
+    <text x="5" y="165" font-family="system-ui, -apple-system, Inter, sans-serif" font-size="13" font-weight="700" letter-spacing="0.42em" fill="#64748B">
+      PROPERTY INTELLIGENCE
+    </text>
+  </g>
+</svg>

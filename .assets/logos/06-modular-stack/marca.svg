@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c6-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#022C22"/>
+      <stop offset="100%" stop-color="#064E3B"/>
+    </linearGradient>
+    <linearGradient id="c6-mod-top" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6EE7B7"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
+    <linearGradient id="c6-mod-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="c6-mod-right" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#c6-bg)"/>
+  <g transform="translate(0, 10)">
+    <!-- Top Apex Block (Roof Unit) -->
+    <rect x="186" y="90" width="140" height="74" rx="20" fill="url(#c6-mod-top)"/>
+    <!-- Middle Connector Beam -->
+    <polygon points="256,164 220,206 292,206" fill="#A7F3D0" opacity="0.6"/>
+    <!-- Bottom Left Block -->
+    <rect x="110" y="216" width="130" height="150" rx="24" fill="url(#c6-mod-left)"/>
+    <!-- Bottom Right Block -->
+    <rect x="272" y="216" width="130" height="150" rx="24" fill="url(#c6-mod-right)"/>
+    <!-- Window Grid Dots on Blocks -->
+    <circle cx="150" cy="266" r="8" fill="#A7F3D0"/>
+    <circle cx="190" cy="266" r="8" fill="#A7F3D0"/>
+    <circle cx="150" cy="316" r="8" fill="#A7F3D0"/>
+    <circle cx="190" cy="316" r="8" fill="#A7F3D0"/>
+    <circle cx="312" cy="266" r="8" fill="#34D399"/>
+    <circle cx="352" cy="266" r="8" fill="#34D399"/>
+    <circle cx="312" cy="316" r="8" fill="#34D399"/>
+    <circle cx="352" cy="316" r="8" fill="#34D399"/>
+  </g>
+</svg>

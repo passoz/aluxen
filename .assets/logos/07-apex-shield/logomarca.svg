@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" width="100%" height="100%">
+  <defs>
+    <linearGradient id="c7-lm-left" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="c7-lm-right" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#60A5FA"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark on Left -->
+  <g transform="translate(50, 30) scale(0.35)">
+    <rect width="512" height="512" rx="112" fill="#030712"/>
+    <g transform="translate(0, 12)">
+      <path d="M 256 80 L 128 150 L 128 270 C 128 350, 184 416, 256 440 L 256 80 Z" fill="url(#c7-lm-left)"/>
+      <path d="M 256 80 L 384 150 L 384 270 C 384 350, 328 416, 256 440 L 256 80 Z" fill="url(#c7-lm-right)"/>
+      <path d="M 256 140 L 180 200 L 206 230 L 256 190 L 306 230 L 332 200 Z" fill="#F8FAFC"/>
+      <polygon points="256,236 286,276 256,316 226,276" fill="#10B981"/>
+      <polyline points="244,276 252,284 268,266" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round"/>
+    </g>
+  </g>
+  <!-- Typography on Right -->
+  <g transform="translate(265, 0)">
+    <text x="0" y="126" font-family="system-ui, -apple-system, 'Plus Jakarta Sans', Inter, sans-serif" font-size="70" font-weight="900" letter-spacing="0.12em" fill="#0F172A">
+      ALUX<tspan fill="#2563EB">EN</tspan>
+    </text>
+    <text x="4" y="165" font-family="system-ui, -apple-system, Inter, sans-serif" font-size="13" font-weight="700" letter-spacing="0.4em" fill="#059669">
+      LEGAL &amp; CONTRACT SECURITY
+    </text>
+  </g>
+</svg>

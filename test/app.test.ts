@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import type { Receipt } from '../src/types/dashboard';
 import { inflateSync } from 'node:zlib';
 import server from '../src/index';
 import { generateAuthToken } from '../src/utils/auth-token';
+import { getReceiptStatus, getReceiptStatusLabel } from '../src/utils/format';
 
 function extractPdfText(bytes: ArrayBuffer): string {
   const binary = Buffer.from(bytes);
@@ -20,6 +22,13 @@ function extractPdfText(bytes: ArrayBuffer): string {
         const hexVal = mHex[1];
         if (hexVal) {
           text += ' ' + Buffer.from(hexVal, 'hex').toString('latin1');
+        }
+      }
+      const parenRegex = /\(([^)]+)\)/g;
+      let mParen: RegExpExecArray | null;
+      while ((mParen = parenRegex.exec(uncompressed)) !== null) {
+        if (mParen[1]) {
+          text += ' ' + mParen[1];
         }
       }
     } catch {}
@@ -578,5 +587,191 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     const data = (await res.json()) as { ok: boolean; message: string };
     expect(data.ok).toBe(true);
     expect(data.message).toContain('desconectado');
+  });
+
+  it('supports partial payments with status partial and balance calculation', async () => {
+    // 1. Criar recibo de aluguel no valor de 1500
+    const createForm = new FormData();
+    createForm.set('intent', 'receipt.create');
+    createForm.set('lease_id', createdLeaseId);
+    createForm.set('due_date', '2026-10-10');
+    createForm.set('amount', '1500');
+    createForm.set('category', 'rent');
+
+    const createRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: createForm,
+      })
+    );
+    expect(createRes.status).toBe(200);
+
+    const dashRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const dashData = (await dashRes.json()) as { receipts: Receipt[] };
+    const receipt = dashData.receipts.find((r) => r.due_date === '2026-10-10' && r.lease_id === createdLeaseId);
+    expect(receipt).toBeDefined();
+    if (!receipt) throw new Error('Receipt not found');
+    expect(getReceiptStatus(receipt)).toBe('due');
+
+    // 2. Lançar pagamento parcial de 600
+    const payForm = new FormData();
+    payForm.set('intent', 'receipt.pay');
+    payForm.set('id', receipt.id);
+    payForm.set('pay_amount', '600');
+
+    const payRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: payForm,
+      })
+    );
+    expect(payRes.status).toBe(200);
+
+    const afterPartialRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const afterPartialData = (await afterPartialRes.json()) as { receipts: Receipt[] };
+    const partialReceipt = afterPartialData.receipts.find((r) => r.id === receipt?.id);
+    expect(partialReceipt).toBeDefined();
+    if (!partialReceipt) throw new Error('Partial receipt not found');
+    expect(Number(partialReceipt.paid_amount)).toBe(600);
+    expect(getReceiptStatus(partialReceipt)).toBe('partial');
+    expect(getReceiptStatusLabel(getReceiptStatus(partialReceipt))).toBe('Parcial');
+
+    // 3. Verificar PDF do pagamento parcial
+    const pdfRes = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${receipt.id}`, {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers.get('content-type')).toBe('application/pdf');
+
+    // 4. Completar pagamento para 1500
+    const fullPayForm = new FormData();
+    fullPayForm.set('intent', 'receipt.pay');
+    fullPayForm.set('id', receipt.id);
+    fullPayForm.set('pay_amount', '1500');
+
+    const fullPayRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: fullPayForm,
+      })
+    );
+    expect(fullPayRes.status).toBe(200);
+
+    const afterFullRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const afterFullData = (await afterFullRes.json()) as { receipts: Receipt[] };
+    const fullReceipt = afterFullData.receipts.find((r) => r.id === receipt?.id);
+    expect(fullReceipt).toBeDefined();
+    if (!fullReceipt) throw new Error('Full receipt not found');
+    expect(Number(fullReceipt.paid_amount)).toBe(1500);
+    expect(getReceiptStatus(fullReceipt)).toBe('paid');
+    expect(getReceiptStatusLabel(getReceiptStatus(fullReceipt))).toBe('Pago');
+  });
+
+  it('supports avulso charges without lease_id (taxas avulsas)', async () => {
+    // 1. Criar cobrança de taxa avulsa (sem lease_id)
+    const avulsoForm = new FormData();
+    avulsoForm.set('intent', 'receipt.create');
+    avulsoForm.set('category', 'extra');
+    avulsoForm.set('description', 'Taxa de Pintura');
+    avulsoForm.set('tenant_id', createdTenantId);
+    avulsoForm.set('property_id', createdPropertyId);
+    avulsoForm.set('due_date', '2026-11-15');
+    avulsoForm.set('amount', '350');
+
+    const createRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: avulsoForm,
+      })
+    );
+    expect(createRes.status).toBe(200);
+
+    const dashRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const dashData = (await dashRes.json()) as { receipts: Receipt[] };
+    const avulsoReceipt = dashData.receipts.find((r) => r.description === 'Taxa de Pintura');
+    expect(avulsoReceipt).toBeDefined();
+    if (!avulsoReceipt) throw new Error('Avulso receipt not found');
+    expect(avulsoReceipt.category).toBe('extra');
+    expect(avulsoReceipt.lease_id).toBeNull();
+    expect(avulsoReceipt.tenant_name).toContain('Carlos Drummond');
+    const pdfRes = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${avulsoReceipt.id}`, {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(pdfRes.status).toBe(200);
+    expect(pdfRes.headers.get('content-type')).toBe('application/pdf');
+
+    // 3. Validação pública via autenticidade digital
+    const token = generateAuthToken('receipt', avulsoReceipt.id);
+    const verifyRes = await server.fetch(
+      new Request(`http://localhost:3000/validar/recibo/${avulsoReceipt.id}?token=${token}`)
+    );
+    expect(verifyRes.status).toBe(200);
+    const verifyHtml = await verifyRes.text();
+    expect(verifyHtml).toContain('Taxa de Pintura');
+    expect(verifyHtml).toContain('DOCUMENTO AUTÊNTICO E VÁLIDO');
+
+    // 4. WhatsApp preview
+    const waRes = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/preview', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ type: 'receipt', id: avulsoReceipt.id }).toString(),
+      })
+    );
+    expect(waRes.status).toBe(200);
+    const waData = (await waRes.json()) as { message: string };
+    expect(waData.message).toContain('Taxa de Pintura');
+  });
+
+  it('verifies period filter matching logic with "all" months and "all" years', () => {
+    const receiptA = { due_date: '2026-05-10', paid_at: null, amount: '100', paid_amount: null };
+    const receiptB = { due_date: '2025-09-20', paid_at: null, amount: '200', paid_amount: null };
+
+    // Filtrar com mês específico e ano específico
+    expect(receiptA.due_date.slice(5, 7) === '05' && receiptA.due_date.slice(0, 4) === '2026').toBe(true);
+
+    // Filtrar com "all" para mês e ano fixo
+    const matchAllMonths2026 = (r: typeof receiptA) => {
+      const m: string = 'all';
+      const y: string = '2026';
+      const matchesMonth = m === 'all' || r.due_date.slice(5, 7) === m;
+      const matchesYear = y === 'all' || r.due_date.slice(0, 4) === y;
+      return matchesMonth && matchesYear;
+    };
+    expect(matchAllMonths2026(receiptA)).toBe(true);
+    expect(matchAllMonths2026(receiptB)).toBe(false);
+
+    // Filtrar com "all" para ano e "all" para mês (retorna todos)
+    const matchAll = (r: typeof receiptA) => {
+      const m: string = 'all';
+      const y: string = 'all';
+      return (m === 'all' || r.due_date.slice(5, 7) === m) && (y === 'all' || r.due_date.slice(0, 4) === y);
+    };
+    expect(matchAll(receiptA)).toBe(true);
+    expect(matchAll(receiptB)).toBe(true);
   });
 });

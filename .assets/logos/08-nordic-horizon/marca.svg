@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" rx="112" fill="#09090B"/>
+  <g transform="translate(0, 10)">
+    <!-- Horizon Line -->
+    <line x1="96" y1="380" x2="416" y2="380" stroke="#27272A" stroke-width="8" stroke-linecap="round"/>
+    <!-- Rising Sun on Horizon ('Lux') -->
+    <circle cx="256" cy="300" r="56" fill="#00D084"/>
+    <!-- Precision Architectural A-Frame Struts -->
+    <polyline points="132,380 256,120 380,380" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Horizontal Crossbeam -->
+    <line x1="178" y1="284" x2="334" y2="284" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+    <!-- Tiny Zenith Star -->
+    <circle cx="256" cy="90" r="6" fill="#00D084"/>
+  </g>
+</svg>

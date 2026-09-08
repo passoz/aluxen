@@ -15,6 +15,10 @@ export interface VerificationData {
   landlordName?: string;
   amount?: string;
   amountRaw?: number;
+  paidAmount?: string | null;
+  paidAmountRaw?: number;
+  category?: string;
+  description?: string | null;
   dueDate?: string;
   paidAt?: string | null;
   startDate?: string;
@@ -106,13 +110,34 @@ export function VerificationPage(props: VerificationData) {
                 </span>
               </div>
 
+              {props.description ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Referência:</span>
+                  <strong>{props.description}</strong>
+                </div>
+              ) : null}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Valor:</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Valor Total:</span>
                 <strong style={{ fontSize: '1.15rem', color: 'var(--primary)' }}>{props.amount}</strong>
               </div>
 
               {isReceipt ? (
                 <>
+                  {props.paidAmountRaw != null && props.amountRaw != null && props.paidAmountRaw > 0 && props.paidAmountRaw < props.amountRaw ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Valor Pago (Parcial):</span>
+                        <strong style={{ color: '#3b82f6' }}>{props.paidAmount}</strong>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Saldo Restante:</span>
+                        <strong style={{ color: 'var(--danger)' }}>
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(props.amountRaw - props.paidAmountRaw)}
+                        </strong>
+                      </div>
+                    </>
+                  ) : null}
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Vencimento:</span>
                     <span>{props.dueDate}</span>
@@ -120,7 +145,11 @@ export function VerificationPage(props: VerificationData) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Status da Quitação:</span>
                     <span>
-                      {props.paidAt ? (
+                      {props.paidAmountRaw != null && props.amountRaw != null && props.paidAmountRaw > 0 && props.paidAmountRaw < props.amountRaw ? (
+                        <span className="status-badge partial">
+                          Parcial {props.paidAt ? `(pago em ${props.paidAt})` : ''}
+                        </span>
+                      ) : props.paidAt ? (
                         <span className="status-badge paid">Pago em {props.paidAt}</span>
                       ) : (
                         <span className="status-badge due">Aguardando Pagamento</span>

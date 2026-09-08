@@ -14,6 +14,9 @@ export type ReceiptPdfInput = {
   dueDate: string;
   paidAt: string | null;
   amount: number;
+  paidAmount?: number | null;
+  category?: string;
+  description?: string | null;
   signature?: boolean;
   baseUrl?: string;
 };
@@ -186,8 +189,12 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   page.drawRectangle({ x: cardX, y: height - 140, width: contentWidth, height: 92, color: panelBg, borderColor: border, borderWidth: 1 });
   page.drawRectangle({ x: cardX, y: height - 140, width: contentWidth, height: 6, color: accent });
 
-  page.drawText('Recibo de aluguel', { x: cardX + 20, y: height - 92, size: 24, font: fontBold, color: ink });
-  page.drawText(`Recibo ${input.receiptId.slice(0, 8).toUpperCase()}`, { x: cardX + 20, y: height - 116, size: 11, font: fontRegular, color: muted });
+  const isExtra = input.category === 'extra' || !!input.description;
+  const isPartial = input.paidAmount != null && input.paidAmount > 0 && input.paidAmount < input.amount;
+  const titleText = isExtra ? (input.description ? `Recibo - ${input.description}` : 'Recibo de Pagamento') : 'Recibo de aluguel';
+  const subText = `Recibo ${input.receiptId.slice(0, 8).toUpperCase()}${isPartial ? ' • Pagamento Parcial' : ''}`;
+  page.drawText(titleText.slice(0, 36), { x: cardX + 20, y: height - 92, size: 22, font: fontBold, color: ink });
+  page.drawText(subText, { x: cardX + 20, y: height - 116, size: 11, font: fontRegular, color: muted });
 
   let cursorY = height - 180;
   page.drawText('Recebido de', { x: cardX, y: cursorY, size: 11, font: fontBold, color: accent });
@@ -202,7 +209,11 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
     color: ink,
   });
   cursorY -= tenantLines * 24 + 8;
-  const propertyLines = drawWrappedText(page, `Imóvel: ${input.propertyName}`, {
+  let propertyLineText = '';
+  if (input.propertyName) {
+    propertyLineText = isExtra ? `Referência/Imóvel: ${input.propertyName}` : `Imóvel: ${input.propertyName}`;
+  }
+  const propertyLines = propertyLineText ? drawWrappedText(page, propertyLineText, {
     x: cardX,
     y: cursorY,
     maxWidth: contentWidth,
@@ -210,24 +221,46 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
     size: 12,
     font: fontRegular,
     color: muted,
-  });
-  cursorY -= propertyLines * 18 + 28;
+  }) : 0;
+  cursorY -= (propertyLines ? propertyLines * 18 + 28 : 20);
 
-  const summaryHeight = 122;
+  const summaryHeight = isPartial ? 136 : 122;
   page.drawRectangle({ x: cardX, y: cursorY - summaryHeight, width: contentWidth, height: summaryHeight, color: panelBg, borderColor: border, borderWidth: 1 });
   page.drawRectangle({ x: cardX + 18, y: cursorY - 38, width: contentWidth - 36, height: 24, color: accentSoft });
   page.drawText('Resumo do recebimento', { x: cardX + 28, y: cursorY - 30, size: 12, font: fontBold, color: accent });
 
-  const col1 = cardX + 24;
-  const col2 = cardX + 210;
-  const col3 = cardX + 372;
-  page.drawText('Valor', { x: col1, y: cursorY - 64, size: 10, font: fontBold, color: muted });
-  page.drawText(formatMoney(input.amount), { x: col1, y: cursorY - 90, size: 20, font: fontBold, color: accent });
-  page.drawText('Vencimento', { x: col2, y: cursorY - 64, size: 10, font: fontBold, color: muted });
-  drawWrappedText(page, formatDate(input.dueDate), { x: col2, y: cursorY - 82, maxWidth: 130, lineHeight: 15, size: 12, font: fontBold, color: ink });
-  page.drawText('Pago em', { x: col3, y: cursorY - 64, size: 10, font: fontBold, color: muted });
-  drawWrappedText(page, formatDate(input.paidAt), { x: col3, y: cursorY - 82, maxWidth: 120, lineHeight: 15, size: 12, font: fontBold, color: ink });
+  if (isPartial) {
+    const colW = (contentWidth - 48) / 4;
+    const col1 = cardX + 24;
+    const col2 = col1 + colW;
+    const col3 = col2 + colW;
+    const col4 = col3 + colW;
+    page.drawText('Valor Total', { x: col1, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    page.drawText(formatMoney(input.amount), { x: col1, y: cursorY - 86, size: 14, font: fontBold, color: ink });
 
+    page.drawText('Valor Pago', { x: col2, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    page.drawText(formatMoney(input.paidAmount!), { x: col2, y: cursorY - 86, size: 16, font: fontBold, color: accent });
+
+    page.drawText('Saldo Restante', { x: col3, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    page.drawText(formatMoney(Math.max(0, input.amount - input.paidAmount!)), { x: col3, y: cursorY - 86, size: 14, font: fontBold, color: rgb(0.85, 0.35, 0.2) });
+
+    page.drawText('Vencimento', { x: col4, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    drawWrappedText(page, formatDate(input.dueDate), { x: col4, y: cursorY - 80, maxWidth: colW - 10, lineHeight: 14, size: 11, font: fontBold, color: ink });
+
+    if (input.paidAt) {
+      page.drawText(`Pago em: ${formatDate(input.paidAt)}`, { x: col1, y: cursorY - 114, size: 10, font: fontRegular, color: muted });
+    }
+  } else {
+    const col1 = cardX + 24;
+    const col2 = cardX + 210;
+    const col3 = cardX + 372;
+    page.drawText('Valor', { x: col1, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    page.drawText(formatMoney(input.amount), { x: col1, y: cursorY - 90, size: 20, font: fontBold, color: accent });
+    page.drawText('Vencimento', { x: col2, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    drawWrappedText(page, formatDate(input.dueDate), { x: col2, y: cursorY - 82, maxWidth: 130, lineHeight: 15, size: 12, font: fontBold, color: ink });
+    page.drawText('Pago em', { x: col3, y: cursorY - 64, size: 10, font: fontBold, color: muted });
+    drawWrappedText(page, formatDate(input.paidAt), { x: col3, y: cursorY - 82, maxWidth: 120, lineHeight: 15, size: 12, font: fontBold, color: ink });
+  }
   cursorY -= summaryHeight + 34;
   page.drawText('Declaração', { x: cardX, y: cursorY, size: 14, font: fontBold, color: ink });
   cursorY -= 26;
@@ -243,9 +276,21 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
     const addressPrefix = /^(na|no|em)\s+/i.test(propertyAddress) ? '' : 'na ';
     propertyDesc = `${addressPrefix}${propertyAddress}`;
   }
+  let declText = '';
+  const effectivePaid = isPartial ? input.paidAmount! : input.amount;
+  if (isPartial) {
+    const remaining = Math.max(0, input.amount - effectivePaid);
+    declText = isExtra
+      ? `Declaro, para os devidos fins, o recebimento parcial no valor de ${formatMoney(effectivePaid)} (${moneyToPortuguese(effectivePaid)}) de um total de ${formatMoney(input.amount)} referente a ${input.description || 'taxa avulsa'}, vinculado a ${input.tenantName || 'locatário'}${propertyDesc ? ` (${propertyDesc})` : ''}, restando o saldo devedor de ${formatMoney(remaining)}.`
+      : `Declaro, para os devidos fins, o recebimento parcial no valor de ${formatMoney(effectivePaid)} (${moneyToPortuguese(effectivePaid)}) de um total de ${formatMoney(input.amount)} referente ao aluguel do imóvel ${propertyDesc}, vinculado ao locatário ${input.tenantName}, restando o saldo devedor de ${formatMoney(remaining)}.`;
+  } else {
+    declText = isExtra
+      ? `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente a ${input.description || 'taxa avulsa'}, vinculado a ${input.tenantName || 'locatário'}${propertyDesc ? ` (${propertyDesc})` : ''}.`
+      : `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente ao aluguel do imóvel ${propertyDesc}, vinculado ao locatário ${input.tenantName}.`;
+  }
   const declarationLines = drawWrappedText(
     page,
-    `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente ao aluguel do imóvel ${propertyDesc}, vinculado ao locatário ${input.tenantName}.`,
+    declText,
     {
       x: cardX,
       y: cursorY,
