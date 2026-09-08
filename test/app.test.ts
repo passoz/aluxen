@@ -1,6 +1,31 @@
 import { describe, expect, it } from 'bun:test';
+import { inflateSync } from 'node:zlib';
 import server from '../src/index';
 import { generateAuthToken } from '../src/utils/auth-token';
+
+function extractPdfText(bytes: ArrayBuffer): string {
+  const binary = Buffer.from(bytes);
+  const streamRegex = /stream[\r\n]+([\s\S]*?)[\r\n]+endstream/g;
+  let match: RegExpExecArray | null;
+  let text = '';
+  while ((match = streamRegex.exec(binary.toString('binary'))) !== null) {
+    const chunk = match[1];
+    if (!chunk) continue;
+    try {
+      const buffer = Buffer.from(chunk, 'binary');
+      const uncompressed = inflateSync(buffer).toString('latin1');
+      const hexRegex = /<([0-9A-Fa-f]+)>/g;
+      let mHex: RegExpExecArray | null;
+      while ((mHex = hexRegex.exec(uncompressed)) !== null) {
+        const hexVal = mHex[1];
+        if (hexVal) {
+          text += ' ' + Buffer.from(hexVal, 'hex').toString('latin1');
+        }
+      }
+    } catch {}
+  }
+  return text;
+}
 
 describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
   let sessionCookie = '';
@@ -299,6 +324,11 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     const bytesSigned = await resSigned.arrayBuffer();
     expect(bytesSigned.byteLength).toBeGreaterThan(1000);
 
+    // Valida que o nome do imóvel aparece na declaração do recibo
+
+    const receiptText = extractPdfText(bytesSigned);
+    expect(receiptText).toContain('Casa de Praia 202');
+    expect(receiptText).toContain('referente ao aluguel do imóvel Casa de Praia 202 na');
     // Sem assinatura
     const resUnsigned = await server.fetch(
       new Request(`http://localhost:3000/pdf?id=${createdReceiptId}&assinatura=false`, {
@@ -319,6 +349,11 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(res.headers.get('content-type')).toBe('application/pdf');
     const bytes = await res.arrayBuffer();
     expect(bytes.byteLength).toBeGreaterThan(5000);
+
+
+    const contractText = extractPdfText(bytes);
+    expect(contractText).toContain('Casa de Praia 202');
+    expect(contractText).toContain('o imóvel Casa de Praia 202 de propriedade do LOCADOR, situado');
   });
 
   it('GET /export exports backup JSON', async () => {

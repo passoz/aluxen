@@ -260,11 +260,16 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   cursorY -= 4;
 
   sectionTitle('Cláusula 1ª - DO OBJETO');
-  const propertyLocation = input.propertyAddress || input.propertyName;
+  const propertyName = input.propertyName?.trim();
+  const propertyAddress = input.propertyAddress?.trim();
+  const propertyNamePart = propertyName ? ` ${propertyName}` : '';
+  const rawLocation = propertyAddress || (propertyName ? '' : '');
+  const locationNormalized = rawLocation.replace(/^(na|no|em)\s+/i, '');
+  const situatedPart = locationNormalized ? `, situado na ${locationNormalized}` : '';
   const zipPart = input.propertyZip ? `, CEP ${input.propertyZip}` : '';
   const statePart = state ? `, no Estado ${state === 'RJ' ? 'do Rio de Janeiro' : `de ${state}`}` : '';
   bodyText(
-    `O presente contrato tem como OBJETO o imóvel de propriedade do LOCADOR, situado na ${propertyLocation}, cidade de ${city}${zipPart}${statePart}.`
+    `O presente contrato tem como OBJETO o imóvel${propertyNamePart} de propriedade do LOCADOR${situatedPart}, cidade de ${city}${zipPart}${statePart}.`
   );
   bodyText(
     `Parágrafo único: O imóvel entregue na data da assinatura deste contrato, pelo LOCADOR ao LOCATÁRIO, possui as características contidas no auto de vistoria anexo, que desde já aceitam expressamente.`

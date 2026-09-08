@@ -202,7 +202,7 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
     color: ink,
   });
   cursorY -= tenantLines * 24 + 8;
-  const propertyLines = drawWrappedText(page, `Imovel: ${input.propertyName}`, {
+  const propertyLines = drawWrappedText(page, `Imóvel: ${input.propertyName}`, {
     x: cardX,
     y: cursorY,
     maxWidth: contentWidth,
@@ -231,7 +231,18 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   cursorY -= summaryHeight + 34;
   page.drawText('Declaração', { x: cardX, y: cursorY, size: 14, font: fontBold, color: ink });
   cursorY -= 26;
-  const propertyDesc = input.propertyAddress ? `na ${input.propertyAddress}` : input.propertyName;
+  const propertyName = input.propertyName?.trim();
+  const propertyAddress = input.propertyAddress?.trim();
+  let propertyDesc = '';
+  if (propertyName && propertyAddress) {
+    const addressPrefix = /^(na|no|em)\s+/i.test(propertyAddress) ? '' : 'na ';
+    propertyDesc = `${propertyName} ${addressPrefix}${propertyAddress}`;
+  } else if (propertyName) {
+    propertyDesc = propertyName;
+  } else if (propertyAddress) {
+    const addressPrefix = /^(na|no|em)\s+/i.test(propertyAddress) ? '' : 'na ';
+    propertyDesc = `${addressPrefix}${propertyAddress}`;
+  }
   const declarationLines = drawWrappedText(
     page,
     `Declaro, para os devidos fins, o recebimento do valor de ${formatMoney(input.amount)} (${moneyToPortuguese(input.amount)}) referente ao aluguel do imóvel ${propertyDesc}, vinculado ao locatário ${input.tenantName}.`,
