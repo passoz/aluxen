@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
-import type { SQLQueryBindings } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';
+import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -50,7 +50,7 @@ export async function initializeDatabase(): Promise<void> {
 
       const client = getSqlite();
 
-      // 2. Garantias adicionais de compatibilidade e idempotência
+      // 2. Garantias adicionais de compatibilidade e idempotência (plumbing de schema, sem acesso de negócio)
       client.run('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
       client.run('CREATE UNIQUE INDEX IF NOT EXISTS receipts_generated_key_idx ON receipts(generated_key)');
 
@@ -110,24 +110,24 @@ export async function initializeDatabase(): Promise<void> {
       const seedPassword = process.env.SEED_PASSWORD || 'senha-de-teste';
       const passwordHash = await bcrypt.hash(seedPassword, 10);
 
-      const existing = client.query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?').get(seedUsername);
-      if (!existing) {
-        const legacy = client.query<{ id: string }, [string]>('SELECT id FROM users WHERE username = ?').get('admin');
-        if (legacy) {
-          client.query('UPDATE users SET username = ? WHERE username = ?').run(seedUsername, 'admin');
+      const existing = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.username, seedUsername)).limit(1);
+      if (existing.length === 0) {
+        const legacy = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.username, 'admin')).limit(1);
+        if (legacy.length > 0) {
+          await db.update(schema.users).set({ username: seedUsername }).where(eq(schema.users.username, 'admin'));
         } else {
-          client.query('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)').run(createId(), seedUsername, passwordHash);
+          await db.insert(schema.users).values({ id: createId(), username: seedUsername, passwordHash });
         }
       }
 
       // Seed de configurações padrão (sem dados pessoais sensíveis)
-      const defaultLandlordName = client.query<{ value: string }, [string]>('SELECT value FROM settings WHERE key = ?').get('landlord_name');
-      if (!defaultLandlordName) {
-        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_name', process.env.DEFAULT_LANDLORD_NAME || 'Locador');
+      const defaultLandlordName = await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, 'landlord_name')).limit(1);
+      if (defaultLandlordName.length === 0) {
+        await db.insert(schema.settings).values({ key: 'landlord_name', value: process.env.DEFAULT_LANDLORD_NAME || 'Locador' });
       }
-      const defaultLandlordCpf = client.query<{ value: string }, [string]>('SELECT value FROM settings WHERE key = ?').get('landlord_cpf');
-      if (!defaultLandlordCpf) {
-        client.query('INSERT INTO settings (key, value) VALUES (?, ?)').run('landlord_cpf', process.env.DEFAULT_LANDLORD_CPF || '');
+      const defaultLandlordCpf = await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, 'landlord_cpf')).limit(1);
+      if (defaultLandlordCpf.length === 0) {
+        await db.insert(schema.settings).values({ key: 'landlord_cpf', value: process.env.DEFAULT_LANDLORD_CPF || '' });
       }
     })();
   }
@@ -135,31 +135,16 @@ export async function initializeDatabase(): Promise<void> {
   await global.__aluxenDbInit;
 }
 
-// Helpers compatíveis com a assinatura do main
-export async function query<T>(sql: string, args: SQLQueryBindings[] = []): Promise<T[]> {
-  await initializeDatabase();
-  const normalizedSql = sql.replace(/\$(\d+)/g, '?');
-  const stmt = getSqlite().query<T, SQLQueryBindings[]>(normalizedSql);
-  return stmt.all(...args);
-}
-
-export async function queryOne<T>(sql: string, args: SQLQueryBindings[] = []): Promise<T | null> {
-  const rows = await query<T>(sql, args);
-  return rows[0] || null;
-}
-
-export async function execute(sql: string, args: SQLQueryBindings[] = []): Promise<void> {
-  await initializeDatabase();
-  const normalizedSql = sql.replace(/\$(\d+)/g, '?');
-  const stmt = getSqlite().query<unknown, SQLQueryBindings[]>(normalizedSql);
-  stmt.run(...args);
-}
-
 export async function getSetting(key: string): Promise<string | null> {
-  const row = await queryOne<{ value: string }>('SELECT value FROM settings WHERE key = ?', [key]);
-  return row?.value ?? null;
+  await initializeDatabase();
+  const rows = await db.select({ value: schema.settings.value }).from(schema.settings).where(eq(schema.settings.key, key)).limit(1);
+  return rows[0]?.value ?? null;
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  await execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
+  await initializeDatabase();
+  await db
+    .insert(schema.settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: schema.settings.key, set: { value } });
 }

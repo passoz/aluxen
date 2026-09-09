@@ -257,9 +257,20 @@ p, span, td, th {
   object-fit: contain;
   display: block;
 }
-
-.sidebar.open .sidebar-logomarca {
+.sidebar.open .sidebar-logomarca.logo-theme-light {
   display: block;
+}
+
+.sidebar.open .sidebar-logomarca.logo-theme-dark {
+  display: none;
+}
+
+[data-theme="dark"] .sidebar.open .sidebar-logomarca.logo-theme-light {
+  display: none !important;
+}
+
+[data-theme="dark"] .sidebar.open .sidebar-logomarca.logo-theme-dark {
+  display: block !important;
 }
 
 .sidebar.open .sidebar-marca {
@@ -267,11 +278,28 @@ p, span, td, th {
 }
 
 .sidebar:not(.open) .sidebar-logomarca {
-  display: none;
+  display: none !important;
 }
 
 .sidebar:not(.open) .sidebar-marca {
   display: block;
+}
+
+/* Alternância de logo por tema em telas públicas (Login, Verificação) */
+.logo-theme-dark {
+  display: none !important;
+}
+
+.logo-theme-light {
+  display: block;
+}
+
+[data-theme="dark"] .logo-theme-light {
+  display: none !important;
+}
+
+[data-theme="dark"] .logo-theme-dark {
+  display: block !important;
 }
 
 .logo-icon {

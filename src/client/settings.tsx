@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { WhatsAppConnectModal } from '../components/ui';
+import { WhatsAppConnectModal, ConfirmModal } from '../components/ui';
 import type { WhatsAppStatus } from '../whatsapp/types';
 
 export interface SettingsProps {
@@ -20,7 +20,9 @@ export function SettingsPage(props: SettingsProps) {
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [logoutWhatsappConfirm, setLogoutWhatsappConfirm] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -38,14 +40,23 @@ export function SettingsPage(props: SettingsProps) {
     void fetchStatus();
   }, [fetchStatus]);
 
-  const handleLogoutWhatsApp = async () => {
-    if (!confirm('Deseja realmente desconectar o WhatsApp do robô?')) return;
+  const handleLogoutWhatsApp = () => {
+    setLogoutWhatsappConfirm(true);
+  };
+
+  const performLogoutWhatsApp = async () => {
+    setLogoutWhatsappConfirm(false);
     setDisconnecting(true);
     setStatusMessage(null);
     try {
-      await fetch('/api/whatsapp/logout', { method: 'POST', credentials: 'same-origin' });
-      setStatusMessage('WhatsApp desconectado com sucesso.');
-      await fetchStatus();
+      const res = await fetch('/api/whatsapp/logout', { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setStatusMessage(data.message || 'WhatsApp desconectado com sucesso.');
+        await fetchStatus();
+      } else {
+        setStatusMessage(data.error || 'Erro ao desconectar WhatsApp.');
+      }
     } catch {
       setStatusMessage('Erro ao desconectar WhatsApp.');
     } finally {
@@ -255,6 +266,17 @@ export function SettingsPage(props: SettingsProps) {
           </a>
         </div>
       </div>
+
+      <ConfirmModal
+        open={logoutWhatsappConfirm}
+        title="Desconectar WhatsApp"
+        message="Deseja realmente desconectar o WhatsApp do robô?"
+        confirmLabel="Desconectar"
+        tone="danger"
+        busy={disconnecting}
+        onClose={() => (!disconnecting ? setLogoutWhatsappConfirm(false) : null)}
+        onConfirm={performLogoutWhatsApp}
+      />
     </div>
   );
 }

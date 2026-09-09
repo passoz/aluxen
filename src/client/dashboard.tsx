@@ -22,6 +22,7 @@ import {
   Pagination,
   LoadingRow,
   WhatsAppConnectModal,
+  ConfirmModal,
 } from '../components/ui';
 import type { WhatsAppStatus } from '../whatsapp/types';
 import {
@@ -31,8 +32,11 @@ import {
   IconReceipts,
   IconLogout,
   IconSettings,
+  IconDashboard,
   IconWhatsApp,
 } from '../components/icons';
+
+import { MetricsView } from './metrics';
 
 import type {
   Tenant,
@@ -44,6 +48,7 @@ import type {
   Tab,
   QueuePayload,
   PendingIds,
+  MetricsPayload,
 } from '../types/dashboard';
 import {
   getDaysInMonth,
@@ -77,6 +82,7 @@ export interface DashboardProps {
   leases: Lease[];
   receipts: Receipt[];
   activeTenantIds: string[];
+  metrics?: MetricsPayload;
 }
 
 function PdfDropdown({ id }: { id: string }) {
@@ -219,7 +225,7 @@ export function DashboardPage(initialData: DashboardProps) {
     const handlePopState = () => {
       const url = new URL(window.location.href);
       const urlTab = url.searchParams.get('tab') as Tab;
-      if (urlTab && ['tenants', 'properties', 'leases', 'receipts'].includes(urlTab)) {
+      if (urlTab && ['dashboard', 'tenants', 'properties', 'leases', 'receipts'].includes(urlTab)) {
         setTab(urlTab);
       }
     };
@@ -304,6 +310,7 @@ export function DashboardPage(initialData: DashboardProps) {
     error?: string;
     success?: string;
   } | null>(null);
+  const [batchPayConfirm, setBatchPayConfirm] = useState(false);
   const [connectWhatsappOpen, setConnectWhatsappOpen] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
 
@@ -809,6 +816,19 @@ export function DashboardPage(initialData: DashboardProps) {
         <ul>
           <li>
             <a
+              href="/dashboard?tab=dashboard"
+              className={tab === 'dashboard' ? 'active' : ''}
+              onClick={(e) => {
+                setMobileMenuOpen(false);
+                switchTab('dashboard', e);
+              }}
+            >
+              <span className="nav-icon"><IconDashboard /></span>
+              {!collapsed || mobileMenuOpen ? <span className="nav-label">Dashboard</span> : null}
+            </a>
+          </li>
+          <li>
+            <a
               href="/dashboard?tab=tenants"
               className={tab === 'tenants' ? 'active' : ''}
               onClick={(e) => {
@@ -881,7 +901,9 @@ export function DashboardPage(initialData: DashboardProps) {
           <div className="page-header">
             <div className="page-header-text">
               <h1>
-                {tab === 'tenants'
+                {tab === 'dashboard'
+                  ? 'Dashboard'
+                  : tab === 'tenants'
                   ? 'Inquilinos'
                   : tab === 'properties'
                   ? 'Imóveis'
@@ -895,7 +917,9 @@ export function DashboardPage(initialData: DashboardProps) {
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <span className="status-badge paid" style={{ fontSize: '0.8125rem', padding: '0.4rem 0.8rem' }}>
-                {tab === 'tenants'
+                {tab === 'dashboard'
+                  ? 'Visão Geral'
+                  : tab === 'tenants'
                   ? `${tenantItems.length} inquilino(s)`
                   : tab === 'properties'
                   ? `${propertyItems.length} imóvel(is)`
@@ -907,6 +931,8 @@ export function DashboardPage(initialData: DashboardProps) {
           </div>
           <SyncBanner isOnline={isOnline} pendingCount={pendingSyncCount} />
           {toast ? <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} /> : null}
+
+          {tab === 'dashboard' ? <MetricsView initialMetrics={initialData.metrics} /> : null}
 
           {tab === 'tenants' ? (
             <section className="card stack-lg">
@@ -1267,15 +1293,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       type="button"
                       className="btn btn-secondary"
                       disabled={busy}
-                      onClick={() => {
-                        if (!window.confirm(`Marcar ${selectedReceipts.size} recibo(s) como pago(s)?`)) return;
-                        const formData = new FormData();
-                        formData.set('intent', 'receipt.batch-pay');
-                        formData.set('ids', Array.from(selectedReceipts).join(','));
-                        void sendMutation(formData, 'Recibos marcados como pagos.', () => {
-                          setSelectedReceipts(new Set());
-                        });
-                      }}
+                      onClick={() => setBatchPayConfirm(true)}
                     >
                       Pagar {selectedReceipts.size} selecionado(s)
                     </button>
@@ -1446,17 +1464,25 @@ export function DashboardPage(initialData: DashboardProps) {
                           </td>
                           <td data-label="PDF">
                             <div className="row-actions">
-                              <PdfDropdown id={receipt.id} />
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline"
-                                style={{ color: 'var(--primary)', borderColor: 'var(--primary-tint-border)' }}
-                                onClick={() => openWhatsAppModal('receipt', receipt.id)}
-                                title="Enviar recibo por WhatsApp"
-                              >
-                                <span className="nav-icon" style={{ width: '13px', height: '13px' }}><IconWhatsApp /></span>
-                                WhatsApp
-                              </button>
+                              {getReceiptStatus(receipt) === 'paid' || getReceiptStatus(receipt) === 'partial' ? (
+                                <PdfDropdown id={receipt.id} />
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }} title="Disponível após o pagamento">
+                                  —
+                                </span>
+                              )}
+                              {getReceiptStatus(receipt) === 'paid' || getReceiptStatus(receipt) === 'partial' ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline"
+                                  style={{ color: 'var(--primary)', borderColor: 'var(--primary-tint-border)' }}
+                                  onClick={() => openWhatsAppModal('receipt', receipt.id)}
+                                  title="Enviar recibo por WhatsApp"
+                                >
+                                  <span className="nav-icon" style={{ width: '13px', height: '13px' }}><IconWhatsApp /></span>
+                                  WhatsApp
+                                </button>
+                              ) : null}
                             </div>
                           </td>
                           <td className="row-actions">
@@ -2667,6 +2693,25 @@ export function DashboardPage(initialData: DashboardProps) {
             onClose={() => setConnectWhatsappOpen(false)}
             onSuccess={() => {
               void loadWhatsAppStatus();
+            }}
+          />
+
+          <ConfirmModal
+            open={batchPayConfirm}
+            title="Confirmar baixa em lote"
+            message={`Marcar ${selectedReceipts.size} recibo(s) selecionado(s) como pago(s)?`}
+            confirmLabel="Marcar como pagos"
+            tone="primary"
+            busy={busy}
+            onClose={() => (!busy ? setBatchPayConfirm(false) : null)}
+            onConfirm={() => {
+              setBatchPayConfirm(false);
+              const formData = new FormData();
+              formData.set('intent', 'receipt.batch-pay');
+              formData.set('ids', Array.from(selectedReceipts).join(','));
+              void sendMutation(formData, 'Recibos marcados como pagos.', () => {
+                setSelectedReceipts(new Set());
+              });
             }}
           />
         </div>

@@ -6,7 +6,9 @@ import { renderToString } from 'react-dom/server';
 import { existsSync } from 'fs';
 import path from 'path';
 
-import { initializeDatabase, query, queryOne, execute, getSetting, setSetting } from './db';
+import { initializeDatabase, getSetting, setSetting, db } from './db';
+import { tenants, properties, leases, receipts, users } from './db/schema';
+import { sql, eq, and, desc, asc, isNull, isNotNull, lt, gt, lte, gte, ne, or, inArray, aliasedTable } from 'drizzle-orm';
 import { createId } from './utils/id';
 import { loginUser, changePassword } from './utils/auth';
 import { getUserId, requireUserId, setUserSession, clearUserSession } from './utils/session';
@@ -30,7 +32,7 @@ import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
 import { SettingsPage } from './client/settings';
 import { VerificationPage } from './client/verify';
-import type { Tenant, Property, Lease, Receipt, Tab, MutationResponse } from './types/dashboard';
+import type { Tenant, Property, Lease, Receipt, Tab, MutationResponse, MetricsPayload } from './types/dashboard';
 
 // Garantir que o banco de dados e o bundle do cliente estão prontos
 await initializeDatabase();
@@ -107,7 +109,7 @@ app.get('/api/health', (c) => {
 app.get('/', (c) => {
   const userId = getUserId(c);
   if (userId) {
-    return c.redirect('/dashboard?tab=tenants');
+    return c.redirect('/dashboard?tab=dashboard');
   }
   return c.redirect('/login');
 });
@@ -116,7 +118,7 @@ app.get('/', (c) => {
 app.get('/login', (c) => {
   const userId = getUserId(c);
   if (userId) {
-    return c.redirect('/dashboard?tab=tenants');
+    return c.redirect('/dashboard?tab=dashboard');
   }
   const html = renderHtml('Aluxen | Entrar', 'login', {}, <LoginPage />);
   return c.html(html);
@@ -151,7 +153,7 @@ app.post('/login', async (c) => {
   }
 
   setUserSession(c, user.id);
-  return c.redirect('/dashboard?tab=tenants');
+  return c.redirect('/dashboard?tab=dashboard');
 });
 
 // Logout
@@ -171,46 +173,84 @@ app.get('/dashboard', async (c) => {
   if (!userId) {
     return c.redirect('/login');
   }
-
   const urlTab = c.req.query('tab') as Tab;
-  const tab: Tab = ['tenants', 'properties', 'leases', 'receipts'].includes(urlTab) ? urlTab : 'tenants';
+  const tab: Tab = ['dashboard', 'tenants', 'properties', 'leases', 'receipts'].includes(urlTab) ? (urlTab as Tab) : 'dashboard';
 
-  const [user, tenants, properties, leases, receipts, activeTenantIds] = await Promise.all([
-    queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]),
-    query<Tenant>('SELECT id, name, email, phone, cpf FROM tenants ORDER BY created_at DESC, name'),
-    query<Property>('SELECT id, name, address, city, state, zip FROM properties ORDER BY created_at DESC, name'),
-    query<Lease>(`
-      SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
-             t.name AS tenant_name, p.name AS property_name
-      FROM leases l
-      JOIN tenants t ON t.id = l.tenant_id
-      JOIN properties p ON p.id = l.property_id
-      ORDER BY l.status, l.created_at DESC
-    `),
-    query<Receipt>(`
-      SELECT r.id, r.lease_id, r.tenant_id, r.property_id, r.category, r.description,
-             r.due_date, r.paid_at, r.amount, r.paid_amount, r.pdf_path, r.generated_key,
-             COALESCE(t.name, rt.name, '') AS tenant_name,
-             COALESCE(p.name, rp.name, '') AS property_name
-      FROM receipts r
-      LEFT JOIN leases l ON l.id = r.lease_id
-      LEFT JOIN tenants t ON t.id = l.tenant_id
-      LEFT JOIN properties p ON p.id = l.property_id
-      LEFT JOIN tenants rt ON rt.id = r.tenant_id
-      LEFT JOIN properties rp ON rp.id = r.property_id
-      ORDER BY r.created_at DESC
-    `),
-    query<{ tenant_id: string }>('SELECT DISTINCT tenant_id FROM leases WHERE status = ?', ['active']),
+  const tAlias = aliasedTable(tenants, 't');
+  const pAlias = aliasedTable(properties, 'p');
+  const rtAlias = aliasedTable(tenants, 'rt');
+  const rpAlias = aliasedTable(properties, 'rp');
+
+
+  const [userRow, tenantsList, propertiesList, leasesList, receiptsList, activeTenantIdRows, metrics] = await Promise.all([
+    db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]),
+    db.select({
+      id: tenants.id,
+      name: tenants.name,
+      email: tenants.email,
+      phone: tenants.phone,
+      cpf: tenants.cpf,
+    }).from(tenants).orderBy(desc(tenants.createdAt), asc(tenants.name)),
+    db.select({
+      id: properties.id,
+      name: properties.name,
+      address: properties.address,
+      city: properties.city,
+      state: properties.state,
+      zip: properties.zip,
+    }).from(properties).orderBy(desc(properties.createdAt), asc(properties.name)),
+    db.select({
+      id: leases.id,
+      tenant_id: leases.tenantId,
+      property_id: leases.propertyId,
+      start_date: leases.startDate,
+      end_date: leases.endDate,
+      due_day: leases.dueDay,
+      rent_amount: leases.rentAmount,
+      status: leases.status,
+      tenant_name: tAlias.name,
+      property_name: pAlias.name,
+    })
+      .from(leases)
+      .innerJoin(tAlias, eq(leases.tenantId, tAlias.id))
+      .innerJoin(pAlias, eq(leases.propertyId, pAlias.id))
+      .orderBy(asc(leases.status), desc(leases.createdAt)),
+    db.select({
+      id: receipts.id,
+      lease_id: receipts.leaseId,
+      tenant_id: receipts.tenantId,
+      property_id: receipts.propertyId,
+      category: receipts.category,
+      description: receipts.description,
+      due_date: receipts.dueDate,
+      paid_at: receipts.paidAt,
+      amount: receipts.amount,
+      paid_amount: receipts.paidAmount,
+      pdf_path: receipts.pdfPath,
+      generated_key: receipts.generatedKey,
+      tenant_name: sql<string>`coalesce(${tAlias.name}, ${rtAlias.name}, '')`,
+      property_name: sql<string>`coalesce(${pAlias.name}, ${rpAlias.name}, '')`,
+    })
+      .from(receipts)
+      .leftJoin(leases, eq(receipts.leaseId, leases.id))
+      .leftJoin(tAlias, eq(leases.tenantId, tAlias.id))
+      .leftJoin(pAlias, eq(leases.propertyId, pAlias.id))
+      .leftJoin(rtAlias, eq(receipts.tenantId, rtAlias.id))
+      .leftJoin(rpAlias, eq(receipts.propertyId, rpAlias.id))
+      .orderBy(desc(receipts.createdAt)),
+    db.selectDistinct({ tenant_id: leases.tenantId }).from(leases).where(eq(leases.status, 'active')),
+    computeMetrics(),
   ]);
 
   const dashboardData: DashboardProps = {
     tab,
-    user: user?.username || 'admin',
-    tenants,
-    properties,
-    leases,
-    receipts,
-    activeTenantIds: activeTenantIds.map((r) => r.tenant_id),
+    user: userRow?.username || 'admin',
+    tenants: tenantsList as unknown as Tenant[],
+    properties: propertiesList as unknown as Property[],
+    leases: leasesList as unknown as Lease[],
+    receipts: receiptsList as unknown as Receipt[],
+    activeTenantIds: activeTenantIdRows.map((r) => r.tenant_id).filter((id): id is string => !!id),
+    metrics,
   };
 
   if (c.req.query('json') === 'true') {
@@ -245,13 +285,7 @@ app.post('/dashboard', async (c) => {
         const phone = String(formData['phone'] || '').trim();
         const cpf = String(formData['cpf'] || '').trim();
         if (!name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute('INSERT INTO tenants (id, name, email, phone, cpf) VALUES (?, ?, ?, ?, ?)', [
-          id,
-          name,
-          email,
-          phone || null,
-          cpf || null,
-        ]);
+        await db.insert(tenants).values({ id, name, email, phone: phone || null, cpf: cpf || null });
         break;
       }
       case 'tenant.update': {
@@ -261,23 +295,14 @@ app.post('/dashboard', async (c) => {
         const phone = String(formData['phone'] || '').trim();
         const cpf = String(formData['cpf'] || '').trim();
         if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
-        await execute("UPDATE tenants SET name = ?, email = ?, phone = ?, cpf = ?, updated_at = datetime('now') WHERE id = ?", [
-          name,
-          email,
-          phone || null,
-          cpf || null,
-          id,
-        ]);
+        await db.update(tenants).set({ name, email, phone: phone || null, cpf: cpf || null, updatedAt: sql`(datetime('now'))` }).where(eq(tenants.id, id));
         break;
       }
       case 'tenant.delete': {
         const tenantId = String(formData['id']);
-        const activeLease = await queryOne<{ id: string }>('SELECT id FROM leases WHERE tenant_id = ? AND status = ?', [
-          tenantId,
-          'active',
-        ]);
-        if (activeLease) throw new Error('Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.');
-        await execute('DELETE FROM tenants WHERE id = ?', [tenantId]);
+        const activeLease = await db.select({ id: leases.id }).from(leases).where(and(eq(leases.tenantId, tenantId), eq(leases.status, 'active'))).limit(1);
+        if (activeLease.length > 0) throw new Error('Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.');
+        await db.delete(tenants).where(eq(tenants.id, tenantId));
         break;
       }
       case 'property.create': {
@@ -288,14 +313,7 @@ app.post('/dashboard', async (c) => {
         const state = String(formData['state'] || '').trim();
         const zip = String(formData['zip'] || '').trim();
         if (!name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
-        await execute('INSERT INTO properties (id, name, address, city, state, zip) VALUES (?, ?, ?, ?, ?, ?)', [
-          id,
-          name,
-          address,
-          city,
-          state,
-          zip || null,
-        ]);
+        await db.insert(properties).values({ id, name, address, city, state, zip: zip || null });
         break;
       }
       case 'property.update': {
@@ -306,18 +324,11 @@ app.post('/dashboard', async (c) => {
         const state = String(formData['state'] || '').trim();
         const zip = String(formData['zip'] || '').trim();
         if (!id || !name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
-        await execute("UPDATE properties SET name = ?, address = ?, city = ?, state = ?, zip = ?, updated_at = datetime('now') WHERE id = ?", [
-          name,
-          address,
-          city,
-          state,
-          zip || null,
-          id,
-        ]);
+        await db.update(properties).set({ name, address, city, state, zip: zip || null, updatedAt: sql`(datetime('now'))` }).where(eq(properties.id, id));
         break;
       }
       case 'property.delete': {
-        await execute('DELETE FROM properties WHERE id = ?', [String(formData['id'])]);
+        await db.delete(properties).where(eq(properties.id, String(formData['id'])));
         break;
       }
       case 'lease.create': {
@@ -331,15 +342,7 @@ app.post('/dashboard', async (c) => {
         if (!tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
           throw new Error('Preencha todos os campos do contrato.');
         }
-        await execute('INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-          id,
-          tenantId,
-          propertyId,
-          startDate,
-          endDate,
-          dueDay,
-          rentAmount,
-        ]);
+        await db.insert(leases).values({ id, tenantId, propertyId, startDate, endDate, dueDay, rentAmount });
         break;
       }
       case 'lease.update': {
@@ -353,27 +356,19 @@ app.post('/dashboard', async (c) => {
         if (!id || !tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
           throw new Error('Preencha todos os campos do contrato.');
         }
-        await execute("UPDATE leases SET tenant_id = ?, property_id = ?, start_date = ?, end_date = ?, due_day = ?, rent_amount = ?, updated_at = datetime('now') WHERE id = ?", [
-          tenantId,
-          propertyId,
-          startDate,
-          endDate,
-          dueDay,
-          rentAmount,
-          id,
-        ]);
+        await db.update(leases).set({ tenantId, propertyId, startDate, endDate, dueDay, rentAmount, updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, id));
         break;
       }
       case 'lease.terminate': {
-        await execute("UPDATE leases SET status = 'terminated', updated_at = datetime('now') WHERE id = ?", [String(formData['id'])]);
+        await db.update(leases).set({ status: 'terminated', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
         break;
       }
       case 'lease.reactivate': {
-        await execute("UPDATE leases SET status = 'active', updated_at = datetime('now') WHERE id = ?", [String(formData['id'])]);
+        await db.update(leases).set({ status: 'active', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
         break;
       }
       case 'lease.delete': {
-        await execute('DELETE FROM leases WHERE id = ?', [String(formData['id'])]);
+        await db.delete(leases).where(eq(leases.id, String(formData['id'])));
         break;
       }
       case 'receipt.create':
@@ -396,13 +391,11 @@ app.post('/dashboard', async (c) => {
         if (category === 'extra' && !description) throw new Error('Informe a descrição para cobrança avulsa.');
 
         if (leaseId) {
-          const lease = await queryOne<{ tenant_id: string; property_id: string }>(
-            'SELECT tenant_id, property_id FROM leases WHERE id = ?',
-            [leaseId]
-          );
+          const leaseRows = await db.select({ tenantId: leases.tenantId, propertyId: leases.propertyId }).from(leases).where(eq(leases.id, leaseId)).limit(1);
+          const lease = leaseRows[0];
           if (lease) {
-            tenantId = lease.tenant_id;
-            propertyId = lease.property_id;
+            tenantId = lease.tenantId;
+            propertyId = lease.propertyId;
           }
         }
 
@@ -416,52 +409,41 @@ app.post('/dashboard', async (c) => {
           paidAmount = amount;
         }
 
-        const pdfPath = null;
-
         if (intent === 'receipt.create') {
-          await execute(
-            `INSERT INTO receipts (id, lease_id, tenant_id, property_id, category, description, due_date, paid_at, amount, paid_amount, pdf_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              id,
-              leaseId,
-              tenantId,
-              propertyId,
-              category,
-              description,
-              dueDate,
-              paidAt || null,
-              amount,
-              paidAmount != null ? paidAmount : null,
-              pdfPath,
-            ]
-          );
+          await db.insert(receipts).values({
+            id,
+            leaseId,
+            tenantId,
+            propertyId,
+            category,
+            description,
+            dueDate,
+            paidAt: paidAt || null,
+            amount,
+            paidAmount: paidAmount != null ? paidAmount : null,
+            pdfPath: null,
+          });
         } else {
-          await execute(
-            `UPDATE receipts
-             SET lease_id = ?, tenant_id = ?, property_id = ?, category = ?, description = ?,
-                 due_date = ?, paid_at = ?, amount = ?, paid_amount = ?, pdf_path = ?, updated_at = datetime('now')
-             WHERE id = ?`,
-            [
-              leaseId,
-              tenantId,
-              propertyId,
-              category,
-              description,
-              dueDate,
-              paidAt || null,
-              amount,
-              paidAmount != null ? paidAmount : null,
-              pdfPath,
-              id,
-            ]
-          );
+          await db.update(receipts).set({
+            leaseId,
+            tenantId,
+            propertyId,
+            category,
+            description,
+            dueDate,
+            paidAt: paidAt || null,
+            amount,
+            paidAmount: paidAmount != null ? paidAmount : null,
+            pdfPath: null,
+            updatedAt: sql`(datetime('now'))`,
+          }).where(eq(receipts.id, id));
         }
         break;
       }
       case 'receipt.pay': {
         const id = String(formData['id']);
-        const receipt = await queryOne<{ amount: number; paid_amount: number | null }>('SELECT amount, paid_amount FROM receipts WHERE id = ?', [id]);
+        const receiptRows = await db.select({ amount: receipts.amount, paidAmount: receipts.paidAmount }).from(receipts).where(eq(receipts.id, id)).limit(1);
+        const receipt = receiptRows[0];
         if (!receipt) throw new Error('Recibo não encontrado.');
 
         const payAmount = formData['pay_amount'] != null && String(formData['pay_amount']).trim() !== ''
@@ -474,11 +456,7 @@ app.post('/dashboard', async (c) => {
             now.getHours()
           ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         }
-        await execute("UPDATE receipts SET paid_at = ?, paid_amount = ?, updated_at = datetime('now') WHERE id = ?", [
-          paidAt,
-          payAmount,
-          id,
-        ]);
+        await db.update(receipts).set({ paidAt, paidAmount: payAmount, updatedAt: sql`(datetime('now'))` }).where(eq(receipts.id, id));
         break;
       }
       case 'receipt.generate-monthly': {
@@ -488,25 +466,37 @@ app.post('/dashboard', async (c) => {
         const monthKey = `${year}-${String(month).padStart(2, '0')}`;
         const monthStart = `${monthKey}-01`;
         const monthEnd = `${monthKey}-${String(getDaysInMonth(year, month)).padStart(2, '0')}`;
-        const activeLeases = await query<Lease>(
-          `SELECT id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, '' AS tenant_name, '' AS property_name, status
-           FROM leases
-           WHERE status = 'active' AND start_date <= ? AND end_date >= ?`,
-          [monthEnd, monthStart]
-        );
+        const activeLeasesRows = await db.select({
+          id: leases.id,
+          tenantId: leases.tenantId,
+          propertyId: leases.propertyId,
+          dueDay: leases.dueDay,
+          rentAmount: leases.rentAmount,
+        })
+          .from(leases)
+          .where(and(eq(leases.status, 'active'), lte(leases.startDate, monthEnd), gte(leases.endDate, monthStart)));
 
-        for (const lease of activeLeases) {
-          const dueDay = Math.min(Number(lease.due_day) || 1, getDaysInMonth(year, month));
+        for (const lease of activeLeasesRows) {
+          const dueDay = Math.min(Number(lease.dueDay) || 1, getDaysInMonth(year, month));
           const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
-          await execute(
-            'INSERT OR IGNORE INTO receipts (id, lease_id, tenant_id, property_id, category, description, due_date, paid_at, amount, pdf_path, generated_key) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?)',
-            [createId(), lease.id, lease.tenant_id, lease.property_id, 'rent', null, dueDate, lease.rent_amount, `${lease.id}:${monthKey}`]
-          );
+          await db.insert(receipts).values({
+            id: createId(),
+            leaseId: lease.id,
+            tenantId: lease.tenantId,
+            propertyId: lease.propertyId,
+            category: 'rent',
+            description: null,
+            dueDate,
+            paidAt: null,
+            amount: lease.rentAmount,
+            pdfPath: null,
+            generatedKey: `${lease.id}:${monthKey}`,
+          }).onConflictDoNothing({ target: receipts.generatedKey });
         }
         break;
       }
       case 'receipt.delete': {
-        await execute('DELETE FROM receipts WHERE id = ?', [String(formData['id'])]);
+        await db.delete(receipts).where(eq(receipts.id, String(formData['id'])));
         break;
       }
       case 'receipt.batch-pay': {
@@ -515,18 +505,16 @@ app.post('/dashboard', async (c) => {
         const now = new Date();
         const paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(
           now.getHours()
-        ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+          ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         for (const receiptId of ids) {
-          await execute("UPDATE receipts SET paid_at = ?, paid_amount = amount, updated_at = datetime('now') WHERE id = ?", [
-            paidAt,
-            receiptId,
-          ]);
+          await db.update(receipts).set({ paidAt, paidAmount: sql`${receipts.amount}`, updatedAt: sql`(datetime('now'))` }).where(eq(receipts.id, receiptId));
         }
         break;
       }
       default:
         throw new Error('Ação inválida.');
     }
+
   } catch (error) {
     return c.json<MutationResponse>({ error: error instanceof Error ? error.message : 'Não foi possível salvar.' }, 400);
   }
@@ -539,7 +527,8 @@ app.get('/settings', async (c) => {
   const userId = requireUserId(c);
   if (!userId) return c.redirect('/login');
 
-  const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  const userRows = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+  const user = userRows[0];
   const lanIp = getLocalIpAddress();
   const currentPort = process.env.PORT || '3000';
   const settingsProps = {
@@ -563,7 +552,8 @@ app.post('/settings', async (c) => {
   const formData = await c.req.parseBody();
   const intent = String(formData['intent'] || '');
 
-  const user = await queryOne<{ username: string }>('SELECT username FROM users WHERE id = ?', [userId]);
+  const userRows = await db.select({ username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
+  const user = userRows[0];
   const lanIp = getLocalIpAddress();
   const currentPort = process.env.PORT || '3000';
   const detectedLanUrl = lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000';
@@ -638,24 +628,179 @@ app.post('/settings', async (c) => {
   }
 });
 
-// Exportar Backup JSON
+// Função agregada de cálculo de métricas (utilizada por SSR em /dashboard e via API em GET /metrics)
+export async function computeMetrics(): Promise<MetricsPayload> {
+  const [allTenantsRows, allPropertiesRows, activeLeasesRows, terminatedLeasesRows, allReceiptsRows] = await Promise.all([
+    db.select({ id: tenants.id, name: tenants.name }).from(tenants),
+    db.select({ id: properties.id, name: properties.name }).from(properties),
+    db.select({ id: leases.id, rentAmount: leases.rentAmount }).from(leases).where(eq(leases.status, 'active')),
+    db.select({ id: leases.id }).from(leases).where(eq(leases.status, 'terminated')),
+    db
+      .select({
+        id: receipts.id,
+        dueDate: receipts.dueDate,
+        paidAt: receipts.paidAt,
+        amount: receipts.amount,
+        paidAmount: receipts.paidAmount,
+        category: receipts.category,
+        tenantId: sql<string | null>`coalesce(${receipts.tenantId}, ${leases.tenantId})`,
+      })
+      .from(receipts)
+      .leftJoin(leases, eq(receipts.leaseId, leases.id)),
+  ]);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let paidCount = 0, partialCount = 0, dueCount = 0, overdueCount = 0;
+  let totalAmount = 0, paidAmount = 0, openAmount = 0, overdueAmount = 0;
+
+  const monthlyMap = new Map<string, { received: number; expected: number; open: number }>();
+  const categoryMap = new Map<string, { count: number; total: number; label: string }>();
+  const tenantPaidMap = new Map<string, { total: number; count: number }>();
+
+  const labelByCategory: Record<string, string> = { rent: 'Aluguel', extra: 'Avulsa' };
+  const monthsBack = 6;
+
+  for (const r of allReceiptsRows) {
+    const amount = Number(r.amount) || 0;
+    totalAmount += amount;
+    const dueDate = new Date(`${r.dueDate}T00:00:00`);
+    const hasExplicitPaidAmount = r.paidAmount != null;
+    const paidAmt = hasExplicitPaidAmount ? Number(r.paidAmount) : (r.paidAt ? amount : 0);
+
+    let status: 'paid' | 'partial' | 'due' | 'overdue';
+    if (hasExplicitPaidAmount && paidAmt > 0 && amount > 0) {
+      status = paidAmt < amount ? 'partial' : 'paid';
+    } else if (r.paidAt) {
+      status = 'paid';
+    } else {
+      status = dueDate < today ? 'overdue' : 'due';
+    }
+
+    if (status === 'paid') paidCount++;
+    else if (status === 'partial') partialCount++;
+    else if (status === 'due') dueCount++;
+    else overdueCount++;
+
+    if (status === 'paid' || status === 'partial') paidAmount += paidAmt;
+    if (status === 'due') openAmount += amount;
+    if (status === 'overdue') overdueAmount += amount;
+
+    const d = dueDate;
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const monthEntry = monthlyMap.get(monthKey) || { received: 0, expected: 0, open: 0 };
+    if (status === 'paid' || status === 'partial') monthEntry.received += paidAmt;
+    monthEntry.expected += amount;
+    if (status !== 'paid' && status !== 'partial') monthEntry.open += amount;
+    monthlyMap.set(monthKey, monthEntry);
+
+    const cat = r.category || 'rent';
+    const catEntry = categoryMap.get(cat) || { count: 0, total: 0, label: labelByCategory[cat] || cat };
+    catEntry.count++;
+    catEntry.total += amount;
+    categoryMap.set(cat, catEntry);
+
+    if ((status === 'paid' || status === 'partial') && r.tenantId) {
+      const tenantEntry = tenantPaidMap.get(r.tenantId) || { total: 0, count: 0 };
+      tenantEntry.total += paidAmt;
+      tenantEntry.count++;
+      tenantPaidMap.set(r.tenantId, tenantEntry);
+    }
+  }
+
+  const monthly: Array<{ key: string; label: string; received: number; expected: number; open: number }> = [];
+  const monthsLabel = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  for (let i = 3; i >= -2; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const entry = monthlyMap.get(key) || { received: 0, expected: 0, open: 0 };
+    monthly.push({
+      key,
+      label: `${monthsLabel[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`,
+      received: entry.received,
+      expected: entry.expected,
+      open: entry.open,
+    });
+  }
+
+  const statusList = [
+    { status: 'paid', label: 'Pago', count: paidCount },
+    { status: 'partial', label: 'Parcial', count: partialCount },
+    { status: 'due', label: 'A vencer', count: dueCount },
+    { status: 'overdue', label: 'Vencido', count: overdueCount },
+  ];
+
+  const categories = Array.from(categoryMap.entries()).map(([cat, v]) => ({ category: cat, label: v.label, count: v.count, total: v.total }));
+
+  const tenantNameMap = new Map(allTenantsRows.map((t) => [t.id, t.name]));
+  const topTenantsRaw = Array.from(tenantPaidMap.entries()).sort((a, b) => b[1].total - a[1].total).slice(0, 5);
+  const topTenants = topTenantsRaw.map(([tid, v]) => ({
+    id: tid,
+    name: tenantNameMap.get(tid) || 'Inquilino',
+    paidTotal: v.total,
+    receipts: v.count,
+  }));
+
+  const propertyOccupation = await db.select({
+    id: properties.id,
+    name: properties.name,
+    activeLeases: sql<number>`(SELECT COUNT(*) FROM "leases" WHERE "leases"."property_id" = "properties"."id" AND "leases"."status" = 'active')`,
+  }).from(properties);
+
+  const expectedMonthly = activeLeasesRows.reduce((acc, l) => acc + (Number(l.rentAmount) || 0), 0);
+
+  return {
+    totals: {
+      tenants: allTenantsRows.length,
+      properties: allPropertiesRows.length,
+      activeLeases: activeLeasesRows.length,
+      terminatedLeases: terminatedLeasesRows.length,
+      receipts: allReceiptsRows.length,
+      paidReceipts: paidCount,
+      partialReceipts: partialCount,
+      dueReceipts: dueCount,
+      overdueReceipts: overdueCount,
+      totalAmount,
+      paidAmount,
+      openAmount,
+      overdueAmount,
+      expectedMonthly,
+    },
+    monthly,
+    status: statusList,
+    categories,
+    properties: propertyOccupation,
+    topTenants,
+  };
+}
+
+// Endpoint de métricas agregado para o Dashboard
+app.get('/metrics', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const metrics = await computeMetrics();
+  return c.json(metrics);
+});
+
 app.get('/export', async (c) => {
   const userId = requireUserId(c);
   if (!userId) return c.redirect('/login');
 
-  const [tenants, properties, leases, receipts] = await Promise.all([
-    query('SELECT * FROM tenants'),
-    query('SELECT * FROM properties'),
-    query('SELECT * FROM leases'),
-    query('SELECT id, lease_id, due_date, paid_at, amount, created_at FROM receipts'),
+  const [tenantsRows, propertiesRows, leasesRows, receiptsRows] = await Promise.all([
+    db.select().from(tenants),
+    db.select().from(properties),
+    db.select().from(leases),
+    db.select({ id: receipts.id, lease_id: receipts.leaseId, due_date: receipts.dueDate, paid_at: receipts.paidAt, amount: receipts.amount, created_at: receipts.createdAt }).from(receipts),
   ]);
 
   const data = {
     exportedAt: new Date().toISOString(),
-    tenants,
-    properties,
-    leases,
-    receipts,
+    tenants: tenantsRows,
+    properties: propertiesRows,
+    leases: leasesRows,
+    receipts: receiptsRows,
   };
 
   const filename = `aluxen-backup-${new Date().toISOString().split('T')[0]}.json`;
@@ -714,52 +859,64 @@ app.post('/import', async (c) => {
     for (const t of data.tenants) {
       const newId = createId();
       idMap.tenants.set(t.id, newId);
-      await execute(
-        'INSERT INTO tenants (id, name, email, phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [newId, t.name, t.email, t.phone, t.created_at, t.updated_at]
-      );
+      await db.insert(tenants).values({
+        id: newId,
+        name: t.name,
+        email: t.email,
+        phone: t.phone,
+        createdAt: t.created_at,
+        updatedAt: t.updated_at,
+      });
     }
 
     for (const p of data.properties) {
       const newId = createId();
       idMap.properties.set(p.id, newId);
-      await execute(
-        'INSERT INTO properties (id, name, address, city, state, zip, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [newId, p.name, p.address, p.city, p.state, p.zip, p.created_at, p.updated_at]
-      );
+      await db.insert(properties).values({
+        id: newId,
+        name: p.name,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        zip: p.zip,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+      });
     }
 
     for (const l of data.leases) {
       const newId = createId();
       idMap.leases.set(l.id, newId);
-      await execute(
-        'INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          newId,
-          idMap.tenants.get(l.tenant_id) || l.tenant_id,
-          idMap.properties.get(l.property_id) || l.property_id,
-          l.start_date,
-          l.end_date,
-          l.due_day ?? 1,
-          l.rent_amount,
-          l.created_at,
-          l.updated_at,
-        ]
-      );
+      await db.insert(leases).values({
+        id: newId,
+        tenantId: idMap.tenants.get(l.tenant_id) || l.tenant_id,
+        propertyId: idMap.properties.get(l.property_id) || l.property_id,
+        startDate: l.start_date,
+        endDate: l.end_date,
+        dueDay: l.due_day ?? 1,
+        rentAmount: l.rent_amount,
+        createdAt: l.created_at,
+        updatedAt: l.updated_at,
+      });
     }
 
     for (const r of data.receipts) {
       const newId = createId();
-      await execute(
-        'INSERT INTO receipts (id, lease_id, due_date, paid_at, amount, pdf_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [newId, idMap.leases.get(r.lease_id) || r.lease_id, r.due_date, r.paid_at, r.amount, r.pdf_path, r.created_at]
-      );
+      await db.insert(receipts).values({
+        id: newId,
+        leaseId: idMap.leases.get(r.lease_id) || r.lease_id,
+        dueDate: r.due_date,
+        paidAt: r.paid_at,
+        amount: r.amount,
+        pdfPath: r.pdf_path,
+        createdAt: r.created_at,
+      });
     }
   } catch (error) {
     return c.text(error instanceof Error ? error.message : 'Erro ao importar dados.', 400);
   }
 
-  return c.redirect('/dashboard?tab=tenants&toast=importado');
+  return c.redirect('/dashboard?tab=dashboard&toast=importado');
 });
 
 // Emissão de Recibo em PDF
@@ -780,38 +937,44 @@ app.get('/pdf', async (c) => {
     return c.redirect('/login');
   }
 
-  const receipt = await queryOne<{
-    id: string;
-    due_date: string;
-    paid_at: string | null;
-    amount: number;
-    paid_amount: number | null;
-    category: string;
-    description: string | null;
-    tenant_name: string;
-    property_name: string;
-    property_address: string;
-    property_city: string;
-    property_state: string;
-  }>(
-    `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
-            COALESCE(t.name, rt.name, '') AS tenant_name,
-            COALESCE(p.name, rp.name, '') AS property_name,
-            COALESCE(p.address, rp.address, '') AS property_address,
-            COALESCE(p.city, rp.city, '') AS property_city,
-            COALESCE(p.state, rp.state, '') AS property_state
-     FROM receipts r
-     LEFT JOIN leases l ON l.id = r.lease_id
-     LEFT JOIN tenants t ON t.id = l.tenant_id
-     LEFT JOIN properties p ON p.id = l.property_id
-     LEFT JOIN tenants rt ON rt.id = r.tenant_id
-     LEFT JOIN properties rp ON rp.id = r.property_id
-     WHERE r.id = ?`,
-    [id]
-  );
+  const pdfTAlias = aliasedTable(tenants, 't');
+  const pdfPAlias = aliasedTable(properties, 'p');
+  const pdfRtAlias = aliasedTable(tenants, 'rt');
+  const pdfRpAlias = aliasedTable(properties, 'rp');
+
+  const receiptRows = await db.select({
+    id: receipts.id,
+    due_date: receipts.dueDate,
+    paid_at: receipts.paidAt,
+    amount: receipts.amount,
+    paid_amount: receipts.paidAmount,
+    category: receipts.category,
+    description: receipts.description,
+    tenant_name: sql<string>`coalesce(${pdfTAlias.name}, ${pdfRtAlias.name}, '')`,
+    property_name: sql<string>`coalesce(${pdfPAlias.name}, ${pdfRpAlias.name}, '')`,
+    property_address: sql<string>`coalesce(${pdfPAlias.address}, ${pdfRpAlias.address}, '')`,
+    property_city: sql<string>`coalesce(${pdfPAlias.city}, ${pdfRpAlias.city}, '')`,
+    property_state: sql<string>`coalesce(${pdfPAlias.state}, ${pdfRpAlias.state}, '')`,
+  })
+    .from(receipts)
+    .leftJoin(leases, eq(receipts.leaseId, leases.id))
+    .leftJoin(pdfTAlias, eq(leases.tenantId, pdfTAlias.id))
+    .leftJoin(pdfPAlias, eq(leases.propertyId, pdfPAlias.id))
+    .leftJoin(pdfRtAlias, eq(receipts.tenantId, pdfRtAlias.id))
+    .leftJoin(pdfRpAlias, eq(receipts.propertyId, pdfRpAlias.id))
+    .where(eq(receipts.id, id))
+    .limit(1);
+
+  const receipt = receiptRows[0];
 
   if (!receipt) {
     return c.text('Recibo não encontrado', 404);
+  }
+
+  // Recibo liberado para emissão/download apenas quando houver pagamento
+  // (integral ou parcial). Pendente/vencido não gera recibo.
+  if (!receipt.paid_at) {
+    return c.text('Recibo não pago. O recibo só é liberado após o pagamento.', 403);
   }
 
   const propertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state].filter(Boolean).join(', ');
@@ -855,31 +1018,31 @@ app.get('/contract-pdf', async (c) => {
     return c.redirect('/login');
   }
 
-  const lease = await queryOne<{
-    id: string;
-    start_date: string;
-    end_date: string;
-    due_day: number;
-    rent_amount: number;
-    tenant_name: string;
-    tenant_phone: string | null;
-    tenant_cpf: string | null;
-    property_name: string;
-    property_address: string;
-    property_city: string;
-    property_state: string;
-    property_zip: string | null;
-  }>(
-    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount,
-            t.name AS tenant_name, t.phone AS tenant_phone, t.cpf AS tenant_cpf,
-            p.name AS property_name, p.address AS property_address,
-            p.city AS property_city, p.state AS property_state, p.zip AS property_zip
-     FROM leases l
-     JOIN tenants t ON t.id = l.tenant_id
-     JOIN properties p ON p.id = l.property_id
-     WHERE l.id = ?`,
-    [id]
-  );
+  const contractTAlias = aliasedTable(tenants, 't');
+  const contractPAlias = aliasedTable(properties, 'p');
+
+  const leaseRows = await db.select({
+    id: leases.id,
+    start_date: leases.startDate,
+    end_date: leases.endDate,
+    due_day: leases.dueDay,
+    rent_amount: leases.rentAmount,
+    tenant_name: contractTAlias.name,
+    tenant_phone: contractTAlias.phone,
+    tenant_cpf: contractTAlias.cpf,
+    property_name: contractPAlias.name,
+    property_address: contractPAlias.address,
+    property_city: contractPAlias.city,
+    property_state: contractPAlias.state,
+    property_zip: contractPAlias.zip,
+  })
+    .from(leases)
+    .innerJoin(contractTAlias, eq(leases.tenantId, contractTAlias.id))
+    .innerJoin(contractPAlias, eq(leases.propertyId, contractPAlias.id))
+    .where(eq(leases.id, id))
+    .limit(1);
+
+  const lease = leaseRows[0];
 
   if (!lease) {
     return c.text('Contrato não encontrado', 404);
@@ -927,37 +1090,36 @@ app.get('/validar/recibo/:id', async (c) => {
     return c.html(html, 400);
   }
 
-  const receipt = await queryOne<{
-    id: string;
-    due_date: string;
-    paid_at: string | null;
-    amount: number;
-    paid_amount: number | null;
-    category: string;
-    description: string | null;
-    tenant_name: string;
-    tenant_cpf: string | null;
-    property_name: string;
-    property_address: string;
-    property_city: string;
-    property_state: string;
-  }>(
-    `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
-            COALESCE(t.name, rt.name, '') AS tenant_name,
-            COALESCE(t.cpf, rt.cpf, '') AS tenant_cpf,
-            COALESCE(p.name, rp.name, '') AS property_name,
-            COALESCE(p.address, rp.address, '') AS property_address,
-            COALESCE(p.city, rp.city, '') AS property_city,
-            COALESCE(p.state, rp.state, '') AS property_state
-     FROM receipts r
-     LEFT JOIN leases l ON l.id = r.lease_id
-     LEFT JOIN tenants t ON t.id = l.tenant_id
-     LEFT JOIN properties p ON p.id = l.property_id
-     LEFT JOIN tenants rt ON rt.id = r.tenant_id
-     LEFT JOIN properties rp ON rp.id = r.property_id
-     WHERE r.id = ?`,
-    [id]
-  );
+  const vRecTAlias = aliasedTable(tenants, 't');
+  const vRecPAlias = aliasedTable(properties, 'p');
+  const vRecRtAlias = aliasedTable(tenants, 'rt');
+  const vRecRpAlias = aliasedTable(properties, 'rp');
+
+  const receiptRows = await db.select({
+    id: receipts.id,
+    due_date: receipts.dueDate,
+    paid_at: receipts.paidAt,
+    amount: receipts.amount,
+    paid_amount: receipts.paidAmount,
+    category: receipts.category,
+    description: receipts.description,
+    tenant_name: sql<string>`coalesce(${vRecTAlias.name}, ${vRecRtAlias.name}, '')`,
+    tenant_cpf: sql<string>`coalesce(${vRecTAlias.cpf}, ${vRecRtAlias.cpf}, '')`,
+    property_name: sql<string>`coalesce(${vRecPAlias.name}, ${vRecRpAlias.name}, '')`,
+    property_address: sql<string>`coalesce(${vRecPAlias.address}, ${vRecRpAlias.address}, '')`,
+    property_city: sql<string>`coalesce(${vRecPAlias.city}, ${vRecRpAlias.city}, '')`,
+    property_state: sql<string>`coalesce(${vRecPAlias.state}, ${vRecRpAlias.state}, '')`,
+  })
+    .from(receipts)
+    .leftJoin(leases, eq(receipts.leaseId, leases.id))
+    .leftJoin(vRecTAlias, eq(leases.tenantId, vRecTAlias.id))
+    .leftJoin(vRecPAlias, eq(leases.propertyId, vRecPAlias.id))
+    .leftJoin(vRecRtAlias, eq(receipts.tenantId, vRecRtAlias.id))
+    .leftJoin(vRecRpAlias, eq(receipts.propertyId, vRecRpAlias.id))
+    .where(eq(receipts.id, id))
+    .limit(1);
+
+  const receipt = receiptRows[0];
 
   if (!receipt) {
     const html = renderHtml(
@@ -967,6 +1129,17 @@ app.get('/validar/recibo/:id', async (c) => {
       <VerificationPage valid={false} error="Recibo não localizado na base oficial de registros." verifiedAt={verifiedAt} />
     );
     return c.html(html, 404);
+  }
+
+  // Recibo ainda não pago: não disponível para validação/download público
+  if (!receipt.paid_at) {
+    const html = renderHtml(
+      'Aluxen | Autenticidade do Recibo',
+      'verify',
+      {},
+      <VerificationPage valid={false} error="Recibo ainda não pago. O documento só é liberado após o pagamento." verifiedAt={verifiedAt} />
+    );
+    return c.html(html, 403);
   }
 
   const landlordName = (await getSetting('landlord_name')) || 'Locador';
@@ -1019,30 +1192,30 @@ app.get('/validar/contrato/:id', async (c) => {
     return c.html(html, 400);
   }
 
-  const lease = await queryOne<{
-    id: string;
-    start_date: string;
-    end_date: string;
-    due_day: number;
-    rent_amount: number;
-    status: string;
-    tenant_name: string;
-    tenant_cpf: string | null;
-    property_name: string;
-    property_address: string;
-    property_city: string;
-    property_state: string;
-  }>(
-    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
-            t.name AS tenant_name, t.cpf AS tenant_cpf,
-            p.name AS property_name, p.address AS property_address,
-            p.city AS property_city, p.state AS property_state
-     FROM leases l
-     JOIN tenants t ON t.id = l.tenant_id
-     JOIN properties p ON p.id = l.property_id
-     WHERE l.id = ?`,
-    [id]
-  );
+  const vLseTAlias = aliasedTable(tenants, 't');
+  const vLsePAlias = aliasedTable(properties, 'p');
+
+  const leaseRows = await db.select({
+    id: leases.id,
+    start_date: leases.startDate,
+    end_date: leases.endDate,
+    due_day: leases.dueDay,
+    rent_amount: leases.rentAmount,
+    status: leases.status,
+    tenant_name: vLseTAlias.name,
+    tenant_cpf: vLseTAlias.cpf,
+    property_name: vLsePAlias.name,
+    property_address: vLsePAlias.address,
+    property_city: vLsePAlias.city,
+    property_state: vLsePAlias.state,
+  })
+    .from(leases)
+    .innerJoin(vLseTAlias, eq(leases.tenantId, vLseTAlias.id))
+    .innerJoin(vLsePAlias, eq(leases.propertyId, vLsePAlias.id))
+    .where(eq(leases.id, id))
+    .limit(1);
+
+  const lease = leaseRows[0];
 
   if (!lease) {
     const html = renderHtml(
@@ -1145,46 +1318,50 @@ app.post('/api/whatsapp/preview', async (c) => {
   const landlordName = (await getSetting('landlord_name')) || 'Locador';
 
   if (type === 'receipt') {
-    const receipt = await queryOne<{
-      id: string;
-      due_date: string;
-      paid_at: string | null;
-      amount: number;
-      paid_amount: number | null;
-      category: string;
-      description: string | null;
-      tenant_name: string;
-      tenant_phone: string | null;
-      property_name: string;
-      property_address: string;
-      property_city: string;
-      property_state: string;
-    }>(
-      `SELECT r.id, r.due_date, r.paid_at, r.amount, r.paid_amount, r.category, r.description,
-              COALESCE(t.name, rt.name, '') AS tenant_name,
-              COALESCE(t.phone, rt.phone, '') AS tenant_phone,
-              COALESCE(p.name, rp.name, '') AS property_name,
-              COALESCE(p.address, rp.address, '') AS property_address,
-              COALESCE(p.city, rp.city, '') AS property_city,
-              COALESCE(p.state, rp.state, '') AS property_state
-       FROM receipts r
-       LEFT JOIN leases l ON l.id = r.lease_id
-       LEFT JOIN tenants t ON t.id = l.tenant_id
-       LEFT JOIN properties p ON p.id = l.property_id
-       LEFT JOIN tenants rt ON rt.id = r.tenant_id
-       LEFT JOIN properties rp ON rp.id = r.property_id
-       WHERE r.id = ?`,
-      [id]
-    );
+    const wpRecTAlias = aliasedTable(tenants, 't');
+    const wpRecPAlias = aliasedTable(properties, 'p');
+    const wpRecRtAlias = aliasedTable(tenants, 'rt');
+    const wpRecRpAlias = aliasedTable(properties, 'rp');
+
+    const receiptRows = await db.select({
+      id: receipts.id,
+      due_date: receipts.dueDate,
+      paid_at: receipts.paidAt,
+      amount: receipts.amount,
+      paid_amount: receipts.paidAmount,
+      category: receipts.category,
+      description: receipts.description,
+      tenant_name: sql<string>`coalesce(${wpRecTAlias.name}, ${wpRecRtAlias.name}, '')`,
+      tenant_phone: sql<string>`coalesce(${wpRecTAlias.phone}, ${wpRecRtAlias.phone}, '')`,
+      property_name: sql<string>`coalesce(${wpRecPAlias.name}, ${wpRecRpAlias.name}, '')`,
+      property_address: sql<string>`coalesce(${wpRecPAlias.address}, ${wpRecRpAlias.address}, '')`,
+      property_city: sql<string>`coalesce(${wpRecPAlias.city}, ${wpRecRpAlias.city}, '')`,
+      property_state: sql<string>`coalesce(${wpRecPAlias.state}, ${wpRecRpAlias.state}, '')`,
+    })
+      .from(receipts)
+      .leftJoin(leases, eq(receipts.leaseId, leases.id))
+      .leftJoin(wpRecTAlias, eq(leases.tenantId, wpRecTAlias.id))
+      .leftJoin(wpRecPAlias, eq(leases.propertyId, wpRecPAlias.id))
+      .leftJoin(wpRecRtAlias, eq(receipts.tenantId, wpRecRtAlias.id))
+      .leftJoin(wpRecRpAlias, eq(receipts.propertyId, wpRecRpAlias.id))
+      .where(eq(receipts.id, id))
+      .limit(1);
+
+    const receipt = receiptRows[0];
 
     if (!receipt) {
       return c.json({ error: 'Recibo não encontrado.' }, 404);
     }
 
+    // Bloqueio de pré-visualização/envio para recibos ainda não pagos
+    if (!receipt.paid_at) {
+      return c.json({ error: 'Recibo ainda não pago. O documento só é liberado após o pagamento.' }, 403);
+    }
+
     const phone = receipt.tenant_phone || '';
-    const token = generateAuthToken('receipt', receipt.id);
-    const validationUrl = await getValidationUrl('receipt', receipt.id, token, baseUrl);
-    const pdfUrl = `${baseUrl}/pdf?id=${receipt.id}&token=${token}`;
+    const wtoken = generateAuthToken('receipt', receipt.id);
+    const validationUrl = await getValidationUrl('receipt', receipt.id, wtoken, baseUrl);
+    const pdfUrl = `${baseUrl}/pdf?id=${receipt.id}&token=${wtoken}`;
     const fullPropertyAddress = [receipt.property_address, receipt.property_city, receipt.property_state]
       .filter(Boolean)
       .join(', ');
@@ -1222,30 +1399,30 @@ app.post('/api/whatsapp/preview', async (c) => {
   }
 
   // type === 'lease'
-  const lease = await queryOne<{
-    id: string;
-    start_date: string;
-    end_date: string;
-    due_day: number;
-    rent_amount: number;
-    status: string;
-    tenant_name: string;
-    tenant_phone: string | null;
-    property_name: string;
-    property_address: string;
-    property_city: string;
-    property_state: string;
-  }>(
-    `SELECT l.id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status,
-            t.name AS tenant_name, t.phone AS tenant_phone,
-            p.name AS property_name, p.address AS property_address,
-            p.city AS property_city, p.state AS property_state
-     FROM leases l
-     JOIN tenants t ON t.id = l.tenant_id
-     JOIN properties p ON p.id = l.property_id
-     WHERE l.id = ?`,
-    [id]
-  );
+  const wpLseTAlias = aliasedTable(tenants, 't');
+  const wpLsePAlias = aliasedTable(properties, 'p');
+
+  const leaseRows = await db.select({
+    id: leases.id,
+    start_date: leases.startDate,
+    end_date: leases.endDate,
+    due_day: leases.dueDay,
+    rent_amount: leases.rentAmount,
+    status: leases.status,
+    tenant_name: wpLseTAlias.name,
+    tenant_phone: wpLseTAlias.phone,
+    property_name: wpLsePAlias.name,
+    property_address: wpLsePAlias.address,
+    property_city: wpLsePAlias.city,
+    property_state: wpLsePAlias.state,
+  })
+    .from(leases)
+    .innerJoin(wpLseTAlias, eq(leases.tenantId, wpLseTAlias.id))
+    .innerJoin(wpLsePAlias, eq(leases.propertyId, wpLsePAlias.id))
+    .where(eq(leases.id, id))
+    .limit(1);
+
+  const lease = leaseRows[0];
 
   if (!lease) {
     return c.json({ error: 'Contrato não encontrado.' }, 404);

@@ -73,5 +73,29 @@ export type PendingIds = {
   receipts: Set<string>;
 };
 
-export const tabs = ['tenants', 'properties', 'leases', 'receipts'] as const;
+export const tabs = ['dashboard', 'tenants', 'properties', 'leases', 'receipts'] as const;
 export type Tab = (typeof tabs)[number];
+
+export interface MetricsPayload {
+  totals: {
+    tenants: number;
+    properties: number;
+    activeLeases: number;
+    terminatedLeases: number;
+    receipts: number;
+    paidReceipts: number;
+    partialReceipts: number;
+    dueReceipts: number;
+    overdueReceipts: number;
+    totalAmount: number;
+    paidAmount: number;
+    openAmount: number;
+    overdueAmount: number;
+    expectedMonthly: number;
+  };
+  monthly: Array<{ key: string; label: string; received: number; expected: number; open: number }>;
+  status: Array<{ status: string; label: string; count: number }>;
+  categories: Array<{ category: string; label: string; count: number; total: number }>;
+  properties: Array<{ id: string; name: string; activeLeases: number }>;
+  topTenants: Array<{ id: string; name: string; paidTotal: number; receipts: number }>;
+}

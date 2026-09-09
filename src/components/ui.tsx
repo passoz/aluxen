@@ -25,6 +25,8 @@ export function LoadingRow({ colSpan }: { colSpan: number }) {
 }
 
 export function DataButtons({ collapsed }: { collapsed: boolean }) {
+  const [importOpen, setImportOpen] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   return (
     <>
       <a href="/export" className="data-btn" download>
@@ -38,9 +40,10 @@ export function DataButtons({ collapsed }: { collapsed: boolean }) {
             name="file"
             accept=".json"
             onChange={(e) => {
-              if (e.currentTarget.files?.length && window.confirm('Importar dados do arquivo? Isso adicionará novos registros.')) {
-                e.currentTarget.form?.submit();
-              }
+              const file = e.currentTarget.files?.[0];
+              if (!file) return;
+              setPendingFile(file);
+              setImportOpen(true);
             }}
             hidden
           />
@@ -48,6 +51,31 @@ export function DataButtons({ collapsed }: { collapsed: boolean }) {
           {!collapsed && <span className="nav-label">Importar</span>}
         </label>
       </form>
+      <ConfirmModal
+        open={importOpen}
+        title="Importar dados"
+        message="Importar dados do arquivo? Isso adicionará novos registros ao banco."
+        confirmLabel="Importar"
+        tone="primary"
+        onClose={() => {
+          setImportOpen(false);
+          setPendingFile(null);
+        }}
+        onConfirm={() => {
+          const file = pendingFile;
+          setImportOpen(false);
+          setPendingFile(null);
+          if (file) {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            const input = document.querySelector<HTMLInputElement>('input[type="file"][name="file"]');
+            if (input) {
+              input.files = dt.files;
+              input.form?.submit();
+            }
+          }
+        }}
+      />
     </>
   );
 }
@@ -81,7 +109,8 @@ export function ThemeToggle({ collapsed }: { collapsed: boolean }) {
 export function Brand({ collapsed }: { collapsed?: boolean }) {
   return (
     <div className="logo">
-      <img src="/logomarca.png" alt="Aluxen" className="sidebar-logomarca" />
+      <img src="/logomarca.png" alt="Aluxen" className="sidebar-logomarca logo-theme-light" />
+      <img src="/logomarca-light.png" alt="Aluxen" className="sidebar-logomarca logo-theme-dark" />
       <img src="/marca.png" alt="Aluxen" className="sidebar-marca" />
     </div>
   );
@@ -131,13 +160,15 @@ export function DeleteRowButton({
   disabledTitle?: string;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!window.confirm(confirmMessage || 'Tem certeza que deseja excluir este item?')) {
-      return;
-    }
+    setConfirmOpen(true);
+  };
 
+  const performDelete = async () => {
+    setConfirmOpen(false);
     if (!window.navigator.onLine) {
       onOptimisticDelete();
       onSettled();
@@ -172,19 +203,31 @@ export function DeleteRowButton({
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'inline-flex', margin: 0 }}>
-      <input type="hidden" name="intent" value={intent} />
-      <input type="hidden" name="tab" value={tab} />
-      <input type="hidden" name="id" value={id} />
-      <button
-        type="submit"
-        className={btnClass || 'btn btn-sm btn-danger'}
-        disabled={disabled || submitting}
-        title={disabledTitle}
-      >
-        {btnLabel || 'Excluir'}
-      </button>
-    </form>
+    <>
+      <form onSubmit={handleSubmit} style={{ display: 'inline-flex', margin: 0 }}>
+        <input type="hidden" name="intent" value={intent} />
+        <input type="hidden" name="tab" value={tab} />
+        <input type="hidden" name="id" value={id} />
+        <button
+          type="submit"
+          className={btnClass || 'btn btn-sm btn-danger'}
+          disabled={disabled || submitting}
+          title={disabledTitle}
+        >
+          {btnLabel || 'Excluir'}
+        </button>
+      </form>
+      <ConfirmModal
+        open={confirmOpen}
+        title="Confirmar exclusão"
+        message={confirmMessage || 'Tem certeza que deseja excluir este item?'}
+        confirmLabel="Excluir"
+        tone="danger"
+        busy={submitting}
+        onClose={() => (!submitting ? setConfirmOpen(false) : null)}
+        onConfirm={performDelete}
+      />
+    </>
   );
 }
 
@@ -224,6 +267,56 @@ export function Modal({ title, children, onClose }: { title: string; children: R
           </button>
         </div>
         {children}
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmModal({
+  open,
+  title,
+  message,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  tone = 'primary',
+  busy = false,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: 'primary' | 'danger';
+  busy?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={() => (!busy ? onClose() : null)}>
+      <div
+        className="modal-card confirm-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h3>{title}</h3>
+        </div>
+        <div className="modal-body">
+          <p style={{ margin: 0, color: 'var(--text-muted)', lineHeight: 1.5 }}>{message}</p>
+        </div>
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem 1.25rem' }}>
+          <button type="button" className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+            {cancelLabel}
+          </button>
+          <button type="button" className={`btn btn-sm ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} disabled={busy}>
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

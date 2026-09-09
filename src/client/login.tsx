@@ -16,7 +16,8 @@ export function LoginPage({ error: initialError }: LoginProps) {
     <div className="login-page">
       <div className="card login-card">
         <div className="brand-lockup">
-          <img src="/logomarca.png" alt="Aluxen" className="login-logomarca" />
+          <img src="/logomarca.png" alt="Aluxen" className="login-logomarca logo-theme-light" />
+          <img src="/logomarca-light.png" alt="Aluxen" className="login-logomarca logo-theme-dark" />
         </div>
 
         <form method="post" action="/login" className="stack" onSubmit={handleSubmit}>

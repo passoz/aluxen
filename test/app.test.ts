@@ -100,7 +100,7 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
       })
     );
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/dashboard?tab=tenants');
+    expect(res.headers.get('location')).toBe('/dashboard?tab=dashboard');
 
     const setCookie = res.headers.get('set-cookie');
     expect(setCookie).toBeTruthy();
@@ -716,6 +716,37 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(avulsoReceipt.category).toBe('extra');
     expect(avulsoReceipt.lease_id).toBeNull();
     expect(avulsoReceipt.tenant_name).toContain('Carlos Drummond');
+    // Recibo avulso ainda não pago: PDF não deve ser emitido/downloadable
+    const unpaidPdfRes = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${avulsoReceipt.id}`, {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(unpaidPdfRes.status).toBe(403);
+
+    // Recibo não pago: portal público de autenticidade também deve bloquear (403)
+    const unpaidToken = generateAuthToken('receipt', avulsoReceipt.id);
+    const unpaidVerifyRes = await server.fetch(
+      new Request(`http://localhost:3000/validar/recibo/${avulsoReceipt.id}?token=${unpaidToken}`)
+    );
+    expect(unpaidVerifyRes.status).toBe(403);
+    const unpaidVerifyHtml = await unpaidVerifyRes.text();
+    expect(unpaidVerifyHtml).toContain('Recibo ainda não pago');
+
+    // Pagar a taxa avulsa (integral)
+    const payForm = new FormData();
+    payForm.set('intent', 'receipt.pay');
+    payForm.set('id', avulsoReceipt.id);
+    payForm.set('pay_amount', '350');
+    const payRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: payForm,
+      })
+    );
+    expect(payRes.status).toBe(200);
+
     const pdfRes = await server.fetch(
       new Request(`http://localhost:3000/pdf?id=${avulsoReceipt.id}`, {
         headers: { Cookie: sessionCookie },
@@ -724,7 +755,7 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(pdfRes.status).toBe(200);
     expect(pdfRes.headers.get('content-type')).toBe('application/pdf');
 
-    // 3. Validação pública via autenticidade digital
+    // 3. Validação pública via autenticidade digital (após pagamento)
     const token = generateAuthToken('receipt', avulsoReceipt.id);
     const verifyRes = await server.fetch(
       new Request(`http://localhost:3000/validar/recibo/${avulsoReceipt.id}?token=${token}`)
@@ -773,5 +804,132 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     };
     expect(matchAll(receiptA)).toBe(true);
     expect(matchAll(receiptB)).toBe(true);
+  });
+
+  it('GET /metrics returns 401 when unauthenticated and 200 with full aggregate metrics when authenticated', async () => {
+    // 1. Não autenticado -> 401
+    const unauthRes = await server.fetch(new Request('http://localhost:3000/metrics'));
+    expect(unauthRes.status).toBe(401);
+
+    // 2. Autenticado -> 200 com estrutura completa de métricas
+    const authRes = await server.fetch(
+      new Request('http://localhost:3000/metrics', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(authRes.status).toBe(200);
+    const data = (await authRes.json()) as {
+      totals: {
+        tenants: number;
+        properties: number;
+        activeLeases: number;
+        receipts: number;
+        paidReceipts: number;
+        paidAmount: number;
+        expectedMonthly: number;
+      };
+      monthly: Array<{ key: string; label: string; received: number; expected: number }>;
+      status: Array<{ status: string; label: string; count: number }>;
+      categories: Array<{ category: string; label: string; count: number }>;
+      properties: Array<{ id: string; name: string; activeLeases: number }>;
+      topTenants: Array<{ id: string; name: string; paidTotal: number }>;
+    };
+
+    expect(data.totals).toBeDefined();
+    expect(typeof data.totals.tenants).toBe('number');
+    expect(typeof data.totals.properties).toBe('number');
+    expect(typeof data.totals.activeLeases).toBe('number');
+    expect(typeof data.totals.receipts).toBe('number');
+    expect(typeof data.totals.paidAmount).toBe('number');
+    expect(Array.isArray(data.monthly)).toBe(true);
+    expect(data.monthly.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(data.status)).toBe(true);
+    expect(data.status.some((s) => s.status === 'paid')).toBe(true);
+    expect(Array.isArray(data.categories)).toBe(true);
+    expect(Array.isArray(data.properties)).toBe(true);
+    expect(Array.isArray(data.topTenants)).toBe(true);
+    expect(data.topTenants.length).toBeGreaterThan(0);
+    const firstTopTenant = data.topTenants[0];
+    expect(firstTopTenant).toBeDefined();
+    if (!firstTopTenant) throw new Error('topTenants is empty');
+    expect(typeof firstTopTenant.name).toBe('string');
+    expect(firstTopTenant.paidTotal).toBeGreaterThan(0);
+  });
+
+  it('POST /api/whatsapp/preview gates unpaid receipts with 403 status', async () => {
+    // 1. Criar recibo avulso não pago
+    const unpaidForm = new FormData();
+    unpaidForm.set('intent', 'receipt.create');
+    unpaidForm.set('category', 'extra');
+    unpaidForm.set('description', 'Taxa Não Paga');
+    unpaidForm.set('tenant_id', createdTenantId);
+    unpaidForm.set('property_id', createdPropertyId);
+    unpaidForm.set('due_date', '2026-12-01');
+    unpaidForm.set('amount', '500');
+
+    const createRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: unpaidForm,
+      })
+    );
+    expect(createRes.status).toBe(200);
+
+    const dashRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const dashData = (await dashRes.json()) as { receipts: Array<{ id: string; description: string; paid_at: string | null }> };
+    const unpaidReceipt = dashData.receipts.find((r) => r.description === 'Taxa Não Paga');
+    expect(unpaidReceipt).toBeDefined();
+    if (!unpaidReceipt) throw new Error('Unpaid receipt not found');
+    expect(unpaidReceipt.paid_at).toBeNull();
+
+    // 2. Tentar gerar preview WhatsApp para recibo não pago -> deve retornar 403
+    const previewRes = await server.fetch(
+      new Request('http://localhost:3000/api/whatsapp/preview', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ type: 'receipt', id: unpaidReceipt.id }).toString(),
+      })
+    );
+    expect(previewRes.status).toBe(403);
+    const previewData = (await previewRes.json()) as { error: string };
+    expect(previewData.error).toContain('ainda não pago');
+  });
+
+  it('GET / and GET /login redirect authenticated sessions to /dashboard?tab=dashboard', async () => {
+    const rootRes = await server.fetch(
+      new Request('http://localhost:3000/', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(rootRes.status).toBe(302);
+    expect(rootRes.headers.get('location')).toBe('/dashboard?tab=dashboard');
+
+    const loginRes = await server.fetch(
+      new Request('http://localhost:3000/login', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(loginRes.status).toBe(302);
+    expect(loginRes.headers.get('location')).toBe('/dashboard?tab=dashboard');
+  });
+
+  it('GET /dashboard pre-renders metrics during SSR with instant HTML without loading skeleton', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/dashboard?tab=dashboard', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // Valida SSR: conteúdo de métricas já está presente no HTML gerado pelo servidor
+    expect(html).toContain('metric-card');
+    expect(html).toContain('Top inquilinos por valor pago');
+    expect(html).toContain('Ocupação por imóvel');
+    expect(html).not.toContain('Carregando métricas…');
   });
 });

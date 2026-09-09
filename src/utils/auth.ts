@@ -1,44 +1,53 @@
 import bcrypt from 'bcryptjs';
-import { execute, queryOne } from '../db';
+import { eq } from 'drizzle-orm';
+import { db, initializeDatabase } from '../db';
+import { users } from '../db/schema';
 import { createId } from './id';
 
-type UserRow = {
-  id: string;
-  username: string;
-  password_hash: string;
-};
-
 export async function loginUser(username: string, password: string): Promise<{ id: string; username: string } | null> {
-  const user = await queryOne<UserRow>('SELECT id, username, password_hash FROM users WHERE username = ?', [username]);
+  await initializeDatabase();
+  const rows = await db
+    .select({ id: users.id, username: users.username, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1);
+  const user = rows[0];
   if (!user) return null;
 
-  const valid = await bcrypt.compare(password, user.password_hash);
+  const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
 
   return { id: user.id, username: user.username };
 }
 
 export async function registerUser(username: string, password: string): Promise<{ id: string; username: string } | null> {
-  const existing = await queryOne<{ id: string }>('SELECT id FROM users WHERE username = ?', [username]);
-  if (existing) {
+  await initializeDatabase();
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+  if (existing.length > 0) {
     return null;
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
   const id = createId();
-  await execute('INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)', [id, username, passwordHash]);
+  await db.insert(users).values({ id, username, passwordHash });
   return { id, username };
 }
 
 export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
-  const user = await queryOne<UserRow>('SELECT id, username, password_hash FROM users WHERE id = ?', [userId]);
+  await initializeDatabase();
+  const rows = await db
+    .select({ id: users.id, username: users.username, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const user = rows[0];
   if (!user) throw new Error('Usuário não encontrado.');
 
-  const valid = await bcrypt.compare(currentPassword, user.password_hash);
+  const valid = await bcrypt.compare(currentPassword, user.passwordHash);
   if (!valid) throw new Error('Senha atual incorreta.');
 
   if (!newPassword || newPassword.length < 4) throw new Error('Nova senha deve ter no mínimo 4 caracteres.');
 
   const newHash = await bcrypt.hash(newPassword, 10);
-  await execute('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+  await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, userId));
 }
