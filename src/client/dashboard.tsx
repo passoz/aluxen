@@ -261,26 +261,85 @@ export function DashboardPage(initialData: DashboardProps) {
   const [modalType, setModalType] = useState<'' | Tab>('');
   const [createModalType, setCreateModalType] = useState<'' | Tab>('');
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
-
   const [tenantSearch, setTenantSearch] = useState('');
   const [propertySearch, setPropertySearch] = useState('');
   const [leaseSearch, setLeaseSearch] = useState('');
   const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'terminated'>('all');
-  const [receiptSearch, setReceiptSearch] = useState('');
-  const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'partial' | 'paid'>('all');
-  const [receiptMonth, setReceiptMonth] = useState('all');
-  const [receiptYear, setReceiptYear] = useState('all');
+  // Persistência dos filtros + ordenação da tabela de Recibos via localStorage
+  // (chave única por usuário evita mistura entre contas no mesmo navegador).
+  const receiptFiltersKey = `aluxen:filters:receipts:${user}`;
+
+  const readReceiptFilters = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(receiptFiltersKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      return {
+        search: typeof parsed.search === 'string' ? parsed.search : '',
+        status: (['all', 'due', 'overdue', 'partial', 'paid'].includes(parsed.status as string)
+          ? (parsed.status as 'all' | 'due' | 'overdue' | 'partial' | 'paid')
+          : 'all') as 'all' | 'due' | 'overdue' | 'partial' | 'paid',
+        month: typeof parsed.month === 'string' ? parsed.month : 'all',
+        year: typeof parsed.year === 'string' ? parsed.year : 'all',
+        sortKey: typeof parsed.sortKey === 'string' ? parsed.sortKey : 'due_date',
+        sortDir: (parsed.sortDir === 'asc' || parsed.sortDir === 'desc'
+          ? parsed.sortDir
+          : 'desc') as 'asc' | 'desc',
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const [receiptSearch, setReceiptSearch] = useState<string>(() => readReceiptFilters()?.search ?? '');
+  const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'partial' | 'paid'>(
+    () => readReceiptFilters()?.status ?? 'all'
+  );
+  const [receiptMonth, setReceiptMonth] = useState<string>(() => readReceiptFilters()?.month ?? 'all');
+  const [receiptYear, setReceiptYear] = useState<string>(() => readReceiptFilters()?.year ?? 'all');
+  const [receiptSort, setReceiptSort] = useState<SortState>(() => {
+    const stored = readReceiptFilters();
+    return { key: stored?.sortKey ?? 'due_date', direction: stored?.sortDir ?? 'desc' };
+  });
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
 
   const [tenantSort, setTenantSort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [propertySort, setPropertySort] = useState<SortState>({ key: 'name', direction: 'asc' });
   const [leaseSort, setLeaseSort] = useState<SortState>({ key: 'tenant_name', direction: 'asc' });
-  const [receiptSort, setReceiptSort] = useState<SortState>({ key: 'due_date', direction: 'desc' });
-
   const [tenantPage, setTenantPage] = useState(1);
   const [propertyPage, setPropertyPage] = useState(1);
   const [leasePage, setLeasePage] = useState(1);
   const [receiptPage, setReceiptPage] = useState(1);
+
+  // Tamanho de página por entidade, persistido no localStorage.
+  const readPageSize = (entity: string): number => {
+    if (typeof window === 'undefined') return 10;
+    try {
+      const stored = Number(window.localStorage.getItem(`aluxen:pageSize:${entity}`));
+      return [10, 25, 50, 100].includes(stored) ? stored : 10;
+    } catch {
+      return 10;
+    }
+  };
+
+  const [tenantPageSize, setTenantPageSize] = useState<number>(() => readPageSize('tenants'));
+  const [propertyPageSize, setPropertyPageSize] = useState<number>(() => readPageSize('properties'));
+  const [leasePageSize, setLeasePageSize] = useState<number>(() => readPageSize('leases'));
+  const [receiptPageSize, setReceiptPageSize] = useState<number>(() => readPageSize('receipts'));
+
+  useEffect(() => {
+    try { window.localStorage.setItem('aluxen:pageSize:tenants', String(tenantPageSize)); } catch {}
+  }, [tenantPageSize]);
+  useEffect(() => {
+    try { window.localStorage.setItem('aluxen:pageSize:properties', String(propertyPageSize)); } catch {}
+  }, [propertyPageSize]);
+  useEffect(() => {
+    try { window.localStorage.setItem('aluxen:pageSize:leases', String(leasePageSize)); } catch {}
+  }, [leasePageSize]);
+  useEffect(() => {
+    try { window.localStorage.setItem('aluxen:pageSize:receipts', String(receiptPageSize)); } catch {}
+  }, [receiptPageSize]);
 
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -311,6 +370,7 @@ export function DashboardPage(initialData: DashboardProps) {
     success?: string;
   } | null>(null);
   const [batchPayConfirm, setBatchPayConfirm] = useState(false);
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [connectWhatsappOpen, setConnectWhatsappOpen] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
 
@@ -624,15 +684,15 @@ export function DashboardPage(initialData: DashboardProps) {
   const sortedLeases = useMemo(() => sortItems(filteredLeases, leaseSort), [filteredLeases, leaseSort]);
   const sortedReceipts = useMemo(() => sortItems(filteredReceipts, receiptSort), [filteredReceipts, receiptSort]);
 
-  const tenantTotalPages = Math.max(1, Math.ceil(sortedTenants.length / 8));
-  const propertyTotalPages = Math.max(1, Math.ceil(sortedProperties.length / 8));
-  const leaseTotalPages = Math.max(1, Math.ceil(sortedLeases.length / 8));
-  const receiptTotalPages = Math.max(1, Math.ceil(sortedReceipts.length / 8));
+  const tenantTotalPages = Math.max(1, Math.ceil(sortedTenants.length / tenantPageSize));
+  const propertyTotalPages = Math.max(1, Math.ceil(sortedProperties.length / propertyPageSize));
+  const leaseTotalPages = Math.max(1, Math.ceil(sortedLeases.length / leasePageSize));
+  const receiptTotalPages = Math.max(1, Math.ceil(sortedReceipts.length / receiptPageSize));
 
-  const pagedTenants = useMemo(() => paginateItems(sortedTenants, tenantPage, 8), [sortedTenants, tenantPage]);
-  const pagedProperties = useMemo(() => paginateItems(sortedProperties, propertyPage, 8), [sortedProperties, propertyPage]);
-  const pagedLeases = useMemo(() => paginateItems(sortedLeases, leasePage, 8), [sortedLeases, leasePage]);
-  const pagedReceipts = useMemo(() => paginateItems(sortedReceipts, receiptPage, 8), [sortedReceipts, receiptPage]);
+  const pagedTenants = useMemo(() => paginateItems(sortedTenants, tenantPage, tenantPageSize), [sortedTenants, tenantPage, tenantPageSize]);
+  const pagedProperties = useMemo(() => paginateItems(sortedProperties, propertyPage, propertyPageSize), [sortedProperties, propertyPage, propertyPageSize]);
+  const pagedLeases = useMemo(() => paginateItems(sortedLeases, leasePage, leasePageSize), [sortedLeases, leasePage, leasePageSize]);
+  const pagedReceipts = useMemo(() => paginateItems(sortedReceipts, receiptPage, receiptPageSize), [sortedReceipts, receiptPage, receiptPageSize]);
 
   useEffect(() => setTenantPage(1), [tenantSearch, tenantSort]);
   useEffect(() => setPropertyPage(1), [propertySearch, propertySort]);
@@ -643,6 +703,26 @@ export function DashboardPage(initialData: DashboardProps) {
   useEffect(() => setPropertyPage((page) => Math.min(page, propertyTotalPages)), [propertyTotalPages]);
   useEffect(() => setLeasePage((page) => Math.min(page, leaseTotalPages)), [leaseTotalPages]);
   useEffect(() => setReceiptPage((page) => Math.min(page, receiptTotalPages)), [receiptTotalPages]);
+
+  // Persistir filtros + ordenação de Recibos no localStorage sempre que mudarem.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        receiptFiltersKey,
+        JSON.stringify({
+          search: receiptSearch,
+          status: receiptStatus,
+          month: receiptMonth,
+          year: receiptYear,
+          sortKey: receiptSort.key,
+          sortDir: receiptSort.direction,
+        })
+      );
+    } catch {
+      /* ignore quota / privacy errors */
+    }
+  }, [receiptFiltersKey, receiptSearch, receiptStatus, receiptMonth, receiptYear, receiptSort]);
 
   function settleAfterMutation() {
     if (window.navigator.onLine) {
@@ -1030,7 +1110,16 @@ export function DashboardPage(initialData: DashboardProps) {
                   </tbody>
                 </table>
               </div>
-              <Pagination page={tenantPage} totalPages={tenantTotalPages} onChange={setTenantPage} />
+              <Pagination
+                page={tenantPage}
+                totalPages={tenantTotalPages}
+                onChange={setTenantPage}
+                pageSize={tenantPageSize}
+                onPageSizeChange={(n) => {
+                  setTenantPageSize(n);
+                  setTenantPage(1);
+                }}
+              />
             </section>
           ) : null}
 
@@ -1116,7 +1205,16 @@ export function DashboardPage(initialData: DashboardProps) {
                   </tbody>
                 </table>
               </div>
-              <Pagination page={propertyPage} totalPages={propertyTotalPages} onChange={setPropertyPage} />
+              <Pagination
+                page={propertyPage}
+                totalPages={propertyTotalPages}
+                onChange={setPropertyPage}
+                pageSize={propertyPageSize}
+                onPageSizeChange={(n) => {
+                  setPropertyPageSize(n);
+                  setPropertyPage(1);
+                }}
+              />
             </section>
           ) : null}
 
@@ -1279,7 +1377,16 @@ export function DashboardPage(initialData: DashboardProps) {
                   </tbody>
                 </table>
               </div>
-              <Pagination page={leasePage} totalPages={leaseTotalPages} onChange={setLeasePage} />
+              <Pagination
+                page={leasePage}
+                totalPages={leaseTotalPages}
+                onChange={setLeasePage}
+                pageSize={leasePageSize}
+                onPageSizeChange={(n) => {
+                  setLeasePageSize(n);
+                  setLeasePage(1);
+                }}
+              />
             </section>
           ) : null}
 
@@ -1289,19 +1396,36 @@ export function DashboardPage(initialData: DashboardProps) {
                 <h2>Pagamentos e Recibos</h2>
                 <div className="auth-actions">
                   {selectedReceipts.size > 0 ? (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      disabled={busy}
-                      onClick={() => setBatchPayConfirm(true)}
-                    >
-                      Pagar {selectedReceipts.size} selecionado(s)
-                    </button>
+                    <>
+                      {(() => {
+                        const payableCount = pagedReceipts.filter(
+                          (r) => selectedReceipts.has(r.id) && getReceiptStatus(r) !== 'paid'
+                        ).length;
+                        if (payableCount === 0) return null;
+                        return (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            disabled={busy}
+                            onClick={() => setBatchPayConfirm(true)}
+                          >
+                            Pagar {payableCount} selecionado(s)
+                          </button>
+                        );
+                      })()}
+                      <button
+                        type="button"
+                        className="btn btn-danger"
+                        disabled={busy}
+                        onClick={() => setBatchDeleteConfirm(true)}
+                      >
+                        Excluir {selectedReceipts.size} selecionado(s)
+                      </button>
+                    </>
                   ) : null}
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    disabled={busy}
                     onClick={() => {
                       if (!window.navigator.onLine) {
                         applyOfflineMonthlyReceiptGeneration();
@@ -1350,7 +1474,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           type="checkbox"
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedReceipts(new Set(pagedReceipts.filter((r) => getReceiptStatus(r) !== 'paid').map((r) => r.id)));
+                              setSelectedReceipts(new Set(pagedReceipts.map((r) => r.id)));
                             } else {
                               setSelectedReceipts(new Set());
                             }
@@ -1414,7 +1538,7 @@ export function DashboardPage(initialData: DashboardProps) {
                             <input
                               type="checkbox"
                               checked={selectedReceipts.has(receipt.id)}
-                              disabled={getReceiptStatus(receipt) === 'paid'}
+
                               onChange={() => {
                                 const next = new Set(selectedReceipts);
                                 if (next.has(receipt.id)) next.delete(receipt.id);
@@ -1524,7 +1648,16 @@ export function DashboardPage(initialData: DashboardProps) {
                   </tbody>
                 </table>
               </div>
-              <Pagination page={receiptPage} totalPages={receiptTotalPages} onChange={setReceiptPage} />
+              <Pagination
+                page={receiptPage}
+                totalPages={receiptTotalPages}
+                onChange={setReceiptPage}
+                pageSize={receiptPageSize}
+                onPageSizeChange={(n) => {
+                  setReceiptPageSize(n);
+                  setReceiptPage(1);
+                }}
+              />
             </section>
           ) : null}
 
@@ -2710,6 +2843,25 @@ export function DashboardPage(initialData: DashboardProps) {
               formData.set('intent', 'receipt.batch-pay');
               formData.set('ids', Array.from(selectedReceipts).join(','));
               void sendMutation(formData, 'Recibos marcados como pagos.', () => {
+                setSelectedReceipts(new Set());
+              });
+            }}
+          />
+
+          <ConfirmModal
+            open={batchDeleteConfirm}
+            title="Excluir recibos em lote"
+            message={`Esta ação é permanente e removerá ${selectedReceipts.size} recibo(s) selecionado(s) do banco. Deseja continuar?`}
+            confirmLabel={`Excluir ${selectedReceipts.size}`}
+            tone="danger"
+            busy={busy}
+            onClose={() => (!busy ? setBatchDeleteConfirm(false) : null)}
+            onConfirm={() => {
+              setBatchDeleteConfirm(false);
+              const formData = new FormData();
+              formData.set('intent', 'receipt.batch-delete');
+              formData.set('ids', Array.from(selectedReceipts).join(','));
+              void sendMutation(formData, `${selectedReceipts.size} recibo(s) excluído(s).`, () => {
                 setSelectedReceipts(new Set());
               });
             }}

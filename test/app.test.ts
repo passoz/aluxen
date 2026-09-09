@@ -856,6 +856,78 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(firstTopTenant.paidTotal).toBeGreaterThan(0);
   });
 
+  it('POST /dashboard receipt.batch-delete removes multiple receipts in one request', async () => {
+    // 1. Criar 2 recibos avulsos não pagos para exclusão
+    const idsToDelete: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const form = new FormData();
+      form.set('intent', 'receipt.create');
+      form.set('category', 'extra');
+      form.set('description', `Taxa Delete ${i}`);
+      form.set('tenant_id', createdTenantId);
+      form.set('property_id', createdPropertyId);
+      form.set('due_date', '2026-12-15');
+      form.set('amount', '100');
+      const res = await server.fetch(
+        new Request('http://localhost:3000/dashboard', {
+          method: 'POST',
+          headers: { Cookie: sessionCookie },
+          body: form,
+        })
+      );
+      expect(res.status).toBe(200);
+      const dashRes = await server.fetch(
+        new Request('http://localhost:3000/dashboard?json=true', {
+          headers: { Cookie: sessionCookie },
+        })
+      );
+      const data = (await dashRes.json()) as { receipts: Array<{ id: string; description: string }> };
+      const r = data.receipts.find((x) => x.description === `Taxa Delete ${i}`);
+      expect(r).toBeDefined();
+      if (r) idsToDelete.push(r.id);
+    }
+    expect(idsToDelete.length).toBe(2);
+
+    // 2. Acionar exclusão em lote
+    const deleteForm = new FormData();
+    deleteForm.set('intent', 'receipt.batch-delete');
+    deleteForm.set('ids', idsToDelete.join(','));
+    const delRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: deleteForm,
+      })
+    );
+    expect(delRes.status).toBe(200);
+    const delJson = (await delRes.json()) as { ok?: boolean };
+    expect(delJson.ok).toBe(true);
+
+    // 3. Confirmar que os IDs não existem mais
+    const afterDashRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    const afterData = (await afterDashRes.json()) as { receipts: Array<{ id: string; description: string }> };
+    for (const id of idsToDelete) {
+      expect(afterData.receipts.find((r) => r.id === id)).toBeUndefined();
+    }
+
+    // 4. Edge case: ids vazios devem retornar 400 com mensagem
+    const emptyForm = new FormData();
+    emptyForm.set('intent', 'receipt.batch-delete');
+    emptyForm.set('ids', '');
+    const emptyRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: emptyForm,
+      })
+    );
+    expect(emptyRes.status).toBe(400);
+  });
+
   it('POST /api/whatsapp/preview gates unpaid receipts with 403 status', async () => {
     // 1. Criar recibo avulso não pago
     const unpaidForm = new FormData();

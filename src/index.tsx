@@ -511,6 +511,12 @@ app.post('/dashboard', async (c) => {
         }
         break;
       }
+      case 'receipt.batch-delete': {
+        const ids = (formData['ids'] || '').toString().split(',').filter(Boolean);
+        if (!ids.length) throw new Error('Nenhum recibo selecionado.');
+        await db.delete(receipts).where(inArray(receipts.id, ids));
+        break;
+      }
       default:
         throw new Error('Ação inválida.');
     }

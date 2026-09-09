@@ -1225,6 +1225,20 @@ input[type="checkbox"] {
   justify-content: space-between;
   gap: 0.75rem;
   margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.pagination-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .pagination-label {
@@ -1258,6 +1272,99 @@ input[type="checkbox"] {
   padding: 1.75rem;
   box-shadow: var(--shadow-xl);
 }
+
+/* Confirm Modal Dialog (Centralizado, Harmônico e Autoridade Visual) */
+.confirm-dialog-card {
+  width: min(420px, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 2rem 1.75rem 1.75rem;
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: auto;
+  animation: confirmModalPop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes confirmModalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.confirm-dialog-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.15rem;
+  flex-shrink: 0;
+}
+
+.confirm-dialog-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.confirm-dialog-icon.danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+}
+
+.confirm-dialog-icon.primary {
+  background: var(--primary-tint);
+  color: var(--primary);
+  border: 1px solid var(--primary-tint-border);
+}
+
+.confirm-dialog-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 0.5rem 0;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.confirm-dialog-message {
+  font-size: 0.925rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+  margin: 0 0 1.75rem 0;
+  max-width: 320px;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.confirm-dialog-actions .btn {
+  flex: 1;
+  height: 42px;
+  font-size: 0.925rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0 1rem;
+ }
 
 .modal-header {
   display: flex;

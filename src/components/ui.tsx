@@ -297,24 +297,43 @@ export function ConfirmModal({
   return (
     <div className="modal-backdrop" role="presentation" onClick={() => (!busy ? onClose() : null)}>
       <div
-        className="modal-card confirm-modal"
+        className="confirm-dialog-card confirm-modal"
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="modal-header">
-          <h3>{title}</h3>
+        <div className={`confirm-dialog-icon ${tone === 'danger' ? 'danger' : 'primary'}`} aria-hidden="true">
+          {tone === 'danger' ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 9v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+            </svg>
+          )}
         </div>
-        <div className="modal-body">
-          <p style={{ margin: 0, color: 'var(--text-muted)', lineHeight: 1.5 }}>{message}</p>
-        </div>
-        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', padding: '1rem 1.25rem' }}>
-          <button type="button" className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+
+        <h3 className="confirm-dialog-title">{title}</h3>
+        <p className="confirm-dialog-message">{message}</p>
+
+        <div className="confirm-dialog-actions">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onClose}
+            disabled={busy}
+          >
             {cancelLabel}
           </button>
-          <button type="button" className={`btn btn-sm ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} disabled={busy}>
-            {confirmLabel}
+          <button
+            type="button"
+            className={`btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? 'Processando…' : confirmLabel}
           </button>
         </div>
       </div>
@@ -372,19 +391,46 @@ export function SortHeader({
   );
 }
 
-export function Pagination({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
-  if (totalPages <= 1) return null;
+export function Pagination({
+  page,
+  totalPages,
+  onChange,
+  pageSize,
+  onPageSizeChange,
+  pageSizeOptions = [10, 25, 50, 100],
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (page: number) => void;
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
+}) {
+  const hasSizeSelector = typeof pageSize === 'number' && onPageSizeChange !== undefined;
+  if (totalPages <= 1 && !hasSizeSelector) return null;
   return (
     <div className="pagination">
-      <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1}>
-        Anterior
-      </button>
-      <span className="pagination-label">
-        Página {page} de {totalPages}
-      </span>
-      <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
-        Próxima
-      </button>
+      <div className="pagination-nav">
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1}>
+          Anterior
+        </button>
+        <span className="pagination-label">
+          Página {page} de {totalPages}
+        </span>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
+          Próxima
+        </button>
+      </div>
+      {hasSizeSelector ? (
+        <div className="pagination-size">
+          <span className="pagination-label">Itens por página</span>
+          <SmallSelect value={String(pageSize)} onChange={(v) => onPageSizeChange(Number(v))}>
+            {pageSizeOptions.map((opt) => (
+              <option key={opt} value={String(opt)}>{opt}</option>
+            ))}
+          </SmallSelect>
+        </div>
+      ) : null}
     </div>
   );
 }
