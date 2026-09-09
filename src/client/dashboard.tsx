@@ -131,6 +131,8 @@ export function DashboardPage(initialData: DashboardProps) {
   const [propertyDraft, setPropertyDraft] = useState({ id: '', name: '', address: '', city: '', state: '', zip: '' });
   const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
   const [receiptDraft, setReceiptDraft] = useState({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
+  const [payDraft, setPayDraft] = useState<{ id: string; amount: string; pay_amount: string; paid_at: string }>({ id: '', amount: '', pay_amount: '', paid_at: '' });
+  const [payModalOpen, setPayModalOpen] = useState(false);
 
   const [modalType, setModalType] = useState<'' | Tab>('');
   const [createModalType, setCreateModalType] = useState<'' | Tab>('');
@@ -141,9 +143,9 @@ export function DashboardPage(initialData: DashboardProps) {
   const [leaseSearch, setLeaseSearch] = useState('');
   const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'terminated'>('all');
   const [receiptSearch, setReceiptSearch] = useState('');
-  const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'paid'>('all');
-  const [receiptMonth, setReceiptMonth] = useState(() => String(new Date().getMonth() + 1).padStart(2, '0'));
-  const [receiptYear, setReceiptYear] = useState(() => String(new Date().getFullYear()));
+  const [receiptStatus, setReceiptStatus] = useState<'all' | 'due' | 'overdue' | 'partial' | 'paid'>('all');
+  const [receiptMonth, setReceiptMonth] = useState('all');
+  const [receiptYear, setReceiptYear] = useState('all');
   const [selectedReceipts, setSelectedReceipts] = useState<Set<string>>(new Set());
 
   const [tenantSort, setTenantSort] = useState<SortState>({ key: 'name', direction: 'asc' });
@@ -482,7 +484,11 @@ export function DashboardPage(initialData: DashboardProps) {
         const matchesStatus = receiptStatus === 'all' || getReceiptStatus(item) === receiptStatus;
         const itemMonth = item.due_date.slice(5, 7);
         const itemYear = item.due_date.slice(0, 4);
-        const matchesPeriod = !receiptMonth || !receiptYear || (itemMonth === receiptMonth && itemYear === receiptYear);
+        const matchesPeriod =
+          (receiptMonth === 'all' && receiptYear === 'all') ||
+          (receiptMonth !== 'all' && receiptYear !== 'all' && itemMonth === receiptMonth && itemYear === receiptYear) ||
+          (receiptMonth !== 'all' && receiptYear === 'all' && itemMonth === receiptMonth) ||
+          (receiptMonth === 'all' && receiptYear !== 'all' && itemYear === receiptYear);
         return matchesText && matchesStatus && matchesPeriod;
       }),
     [receiptItems, receiptSearch, receiptStatus, receiptMonth, receiptYear]
@@ -629,6 +635,19 @@ export function DashboardPage(initialData: DashboardProps) {
       amount: item.amount,
     });
     setModalType('receipts');
+  }
+
+  function startReceiptPay(item: Receipt) {
+    const now = new Date();
+    const localDT = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const remaining = Math.max(0, Number(item.amount) - (Number(item.paid_amount) || 0));
+    setPayDraft({
+      id: item.id,
+      amount: item.amount,
+      pay_amount: String(remaining || item.amount),
+      paid_at: localDT,
+    });
+    setPayModalOpen(true);
   }
 
   function receiptLeaseMeta(leaseId: string) {
@@ -1167,19 +1186,22 @@ export function DashboardPage(initialData: DashboardProps) {
               </div>
               <FilterBar value={receiptSearch} onChange={setReceiptSearch} placeholder="Buscar por contrato, imóvel, vencimento ou valor">
                 <SmallSelect value={receiptMonth} onChange={(v) => setReceiptMonth(v)}>
+                  <option value="all">Todos</option>
                   {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </SmallSelect>
                 <SmallSelect value={receiptYear} onChange={(v) => setReceiptYear(v)}>
+                  <option value="all">Todos</option>
                   {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 2 + i)).map((y) => (
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </SmallSelect>
-                <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'paid')}>
+                <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'partial' | 'paid')}>
                   <option value="all">Todos</option>
                   <option value="due">A vencer</option>
                   <option value="overdue">Vencido</option>
+                  <option value="partial">Parcial</option>
                   <option value="paid">Pago</option>
                 </SmallSelect>
               </FilterBar>
@@ -1192,21 +1214,21 @@ export function DashboardPage(initialData: DashboardProps) {
                           type="checkbox"
                           onChange={(e) => {
                             if (e.target.checked) {
-                              setSelectedReceipts(new Set(pagedReceipts.filter((r) => !r.paid_at).map((r) => r.id)));
+                              setSelectedReceipts(new Set(pagedReceipts.filter((r) => getReceiptStatus(r) !== 'paid').map((r) => r.id)));
                             } else {
                               setSelectedReceipts(new Set());
                             }
                           }}
                           checked={
                             pagedReceipts.length > 0 &&
-                            pagedReceipts.every((r) => (!r.paid_at ? selectedReceipts.has(r.id) : true)) &&
+                            pagedReceipts.every((r) => (getReceiptStatus(r) !== 'paid' ? selectedReceipts.has(r.id) : true)) &&
                             selectedReceipts.size > 0
                           }
                         />
                       </th>
                       <th>
                         <SortHeader
-                          label="Contrato"
+                          label="Identificação / Contrato"
                           active={receiptSort.key === 'tenant_name'}
                           direction={receiptSort.direction}
                           onClick={() => toggleSort(receiptSort, 'tenant_name', setReceiptSort)}
@@ -1256,7 +1278,7 @@ export function DashboardPage(initialData: DashboardProps) {
                             <input
                               type="checkbox"
                               checked={selectedReceipts.has(receipt.id)}
-                              disabled={!!receipt.paid_at}
+                              disabled={getReceiptStatus(receipt) === 'paid'}
                               onChange={() => {
                                 const next = new Set(selectedReceipts);
                                 if (next.has(receipt.id)) next.delete(receipt.id);
@@ -1265,11 +1287,26 @@ export function DashboardPage(initialData: DashboardProps) {
                               }}
                             />
                           </td>
-                          <td data-label="Contrato" className="contract-cell">
-                            <span>
-                              {receipt.tenant_name} {pendingIds.receipts.has(receipt.id) ? <PendingBadge /> : null}
-                            </span>
-                            <span>{receipt.property_name}</span>
+                          <td data-label="Identificação" className="contract-cell">
+                            {receipt.category === 'extra' || !receipt.lease_id ? (
+                              <>
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(10, 179, 120, 0.15)', color: 'var(--primary)', fontWeight: 600 }}>Avulso</span>
+                                  <strong>{receipt.description || 'Taxa Avulsa'}</strong>
+                                  {pendingIds.receipts.has(receipt.id) ? <PendingBadge /> : null}
+                                </span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                  {[receipt.tenant_name, receipt.property_name].filter(Boolean).join(' • ') || 'Sem vínculo'}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>
+                                  {receipt.tenant_name || '-'} {pendingIds.receipts.has(receipt.id) ? <PendingBadge /> : null}
+                                </span>
+                                <span>{receipt.property_name || '-'}</span>
+                              </>
+                            )}
                           </td>
                           <td data-label="Status">
                             <span className={`status-badge ${getReceiptStatus(receipt)}`}>
@@ -1278,7 +1315,17 @@ export function DashboardPage(initialData: DashboardProps) {
                           </td>
                           <td data-label="Vencimento">{formatDateBr(receipt.due_date)}</td>
                           <td data-label="Pagamento">{formatDateTimeBr(receipt.paid_at)}</td>
-                          <td data-label="Valor">{formatCurrency(receipt.amount)}</td>
+                          <td data-label="Valor">
+                            <div>{formatCurrency(receipt.amount)}</div>
+                            {getReceiptStatus(receipt) === 'partial' ? (
+                              <div style={{ fontSize: '0.75rem', color: '#3b82f6', marginTop: '0.15rem' }}>
+                                <span>Pago: {formatCurrency(receipt.paid_amount || 0)}</span>
+                                <div style={{ color: 'var(--text-muted)' }}>
+                                  Resta: {formatCurrency(Math.max(0, Number(receipt.amount) - (Number(receipt.paid_amount) || 0)))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </td>
                           <td data-label="PDF">
                             <div className="row-actions">
                               <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">
@@ -1329,6 +1376,16 @@ export function DashboardPage(initialData: DashboardProps) {
                             </div>
                           </td>
                           <td className="row-actions">
+                            {getReceiptStatus(receipt) !== 'paid' ? (
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                onClick={() => startReceiptPay(receipt)}
+                                title="Lançar pagamento parcial ou integral"
+                              >
+                                Baixa
+                              </button>
+                            ) : null}
                             <button
                               type="button"
                               className="btn btn-sm btn-secondary"
@@ -2121,6 +2178,62 @@ export function DashboardPage(initialData: DashboardProps) {
                   }}
                 >
                   Descartar
+                </button>
+              </form>
+            </Modal>
+          ) : null}
+
+          {payModalOpen ? (
+            <Modal
+              title="Lançar Pagamento"
+              onClose={() => {
+                setPayModalOpen(false);
+                setPayDraft({ id: '', amount: '', pay_amount: '', paid_at: '' });
+              }}
+            >
+              <form
+                className="stack"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const formData = new FormData(event.currentTarget);
+                  void sendMutation(formData, 'Pagamento lançado com sucesso.', () => {
+                    setPayModalOpen(false);
+                    setPayDraft({ id: '', amount: '', pay_amount: '', paid_at: '' });
+                  });
+                }}
+              >
+                <input type="hidden" name="intent" value="receipt.pay" />
+                <input type="hidden" name="id" value={payDraft.id} />
+                <div style={{ padding: '0.5rem 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  Valor total: <strong style={{ color: 'var(--text)' }}>{formatCurrency(payDraft.amount)}</strong>
+                </div>
+                <MoneyInput
+                  id="pay-modal-amount"
+                  name="pay_amount"
+                  value={payDraft.pay_amount}
+                  onChange={(v) => setPayDraft((d) => ({ ...d, pay_amount: v }))}
+                  label="Valor pago"
+                  required
+                />
+                <DateTimePickerInput
+                  id="pay-modal-paid-at"
+                  name="paid_at"
+                  value={payDraft.paid_at}
+                  onChange={(v) => setPayDraft((d) => ({ ...d, paid_at: v }))}
+                  label="Data/hora do pagamento"
+                />
+                <button type="submit" className="btn btn-primary" disabled={busy}>
+                  Confirmar pagamento
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={() => {
+                    setPayModalOpen(false);
+                    setPayDraft({ id: '', amount: '', pay_amount: '', paid_at: '' });
+                  }}
+                >
+                  Cancelar
                 </button>
               </form>
             </Modal>

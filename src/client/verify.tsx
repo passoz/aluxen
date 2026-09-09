@@ -36,19 +36,7 @@ export function VerificationPage(props: VerificationData) {
     <div className="login-page" style={{ padding: '2rem 1rem', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="card" style={{ width: '100%', maxWidth: '640px', padding: '2rem' }}>
         <div className="brand-lockup" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div className="logo" style={{ justifyContent: 'center' }}>
-            <div className="logo-icon" aria-hidden="true">
-              <svg className="logo-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M10 31L32 13L54 31" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M17 29V49C17 51.2 18.8 53 21 53H43C45.2 53 47 51.2 47 49V29" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M26 53V39C26 36.8 27.8 35 30 35H34C36.2 35 38 36.8 38 39V53" className="logo-stroke" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="32" cy="22" r="3.2" className="logo-fill" />
-              </svg>
-            </div>
-            <div className="logo-text">
-              Alux<span>en</span>
-            </div>
-          </div>
+          <img src="/logomarca.png" alt="Aluxen" className="login-logomarca" />
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
             Portal Oficial de Verificação e Autenticidade Digital
           </p>

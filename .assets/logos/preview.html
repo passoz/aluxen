@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Aluxen — Identidade Visual &amp; Coleção de Logos (10 Conceitos)</title>
+  <title>Aluxen — 10 Conceitos de Logo em PNG (Alta Resolução 1024x1024)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg: #f8fafc;
@@ -18,8 +18,8 @@
       --primary: #059669;
       --primary-hover: #047857;
       --primary-light: #ecfdf5;
-      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
-      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
       --shadow-lg: 0 10px 25px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
       --radius: 16px;
       --radius-sm: 8px;
@@ -47,7 +47,7 @@
       background-color: var(--bg);
       color: var(--text);
       line-height: 1.6;
-      transition: background-color 0.25s ease, color 0.25s ease;
+      transition: background-color 0.2s ease, color 0.2s ease;
       padding-bottom: 5rem;
     }
 
@@ -79,7 +79,7 @@
 
     .brand-title h1 {
       font-size: 1.4rem;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: -0.02em;
     }
 
@@ -97,12 +97,6 @@
       color: var(--primary);
       border-radius: 999px;
       border: 1px solid currentColor;
-    }
-
-    .header-actions {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
     }
 
     .btn-theme {
@@ -131,16 +125,16 @@
     }
 
     .intro-banner {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.03) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.2);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.02) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.25);
       border-radius: var(--radius);
-      padding: 2.25rem;
-      margin-bottom: 2.5rem;
+      padding: 2.5rem;
+      margin-bottom: 3rem;
     }
 
     .intro-banner h2 {
-      font-size: 1.75rem;
-      font-weight: 800;
+      font-size: 1.85rem;
+      font-weight: 900;
       margin-bottom: 0.75rem;
       letter-spacing: -0.02em;
     }
@@ -148,47 +142,13 @@
     .intro-banner p {
       color: var(--text-muted);
       font-size: 1.05rem;
-      max-width: 900px;
+      max-width: 950px;
     }
 
-    .filter-bar {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      overflow-x: auto;
-      padding-bottom: 1rem;
-      margin-bottom: 2rem;
-    }
-
-    .filter-btn {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      padding: 0.5rem 1rem;
-      border-radius: 999px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.15s ease;
-    }
-
-    .filter-btn:hover {
-      color: var(--text);
-      border-color: var(--primary);
-    }
-
-    .filter-btn.active {
-      background: var(--primary);
-      color: #ffffff;
-      border-color: var(--primary);
-    }
-
-    /* Grid of Concepts */
     .concepts-grid {
       display: flex;
       flex-direction: column;
-      gap: 3rem;
+      gap: 3.5rem;
     }
 
     .concept-card {
@@ -224,8 +184,8 @@
 
     .concept-number {
       font-family: 'Space Grotesk', sans-serif;
-      font-size: 1.25rem;
-      font-weight: 700;
+      font-size: 1.35rem;
+      font-weight: 800;
       color: var(--primary);
       background: var(--primary-light);
       width: 48px;
@@ -238,14 +198,14 @@
 
     .concept-name-box h3 {
       font-size: 1.35rem;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: -0.02em;
     }
 
     .concept-name-box .tagline {
       font-size: 0.8rem;
       font-weight: 700;
-      letter-spacing: 0.15em;
+      letter-spacing: 0.12em;
       color: var(--text-muted);
       text-transform: uppercase;
     }
@@ -261,9 +221,9 @@
     }
 
     .card-body {
-      padding: 2rem;
+      padding: 2.25rem;
       display: grid;
-      grid-template-columns: 1.4fr 1fr;
+      grid-template-columns: 1.35fr 1fr;
       gap: 2.5rem;
     }
 
@@ -271,7 +231,6 @@
       .card-body { grid-template-columns: 1fr; }
     }
 
-    /* Visual Showcase Area with Tabs */
     .showcase-area {
       display: flex;
       flex-direction: column;
@@ -282,7 +241,7 @@
       display: flex;
       gap: 0.5rem;
       background: var(--surface-subtle);
-      padding: 0.25rem;
+      padding: 0.3rem;
       border-radius: var(--radius-sm);
       width: fit-content;
     }
@@ -292,8 +251,8 @@
       border: none;
       color: var(--text-muted);
       font-size: 0.825rem;
-      font-weight: 600;
-      padding: 0.45rem 0.95rem;
+      font-weight: 700;
+      padding: 0.45rem 1rem;
       border-radius: 6px;
       cursor: pointer;
       transition: all 0.15s ease;
@@ -302,14 +261,14 @@
     .tab-btn.active {
       background: var(--surface);
       color: var(--text);
-      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
     .preview-canvas {
       background: #ffffff;
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      min-height: 260px;
+      min-height: 280px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -326,16 +285,16 @@
 
     .preview-canvas img {
       max-width: 100%;
-      max-height: 200px;
+      max-height: 240px;
       object-fit: contain;
-      filter: drop-shadow(0 4px 12px rgba(0,0,0,0.04));
+      border-radius: 8px;
     }
 
     .canvas-toolbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.8rem;
+      font-size: 0.825rem;
       color: var(--text-muted);
     }
 
@@ -347,7 +306,6 @@
       user-select: none;
     }
 
-    /* Details Area */
     .details-area {
       display: flex;
       flex-direction: column;
@@ -356,68 +314,15 @@
 
     .rationale-text {
       color: var(--text);
-      font-size: 0.95rem;
-      line-height: 1.6;
-    }
-
-    .symbolism-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .symbolism-list li {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      display: flex;
-      align-items: flex-start;
-      gap: 0.5rem;
-    }
-
-    .symbolism-list li::before {
-      content: "✦";
-      color: var(--primary);
-      font-size: 0.85rem;
-      line-height: 1.5;
-    }
-
-    .color-swatches {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-    }
-
-    .swatch {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: var(--surface-subtle);
-      border: 1px solid var(--border);
-      padding: 0.35rem 0.65rem;
-      border-radius: 8px;
-      font-size: 0.75rem;
-      font-family: 'JetBrains Mono', monospace;
-      cursor: pointer;
-      transition: border-color 0.15s ease;
-    }
-
-    .swatch:hover {
-      border-color: var(--primary);
-    }
-
-    .swatch-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 4px;
-      border: 1px solid rgba(0,0,0,0.1);
+      font-size: 0.975rem;
+      line-height: 1.65;
     }
 
     .download-links {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin-top: 0.5rem;
+      margin-top: 0.25rem;
     }
 
     .download-btn {
@@ -430,7 +335,7 @@
       padding: 0.45rem 0.85rem;
       border-radius: 8px;
       font-size: 0.8rem;
-      font-weight: 600;
+      font-weight: 700;
       text-decoration: none;
       transition: all 0.15s ease;
     }
@@ -458,55 +363,40 @@
     <div class="header-inner">
       <div class="brand-title">
         <h1>Alux<span>en</span></h1>
-        <span class="badge">Identidade Visual &bull; 10 Conceitos</span>
+        <span class="badge">10 Conceitos em PNG &bull; Alta Resolução</span>
       </div>
-      <div class="header-actions">
-        <button id="themeToggle" class="btn-theme" type="button">
-          <span id="themeIcon">🌙</span> Alternar Tema
-        </button>
-      </div>
+      <button id="themeToggle" class="btn-theme" type="button">
+        <span id="themeIcon">🌙</span> Alternar Tema
+      </button>
     </div>
   </header>
 
   <main class="container">
     <section class="intro-banner">
-      <h2>Coleção Oficial de Identidade Visual</h2>
+      <h2>Coleção Oficial de Logos &bull; Renderização em PNG (1024x1024)</h2>
       <p>
-        10 conceitos modernos, minimalistas e com estética de startup desenvolvidos sob medida para o <strong>Aluxen</strong>
-        (sistema de gestão de locações imobiliárias em Bun, Hono, SQLite e React SSR). Cada conceito inclui
-        <strong>Logomarca</strong> (lockup completo horizontal), <strong>Marca</strong> (símbolo isolado em alta resolução)
-        e <strong>Logotipo</strong> (estudo tipográfico vetorizado).
+        10 conceitos de logo moderna e com estética de startup para o <strong>Aluxen</strong>.
+        Todos gerados em <strong>PNG de alta definição (1024x1024)</strong> e organizados com seus componentes separados:
+        <strong>Logomarca</strong> (lockup completo), <strong>Marca</strong> (símbolo isolado) e <strong>Logotipo</strong> (tipografia do nome).
       </p>
     </section>
 
-    <!-- Filter Buttons -->
-    <div class="filter-bar">
-      <button class="filter-btn active" data-filter="all">Todos (10)</button>
-      <button class="filter-btn" data-filter="architectural">Arquitetônicos (2)</button>
-      <button class="filter-btn" data-filter="fintech">FinTech &amp; SaaS (3)</button>
-      <button class="filter-btn" data-filter="security">Segurança &amp; LegalTech (2)</button>
-      <button class="filter-btn" data-filter="luxury">Luxo &amp; Patrimônio (1)</button>
-      <button class="filter-btn" data-filter="minimalist">Minimalistas (1)</button>
-      <button class="filter-btn" data-filter="connected">Automação &amp; Conectividade (1)</button>
-    </div>
-
-    <!-- Concepts List -->
     <div class="concepts-grid">
-      
-        <article class="concept-card" data-category="architectural" id="concept-01">
+
+        <article class="concept-card" id="concept-01">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">01</div>
               <div class="concept-name-box">
                 <h3>The Architectural Monogram</h3>
-                <span class="tagline">PROPERTY INTELLIGENCE</span>
+                <span class="tagline">Engenharia & Arquitetura de Software</span>
               </div>
             </div>
-            <span class="concept-badge">Arquitetônico & B2B</span>
+            <span class="concept-badge">STRUCTURAL ELEVATION</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
                 <button class="tab-btn active" data-target="01-architectural-monogram" data-type="logomarca">Logomarca (Completa)</button>
@@ -515,7 +405,7 @@
               </div>
 
               <div class="preview-canvas" id="canvas-01-architectural-monogram">
-                <img id="img-01-architectural-monogram" src="01-architectural-monogram/logomarca.svg" alt="The Architectural Monogram Logomarca" />
+                <img id="img-01-architectural-monogram" src="01-architectural-monogram/logomarca.png" alt="The Architectural Monogram Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
@@ -523,944 +413,561 @@
                   <input type="checkbox" onchange="toggleCanvasBg('01-architectural-monogram', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-01-architectural-monogram">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-01-architectural-monogram">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Estrutura monumental formando a letra 'A' através de pilares angulados e um portal central de entrada. Evoca solidez construtiva, sofisticação imobiliária, engenharia de software confiável e acolhimento.</p>
+              <p class="rationale-text">Monograma escultural 'A' em perspectiva isométrica com planos facetados e iluminação direcional. O entrelaçamento angular evoca a solidez construtiva de edifícios e a arquitetura moderna de software.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Pilares angulados: Estrutura portante de edifícios e estabilidade patrimonial</li><li>Portal central: Boas-vindas ao inquilino e abertura de novas oportunidades</li><li>Chave de abóbada (keystone) flutuante: Segurança digital e integridade</li><li>Cores Esmeralda & Ardósia: Prosperidade imobiliária e sobriedade institucional</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0F172A" onclick="copyColor('#0F172A')">
-                      <span class="swatch-dot" style="background-color: #0F172A;"></span>
-                      <span>#0F172A</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #059669" onclick="copyColor('#059669')">
-                      <span class="swatch-dot" style="background-color: #059669;"></span>
-                      <span>#059669</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #6EE7B7" onclick="copyColor('#6EE7B7')">
-                      <span class="swatch-dot" style="background-color: #6EE7B7;"></span>
-                      <span>#6EE7B7</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="01-architectural-monogram/logomarca.svg" download="aluxen-01-architectural-monogram-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="01-architectural-monogram/logomarca.png" download="aluxen-01-architectural-monogram-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="01-architectural-monogram/marca.svg" download="aluxen-01-architectural-monogram-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="01-architectural-monogram/marca.png" download="aluxen-01-architectural-monogram-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="01-architectural-monogram/logotipo.svg" download="aluxen-01-architectural-monogram-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="01-architectural-monogram/logotipo.png" download="aluxen-01-architectural-monogram-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="fintech" id="concept-02">
+
+        <article class="concept-card" id="concept-02">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">02</div>
               <div class="concept-name-box">
-                <h3>The Infinity Lease</h3>
-                <span class="tagline">CONTINUOUS RENTAL FLOW</span>
+                <h3>The Nexus Flow</h3>
+                <span class="tagline">FinTech & Liquidez de Aluguéis</span>
               </div>
             </div>
-            <span class="concept-badge">FinTech & SaaS</span>
+            <span class="concept-badge">TRANSACTION VELOCITY</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="02-infinity-lease" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="02-infinity-lease" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="02-infinity-lease" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="02-nexus-flow" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="02-nexus-flow" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="02-nexus-flow" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-02-infinity-lease">
-                <img id="img-02-infinity-lease" src="02-infinity-lease/logomarca.svg" alt="The Infinity Lease Logomarca" />
+              <div class="preview-canvas" id="canvas-02-nexus-flow">
+                <img id="img-02-nexus-flow" src="02-nexus-flow/logomarca.png" alt="The Nexus Flow Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('02-infinity-lease', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('02-nexus-flow', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-02-infinity-lease">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-02-nexus-flow">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Fita geométrica contínua (estilo fita de Möbius / infinito) esculpindo um 'A' com o ápice de um teto residencial. Simboliza a renovação contínua de contratos de locação, receitas previsíveis e o fluxo harmônico entre locador e locatário.</p>
+              <p class="rationale-text">Duas lâminas cinéticas com curvas contínuas entrelaçadas em nó de conexão, simbolizando o ponto de encontro entre locador e locatário, pagamentos automáticos e liquidez imediata.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Laço de Infinito: Renovação cíclica de contratos sem atrito burocrático</li><li>Gable de Telhado: Identidade residencial e aconchego do lar</li><li>Tipografia em minúsculas: Abordagem tech amigável, ágil e moderna (estilo Stripe / Linear)</li><li>Ponto flutuante verde: Disparo de eventos e automações em tempo real</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0B0F19" onclick="copyColor('#0B0F19')">
-                      <span class="swatch-dot" style="background-color: #0B0F19;"></span>
-                      <span>#0B0F19</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #059669" onclick="copyColor('#059669')">
-                      <span class="swatch-dot" style="background-color: #059669;"></span>
-                      <span>#059669</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #A7F3D0" onclick="copyColor('#A7F3D0')">
-                      <span class="swatch-dot" style="background-color: #A7F3D0;"></span>
-                      <span>#A7F3D0</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="02-infinity-lease/logomarca.svg" download="aluxen-02-infinity-lease-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="02-nexus-flow/logomarca.png" download="aluxen-02-nexus-flow-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="02-infinity-lease/marca.svg" download="aluxen-02-infinity-lease-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="02-nexus-flow/marca.png" download="aluxen-02-nexus-flow-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="02-infinity-lease/logotipo.svg" download="aluxen-02-infinity-lease-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="02-nexus-flow/logotipo.png" download="aluxen-02-nexus-flow-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="security" id="concept-03">
+
+        <article class="concept-card" id="concept-03">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">03</div>
               <div class="concept-name-box">
-                <h3>The Prism Key</h3>
-                <span class="tagline">SMART ACCESS & DIGITAL TRUST</span>
+                <h3>The Spatial Monolith</h3>
+                <span class="tagline">Brutalismo & Patrimônio Permanente</span>
               </div>
             </div>
-            <span class="concept-badge">Smart Access & Crypto</span>
+            <span class="concept-badge">PERMANENT ASSET VALUE</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="03-prism-key" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="03-prism-key" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="03-prism-key" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="03-spatial-monolith" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="03-spatial-monolith" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="03-spatial-monolith" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-03-prism-key">
-                <img id="img-03-prism-key" src="03-prism-key/logomarca.svg" alt="The Prism Key Logomarca" />
+              <div class="preview-canvas" id="canvas-03-spatial-monolith">
+                <img id="img-03-spatial-monolith" src="03-spatial-monolith/logomarca.png" alt="The Spatial Monolith Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('03-prism-key', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('03-spatial-monolith', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-03-prism-key">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-03-spatial-monolith">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Fusão de uma chave mestra vertical, teto gabled e prisma criptográfico. Representa tanto a entrega física das chaves do imóvel quanto a chave digital dos recibos e contratos autenticados no sistema Aluxen.</p>
+              <p class="rationale-text">Monólito tridimensional em balanço estrutural. Uma coluna portante vertical sustenta uma viga angular facetada em 60°, conferindo autoridade institucional, segurança bancária e estabilidade.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Chave vertical: Acesso desimpedido e entrega de chaves</li><li>Dentes escalonados: Monograma estilizado 'A' e 'L'</li><li>Núcleo de iluminação digital: Chave criptográfica dos recibos e contratos PDF</li><li>Azul Cobalto + Esmeralda: Confiança bancária somada à inovação tecnológica</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0A1128" onclick="copyColor('#0A1128')">
-                      <span class="swatch-dot" style="background-color: #0A1128;"></span>
-                      <span>#0A1128</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #2563EB" onclick="copyColor('#2563EB')">
-                      <span class="swatch-dot" style="background-color: #2563EB;"></span>
-                      <span>#2563EB</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #06B6D4" onclick="copyColor('#06B6D4')">
-                      <span class="swatch-dot" style="background-color: #06B6D4;"></span>
-                      <span>#06B6D4</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="03-prism-key/logomarca.svg" download="aluxen-03-prism-key-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="03-spatial-monolith/logomarca.png" download="aluxen-03-spatial-monolith-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="03-prism-key/marca.svg" download="aluxen-03-prism-key-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="03-spatial-monolith/marca.png" download="aluxen-03-spatial-monolith-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="03-prism-key/logotipo.svg" download="aluxen-03-prism-key-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="03-spatial-monolith/logotipo.png" download="aluxen-03-spatial-monolith-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="architectural" id="concept-04">
+
+        <article class="concept-card" id="concept-04">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">04</div>
               <div class="concept-name-box">
-                <h3>The Living Frame</h3>
-                <span class="tagline">SPATIAL PROPERTY OS</span>
+                <h3>The Continuous Ribbon</h3>
+                <span class="tagline">Closed-Loop Design (Airbnb / Figma)</span>
               </div>
             </div>
-            <span class="concept-badge">Spatial & Modern</span>
+            <span class="concept-badge">SEAMLESS LEASING</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="04-living-frame" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="04-living-frame" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="04-living-frame" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="04-continuous-ribbon" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="04-continuous-ribbon" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="04-continuous-ribbon" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-04-living-frame">
-                <img id="img-04-living-frame" src="04-living-frame/logomarca.svg" alt="The Living Frame Logomarca" />
+              <div class="preview-canvas" id="canvas-04-continuous-ribbon">
+                <img id="img-04-continuous-ribbon" src="04-continuous-ribbon/logomarca.png" alt="The Continuous Ribbon Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('04-living-frame', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('04-continuous-ribbon', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-04-living-frame">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-04-continuous-ribbon">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Cubo arquitetônico isométrico em 3D representando o espaço físico do imóvel (sala, apartamento, edifício), com um portal de luz angular no centro que projeta iluminação para fora e compõe um elegante 'A'.</p>
+              <p class="rationale-text">Laço vetorial contínuo e fechado com curvatura harmônica e núcleo óptico esmeralda. Sem arestas agressivas, projeta empatia, facilidade de uso e renovação contínua de locações.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Cubo isométrico: Dimensão espacial, plantas baixas e visualização 3D dos imóveis</li><li>Face superior em verde claro: Cobertura, teto e proteção ambiental</li><li>Portal iluminado central: Transparência na gestão e boas-vindas</li><li>Linhas axonométricas: Rigor técnico e precisão no controle de inventário</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0B0F19" onclick="copyColor('#0B0F19')">
-                      <span class="swatch-dot" style="background-color: #0B0F19;"></span>
-                      <span>#0B0F19</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #059669" onclick="copyColor('#059669')">
-                      <span class="swatch-dot" style="background-color: #059669;"></span>
-                      <span>#059669</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #34D399" onclick="copyColor('#34D399')">
-                      <span class="swatch-dot" style="background-color: #34D399;"></span>
-                      <span>#34D399</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #38BDF8" onclick="copyColor('#38BDF8')">
-                      <span class="swatch-dot" style="background-color: #38BDF8;"></span>
-                      <span>#38BDF8</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="04-living-frame/logomarca.svg" download="aluxen-04-living-frame-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="04-continuous-ribbon/logomarca.png" download="aluxen-04-continuous-ribbon-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="04-living-frame/marca.svg" download="aluxen-04-living-frame-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="04-continuous-ribbon/marca.png" download="aluxen-04-continuous-ribbon-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="04-living-frame/logotipo.svg" download="aluxen-04-living-frame-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="04-continuous-ribbon/logotipo.png" download="aluxen-04-continuous-ribbon-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="luxury" id="concept-05">
+
+        <article class="concept-card" id="concept-05">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">05</div>
               <div class="concept-name-box">
-                <h3>The Golden Ratio Habitation</h3>
-                <span class="tagline">PREMIUM REAL ESTATE SUITE</span>
+                <h3>The Optical Prism</h3>
+                <span class="tagline">Developer Tools (Raycast / Vercel style)</span>
               </div>
             </div>
-            <span class="concept-badge">Luxury & High-End</span>
+            <span class="concept-badge">HIGH-PERFORMANCE TECH</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="05-golden-ratio-hab" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="05-golden-ratio-hab" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="05-golden-ratio-hab" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="05-optical-prism" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="05-optical-prism" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="05-optical-prism" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-05-golden-ratio-hab">
-                <img id="img-05-golden-ratio-hab" src="05-golden-ratio-hab/logomarca.svg" alt="The Golden Ratio Habitation Logomarca" />
+              <div class="preview-canvas" id="canvas-05-optical-prism">
+                <img id="img-05-optical-prism" src="05-optical-prism/logomarca.png" alt="The Optical Prism Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('05-golden-ratio-hab', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('05-optical-prism', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-05-golden-ratio-hab">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-05-optical-prism">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Emblema de alto padrão desenhado sob a proporção áurea com silhueta de residência contemporânea (coberturas, vilas e mansões). Enfatiza a raiz 'Lux' de Aluxen: luxo, luz, prestígio e valorização patrimonial.</p>
+              <p class="rationale-text">Prisma angular assimétrico fatiado por um feixe de luz dinâmico ('Lux'). Evoca a velocidade extrema do runtime Bun, transparência nos cálculos de aluguéis e precisão de dados.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Silhueta da residência: Arquitetura de alto padrão com linhas de shed roof</li><li>Círculo áureo guia: Perfeição matemática e precisão geométrica</li><li>Realce 'LUX' no wordmark: Posicionamento claro no segmento premium</li><li>Ouro Champagne & Ardósia: Autoridade, exclusividade e patrimônio sólido</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #18181B" onclick="copyColor('#18181B')">
-                      <span class="swatch-dot" style="background-color: #18181B;"></span>
-                      <span>#18181B</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #D97706" onclick="copyColor('#D97706')">
-                      <span class="swatch-dot" style="background-color: #D97706;"></span>
-                      <span>#D97706</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #F59E0B" onclick="copyColor('#F59E0B')">
-                      <span class="swatch-dot" style="background-color: #F59E0B;"></span>
-                      <span>#F59E0B</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #FDE68A" onclick="copyColor('#FDE68A')">
-                      <span class="swatch-dot" style="background-color: #FDE68A;"></span>
-                      <span>#FDE68A</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="05-golden-ratio-hab/logomarca.svg" download="aluxen-05-golden-ratio-hab-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="05-optical-prism/logomarca.png" download="aluxen-05-optical-prism-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="05-golden-ratio-hab/marca.svg" download="aluxen-05-golden-ratio-hab-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="05-optical-prism/marca.png" download="aluxen-05-optical-prism-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="05-golden-ratio-hab/logotipo.svg" download="aluxen-05-golden-ratio-hab-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="05-optical-prism/logotipo.png" download="aluxen-05-optical-prism-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="fintech" id="concept-06">
+
+        <article class="concept-card" id="concept-06">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">06</div>
               <div class="concept-name-box">
-                <h3>The Modular Stack</h3>
-                <span class="tagline">SCALABLE PROPERTY PORTFOLIO</span>
+                <h3>The Modular Cell</h3>
+                <span class="tagline">Escala Relacional & Inventário</span>
               </div>
             </div>
-            <span class="concept-badge">Modular & Scale</span>
+            <span class="concept-badge">SCALABLE INVENTORY</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="06-modular-stack" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="06-modular-stack" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="06-modular-stack" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="06-modular-cell" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="06-modular-cell" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="06-modular-cell" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-06-modular-stack">
-                <img id="img-06-modular-stack" src="06-modular-stack/logomarca.svg" alt="The Modular Stack Logomarca" />
+              <div class="preview-canvas" id="canvas-06-modular-cell">
+                <img id="img-06-modular-cell" src="06-modular-cell/logomarca.png" alt="The Modular Cell Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('06-modular-stack', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('06-modular-cell', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-06-modular-stack">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-06-modular-cell">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Três módulos arquitetônicos flutuantes dispostos em pirâmide ascendente, simbolizando a escalabilidade de portfólios (de 1 para dezenas de imóveis) e o design modular do ecossistema Aluxen.</p>
+              <p class="rationale-text">Quatro módulos geométricos com cantos arredondados dispostos em pirâmide ascendente formando a letra 'A'. Representa unidades locatícias organizadas em banco de dados relacional e crescimento de carteira.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Blocos empilhados: Portfólio multi-unidades (apartamentos, estúdios, salas comerciais)</li><li>Formação ascendente em 'A': Crescimento da receita e evolução do investidor</li><li>Janelas minimalistas: Vida humana e comunidade dentro de cada imóvel</li><li>Cantos arredondados: Experiência de uso fluida, amigável e sem atrito</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #022C22" onclick="copyColor('#022C22')">
-                      <span class="swatch-dot" style="background-color: #022C22;"></span>
-                      <span>#022C22</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #059669" onclick="copyColor('#059669')">
-                      <span class="swatch-dot" style="background-color: #059669;"></span>
-                      <span>#059669</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #6EE7B7" onclick="copyColor('#6EE7B7')">
-                      <span class="swatch-dot" style="background-color: #6EE7B7;"></span>
-                      <span>#6EE7B7</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="06-modular-stack/logomarca.svg" download="aluxen-06-modular-stack-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="06-modular-cell/logomarca.png" download="aluxen-06-modular-cell-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="06-modular-stack/marca.svg" download="aluxen-06-modular-stack-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="06-modular-cell/marca.png" download="aluxen-06-modular-cell-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="06-modular-stack/logotipo.svg" download="aluxen-06-modular-stack-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="06-modular-cell/logotipo.png" download="aluxen-06-modular-cell-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="security" id="concept-07">
+
+        <article class="concept-card" id="concept-07">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">07</div>
               <div class="concept-name-box">
-                <h3>The Apex Shield</h3>
-                <span class="tagline">LEGAL & CONTRACT SECURITY</span>
+                <h3>The Forward Chevron</h3>
+                <span class="tagline">High-Growth PropTech (Ramp / Mercury vibe)</span>
               </div>
             </div>
-            <span class="concept-badge">LegalTech & Security</span>
+            <span class="concept-badge">ACCELERATED GROWTH</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="07-apex-shield" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="07-apex-shield" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="07-apex-shield" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="07-forward-chevron" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="07-forward-chevron" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="07-forward-chevron" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-07-apex-shield">
-                <img id="img-07-apex-shield" src="07-apex-shield/logomarca.svg" alt="The Apex Shield Logomarca" />
+              <div class="preview-canvas" id="canvas-07-forward-chevron">
+                <img id="img-07-forward-chevron" src="07-forward-chevron/logomarca.png" alt="The Forward Chevron Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('07-apex-shield', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('07-forward-chevron', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-07-apex-shield">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-07-forward-chevron">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Escudo heráldico contemporâneo fundido a um telhado residencial com chevron ascendente e selo de verificação esmeralda. Representa a blindagem jurídica dos contratos de locação (25 cláusulas legais) e autenticidade de recibos.</p>
+              <p class="rationale-text">Chevrons paralelos dinâmicos com inclinação aerodinâmica de 15°. Transmite avanço veloz, eliminação de burocracia e modernidade operacional para administradores de imóveis.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Escudo bisectado: Proteção mútua entre locador e locatário</li><li>Chevron branco superior: Teto seguro e elevação patrimonial</li><li>Selo de verificação (Checkmark): Documentos juridicamente perfeitos e com hash criptográfico</li><li>Azul Noturno & Verde Confirmação: Padrão bancário e conformidade legal</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #030712" onclick="copyColor('#030712')">
-                      <span class="swatch-dot" style="background-color: #030712;"></span>
-                      <span>#030712</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #1E3A8A" onclick="copyColor('#1E3A8A')">
-                      <span class="swatch-dot" style="background-color: #1E3A8A;"></span>
-                      <span>#1E3A8A</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #3B82F6" onclick="copyColor('#3B82F6')">
-                      <span class="swatch-dot" style="background-color: #3B82F6;"></span>
-                      <span>#3B82F6</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="07-apex-shield/logomarca.svg" download="aluxen-07-apex-shield-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="07-forward-chevron/logomarca.png" download="aluxen-07-forward-chevron-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="07-apex-shield/marca.svg" download="aluxen-07-apex-shield-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="07-forward-chevron/marca.png" download="aluxen-07-forward-chevron-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="07-apex-shield/logotipo.svg" download="aluxen-07-apex-shield-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="07-forward-chevron/logotipo.png" download="aluxen-07-forward-chevron-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="minimalist" id="concept-08">
+
+        <article class="concept-card" id="concept-08">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">08</div>
               <div class="concept-name-box">
-                <h3>The Nordic Horizon</h3>
-                <span class="tagline">MINIMALIST PROPERTY OS</span>
+                <h3>The Horizon Monoline</h3>
+                <span class="tagline">Minimalismo Suíço (Dieter Rams / Linear)</span>
               </div>
             </div>
-            <span class="concept-badge">Minimalist & Swiss</span>
+            <span class="concept-badge">TIMELESS REDUCTION</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="08-nordic-horizon" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="08-nordic-horizon" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="08-nordic-horizon" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="08-horizon-monoline" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="08-horizon-monoline" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="08-horizon-monoline" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-08-nordic-horizon">
-                <img id="img-08-nordic-horizon" src="08-nordic-horizon/logomarca.svg" alt="The Nordic Horizon Logomarca" />
+              <div class="preview-canvas" id="canvas-08-horizon-monoline">
+                <img id="img-08-horizon-monoline" src="08-horizon-monoline/logomarca.png" alt="The Horizon Monoline Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('08-nordic-horizon', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('08-horizon-monoline', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-08-nordic-horizon">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-08-horizon-monoline">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Estética escandinava pura e minimalismo técnico (inspirado em Linear, Raycast e Vercel). Linhas de alta precisão desenhando um A-frame sobre uma linha de horizonte onde um sol verde esmeralda desponta ('Lux' = Luz).</p>
+              <p class="rationale-text">Monograma monoline ultra-reduzido com linha de horizonte estabilizada e barra de contraste esmeralda. Máxima clareza visual com elegância e proporções clássicas da escola suíça.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>A-frame estrutural: Arquitetura nórdica de linhas limpas e funcionais</li><li>Sol nascente verde no horizonte: Clareza total sobre finanças e contratos ('Lux')</li><li>Barra de base: Fundação sólida e terreno estabilizado</li><li>Preto & Branco com Verde Sinal: Foco absoluto no conteúdo sem distrações visuais</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #09090B" onclick="copyColor('#09090B')">
-                      <span class="swatch-dot" style="background-color: #09090B;"></span>
-                      <span>#09090B</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #00D084" onclick="copyColor('#00D084')">
-                      <span class="swatch-dot" style="background-color: #00D084;"></span>
-                      <span>#00D084</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #FFFFFF" onclick="copyColor('#FFFFFF')">
-                      <span class="swatch-dot" style="background-color: #FFFFFF;"></span>
-                      <span>#FFFFFF</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #71717A" onclick="copyColor('#71717A')">
-                      <span class="swatch-dot" style="background-color: #71717A;"></span>
-                      <span>#71717A</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="08-nordic-horizon/logomarca.svg" download="aluxen-08-nordic-horizon-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="08-horizon-monoline/logomarca.png" download="aluxen-08-horizon-monoline-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="08-nordic-horizon/marca.svg" download="aluxen-08-nordic-horizon-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="08-horizon-monoline/marca.png" download="aluxen-08-horizon-monoline-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="08-nordic-horizon/logotipo.svg" download="aluxen-08-nordic-horizon-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="08-horizon-monoline/logotipo.png" download="aluxen-08-horizon-monoline-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="connected" id="concept-09">
+
+        <article class="concept-card" id="concept-09">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">09</div>
               <div class="concept-name-box">
-                <h3>The Quantum Portal</h3>
-                <span class="tagline">CONNECTED LIVING & AUTOMATION</span>
+                <h3>The Quantum Orbit</h3>
+                <span class="tagline">Conectividade & Robô WhatsApp</span>
               </div>
             </div>
-            <span class="concept-badge">Automation & WhatsApp</span>
+            <span class="concept-badge">HEADLESS AUTOMATION</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="09-quantum-portal" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="09-quantum-portal" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="09-quantum-portal" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="09-quantum-orbit" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="09-quantum-orbit" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="09-quantum-orbit" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-09-quantum-portal">
-                <img id="img-09-quantum-portal" src="09-quantum-portal/logomarca.svg" alt="The Quantum Portal Logomarca" />
+              <div class="preview-canvas" id="canvas-09-quantum-orbit">
+                <img id="img-09-quantum-orbit" src="09-quantum-orbit/logomarca.png" alt="The Quantum Orbit Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('09-quantum-portal', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('09-quantum-orbit', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-09-quantum-portal">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-09-quantum-orbit">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Dois anéis orbitais dinâmicos entrelaçados formando um portal de conectividade e a letra 'A'. Representa a integração direta via WhatsApp Web headless, disparos automáticos e comunicação sem ruído.</p>
+              <p class="rationale-text">Dois anéis orbitais elípticos entrelaçados em 30° com nódulo de comunicação central. Simboliza a conexão instantânea entre proprietário e inquilino através de disparos automáticos via WhatsApp.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Órbita violeta (Locador): Gestão, parametrização e controle</li><li>Órbita esmeralda (Locatário): Recebimento instantâneo de avisos e recibos</li><li>Núcleo central de colisão: O robô de WhatsApp e a automação do sistema</li><li>Gradiente Violeta para Menta: Alta tecnologia, inteligência artificial e conectividade moderna</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0F172A" onclick="copyColor('#0F172A')">
-                      <span class="swatch-dot" style="background-color: #0F172A;"></span>
-                      <span>#0F172A</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #6366F1" onclick="copyColor('#6366F1')">
-                      <span class="swatch-dot" style="background-color: #6366F1;"></span>
-                      <span>#6366F1</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #06B6D4" onclick="copyColor('#06B6D4')">
-                      <span class="swatch-dot" style="background-color: #06B6D4;"></span>
-                      <span>#06B6D4</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="09-quantum-portal/logomarca.svg" download="aluxen-09-quantum-portal-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="09-quantum-orbit/logomarca.png" download="aluxen-09-quantum-orbit-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="09-quantum-portal/marca.svg" download="aluxen-09-quantum-portal-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="09-quantum-orbit/marca.png" download="aluxen-09-quantum-orbit-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="09-quantum-portal/logotipo.svg" download="aluxen-09-quantum-portal-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="09-quantum-orbit/logotipo.png" download="aluxen-09-quantum-orbit-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
-        <article class="concept-card" data-category="fintech" id="concept-10">
+
+        <article class="concept-card" id="concept-10">
           <div class="card-header">
             <div class="card-title-group">
               <div class="concept-number">10</div>
               <div class="concept-name-box">
-                <h3>The Origami Fold</h3>
-                <span class="tagline">DIGITAL LEASING & CONTRACTS</span>
+                <h3>The Crafted Wordmark</h3>
+                <span class="tagline">Tipografia de Alto Escalão (Stripe / Acme)</span>
               </div>
             </div>
-            <span class="concept-badge">Paperless & Digital</span>
+            <span class="concept-badge">BESPOKE TYPOGRAPHY</span>
           </div>
 
           <div class="card-body">
-            <!-- Left: Visual Canvas + Tabs -->
+            <!-- Left: Showcase -->
             <div class="showcase-area">
               <div class="preview-tabs">
-                <button class="tab-btn active" data-target="10-origami-fold" data-type="logomarca">Logomarca (Completa)</button>
-                <button class="tab-btn" data-target="10-origami-fold" data-type="marca">Marca (Símbolo)</button>
-                <button class="tab-btn" data-target="10-origami-fold" data-type="logotipo">Logotipo (Texto)</button>
+                <button class="tab-btn active" data-target="10-crafted-wordmark" data-type="logomarca">Logomarca (Completa)</button>
+                <button class="tab-btn" data-target="10-crafted-wordmark" data-type="marca">Marca (Símbolo)</button>
+                <button class="tab-btn" data-target="10-crafted-wordmark" data-type="logotipo">Logotipo (Texto)</button>
               </div>
 
-              <div class="preview-canvas" id="canvas-10-origami-fold">
-                <img id="img-10-origami-fold" src="10-origami-fold/logomarca.svg" alt="The Origami Fold Logomarca" />
+              <div class="preview-canvas" id="canvas-10-crafted-wordmark">
+                <img id="img-10-crafted-wordmark" src="10-crafted-wordmark/logomarca.png" alt="The Crafted Wordmark Logomarca" />
               </div>
 
               <div class="canvas-toolbar">
                 <label class="canvas-bg-toggle">
-                  <input type="checkbox" onchange="toggleCanvasBg('10-origami-fold', this.checked)" />
+                  <input type="checkbox" onchange="toggleCanvasBg('10-crafted-wordmark', this.checked)" />
                   <span>Fundo Escuro</span>
                 </label>
-                <span id="label-10-origami-fold">logomarca.svg &bull; Visualização Horizontal</span>
+                <span id="label-10-crafted-wordmark">logomarca.png &bull; 1024x1024</span>
               </div>
             </div>
 
-            <!-- Right: Design Story & Specs -->
+            <!-- Right: Details -->
             <div class="details-area">
-              <p class="rationale-text">Fita facetada em técnica de origami e low-poly onde uma folha de papel de contrato/recibo se dobra tridimensionalmente para formar uma casa e o monograma 'A'. Corporifica a transição do papel físico para o software inteligente.</p>
+              <p class="rationale-text">Identidade tipográfica pura onde o próprio glifo inicial 'A' é o monograma desenhado com fenda vertical e travessão flutuante exclusivo. Atemporal, confiante e com peso de estúdio global.</p>
 
               <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Simbolismo &amp; Geometria
-                </strong>
-                <ul class="symbolism-list">
-                  <li>Dobras geométricas: Eliminação do papel físico através da digitalização</li><li>Faceta superior em ponta de caneta: Assinatura de contratos e preenchimento digital</li><li>Silhueta do teto: O objetivo final — o lar onde o inquilino reside</li><li>Camadas tonais de verde: Transparência, múltiplos estágios de aprovação e precisão</li>
-                </ul>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Paleta de Cores
-                </strong>
-                <div class="color-swatches">
-                  
-                    <div class="swatch" title="Clique para copiar #0F172A" onclick="copyColor('#0F172A')">
-                      <span class="swatch-dot" style="background-color: #0F172A;"></span>
-                      <span>#0F172A</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #047857" onclick="copyColor('#047857')">
-                      <span class="swatch-dot" style="background-color: #047857;"></span>
-                      <span>#047857</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #10B981" onclick="copyColor('#10B981')">
-                      <span class="swatch-dot" style="background-color: #10B981;"></span>
-                      <span>#10B981</span>
-                    </div>
-                  
-                    <div class="swatch" title="Clique para copiar #A7F3D0" onclick="copyColor('#A7F3D0')">
-                      <span class="swatch-dot" style="background-color: #A7F3D0;"></span>
-                      <span>#A7F3D0</span>
-                    </div>
-                  
-                </div>
-              </div>
-
-              <div>
-                <strong style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
-                  Arquivos Vetoriais SVG
+                <strong style="font-size: 0.825rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: block; margin-bottom: 0.4rem;">
+                  Arquivos PNG (1024x1024)
                 </strong>
                 <div class="download-links">
-                  <a class="download-btn" href="10-origami-fold/logomarca.svg" download="aluxen-10-origami-fold-logomarca.svg">
-                    📥 Logomarca
+                  <a class="download-btn" href="10-crafted-wordmark/logomarca.png" download="aluxen-10-crafted-wordmark-logomarca.png">
+                    📥 Logomarca.png
                   </a>
-                  <a class="download-btn" href="10-origami-fold/marca.svg" download="aluxen-10-origami-fold-marca.svg">
-                    📥 Marca
+                  <a class="download-btn" href="10-crafted-wordmark/marca.png" download="aluxen-10-crafted-wordmark-marca.png">
+                    📥 Marca.png
                   </a>
-                  <a class="download-btn" href="10-origami-fold/logotipo.svg" download="aluxen-10-origami-fold-logotipo.svg">
-                    📥 Logotipo
+                  <a class="download-btn" href="10-crafted-wordmark/logotipo.png" download="aluxen-10-crafted-wordmark-logotipo.png">
+                    📥 Logotipo.png
                   </a>
                 </div>
               </div>
             </div>
           </div>
         </article>
-      
+
     </div>
   </main>
 
   <footer>
-    <p>Aluxen &bull; Sistema de Gestão de Locações Imobiliárias &bull; Conjunto de Identidades Visuais</p>
-    <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-      Todos os arquivos foram modelados em vetores puros SVG com proporções geométricas balanceadas.
-    </p>
+    <p>Aluxen &bull; Sistema de Gestão de Locações Imobiliárias &bull; Suíte de Logos PNG</p>
   </footer>
 
   <script>
@@ -1470,26 +977,24 @@
         const folder = btn.getAttribute('data-target');
         const type = btn.getAttribute('data-type');
         
-        // Update active tab styling
         btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
 
-        // Update image
         const img = document.getElementById('img-' + folder);
         const label = document.getElementById('label-' + folder);
-        img.src = folder + '/' + type + '.svg';
+        img.src = folder + '/' + type + '.png';
         img.alt = folder + ' ' + type;
         
         const typeLabels = {
-          'logomarca': 'logomarca.svg • Lockup Completo Horizontal',
-          'marca': 'marca.svg • Símbolo / Ícone Isolado (512x512)',
-          'logotipo': 'logotipo.svg • Tipografia Exclusiva'
+          'logomarca': 'logomarca.png • Lockup Completo (1024x1024)',
+          'marca': 'marca.png • Símbolo / Marca Isolada (1024x1024)',
+          'logotipo': 'logotipo.png • Logotipo Tipográfico (1024x1024)'
         };
-        label.textContent = typeLabels[type] || type + '.svg';
+        label.textContent = typeLabels[type] || type + '.png';
       });
     });
 
-    // Toggle Canvas Background (Light/Dark for contrast testing)
+    // Toggle Canvas Background (Light/Dark)
     function toggleCanvasBg(folder, isDark) {
       const canvas = document.getElementById('canvas-' + folder);
       if (isDark) {
@@ -1512,30 +1017,6 @@
         themeIcon.textContent = '☀️';
       }
     });
-
-    // Filter Buttons
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const filter = btn.getAttribute('data-filter');
-
-        document.querySelectorAll('.concept-card').forEach(card => {
-          if (filter === 'all' || card.getAttribute('data-category') === filter) {
-            card.style.display = 'block';
-          } else {
-            card.style.display = 'none';
-          }
-        });
-      });
-    });
-
-    // Copy Color Hex
-    function copyColor(hex) {
-      navigator.clipboard.writeText(hex).then(() => {
-        alert('Cor ' + hex + ' copiada para a área de transferência!');
-      }).catch(() => {});
-    }
   </script>
 </body>
 </html>
