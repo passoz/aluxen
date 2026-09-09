@@ -142,6 +142,9 @@ export function DeleteRowButton({
   onSettled,
   queueOfflineMutation,
   confirmMessage,
+  confirmTitle,
+  confirmLabel,
+  confirmTone = 'danger',
   btnLabel,
   btnClass,
   disabled,
@@ -154,6 +157,9 @@ export function DeleteRowButton({
   onSettled: () => void;
   queueOfflineMutation: (payload: QueuePayload, successMessage: string) => void;
   confirmMessage?: string;
+  confirmTitle?: string;
+  confirmLabel?: string;
+  confirmTone?: 'primary' | 'danger';
   btnLabel?: string;
   btnClass?: string;
   disabled?: boolean;
@@ -219,10 +225,10 @@ export function DeleteRowButton({
       </form>
       <ConfirmModal
         open={confirmOpen}
-        title="Confirmar exclusão"
+        title={confirmTitle || 'Confirmar exclusão'}
         message={confirmMessage || 'Tem certeza que deseja excluir este item?'}
-        confirmLabel="Excluir"
-        tone="danger"
+        confirmLabel={confirmLabel || 'Excluir'}
+        tone={confirmTone}
         busy={submitting}
         onClose={() => (!submitting ? setConfirmOpen(false) : null)}
         onConfirm={performDelete}

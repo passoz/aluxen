@@ -1349,6 +1349,8 @@ export function DashboardPage(initialData: DashboardProps) {
                                 queueOfflineMutation={queueOfflineMutation}
                                 btnLabel="Encerrar"
                                 btnClass="btn btn-sm btn-outline"
+                                confirmTitle="Encerrar contrato"
+                                confirmLabel="Encerrar"
                                 confirmMessage="Encerrar este contrato? Ele ficará inativo."
                               />
                             ) : lease.status === 'season' ? (
@@ -1365,6 +1367,8 @@ export function DashboardPage(initialData: DashboardProps) {
                                 queueOfflineMutation={queueOfflineMutation}
                                 btnLabel="Encerrar temporada"
                                 btnClass="btn btn-sm btn-outline"
+                                confirmTitle="Encerrar temporada"
+                                confirmLabel="Encerrar"
                                 confirmMessage="Encerrar esta temporada?"
                               />
                             ) : lease.status === 'suspended' ? (
@@ -1382,6 +1386,9 @@ export function DashboardPage(initialData: DashboardProps) {
                                   queueOfflineMutation={queueOfflineMutation}
                                   btnLabel="Ativar"
                                   btnClass="btn btn-sm btn-secondary"
+                                  confirmTitle="Ativar contrato"
+                                  confirmLabel="Ativar"
+                                  confirmTone="primary"
                                   confirmMessage="Tornar este contrato ativo novamente?"
                                 />
                                 <DeleteRowButton
@@ -1397,6 +1404,8 @@ export function DashboardPage(initialData: DashboardProps) {
                                   queueOfflineMutation={queueOfflineMutation}
                                   btnLabel="Encerrar"
                                   btnClass="btn btn-sm btn-outline"
+                                  confirmTitle="Encerrar contrato"
+                                  confirmLabel="Encerrar"
                                   confirmMessage="Encerrar este contrato suspenso?"
                                 />
                               </>
@@ -1414,6 +1423,9 @@ export function DashboardPage(initialData: DashboardProps) {
                                 queueOfflineMutation={queueOfflineMutation}
                                 btnLabel="Reativar"
                                 btnClass="btn btn-sm btn-secondary"
+                                confirmTitle="Reativar contrato"
+                                confirmLabel="Reativar"
+                                confirmTone="primary"
                                 confirmMessage="Reativar este contrato?"
                               />
                             )}
