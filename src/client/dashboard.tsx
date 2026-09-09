@@ -83,7 +83,7 @@ function PdfDropdown({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
-
+  const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     function reposition() {
@@ -117,7 +117,10 @@ function PdfDropdown({ id }: { id: string }) {
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
     function handleClickOutside(e: MouseEvent) {
-      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      const inTrigger = triggerRef.current && triggerRef.current.contains(t);
+      const inMenu = menuRef.current && menuRef.current.contains(t);
+      if (!inTrigger && !inMenu) setOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
@@ -128,7 +131,7 @@ function PdfDropdown({ id }: { id: string }) {
   }, [open]);
 
   const menu = (
-    <div style={menuStyle} role="menu">
+    <div ref={menuRef} style={menuStyle} role="menu">
       <a
         className="btn btn-sm btn-secondary"
         href={`/pdf?id=${id}`}
