@@ -357,10 +357,13 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   });
   const qrImage = await pdf.embedPng(qrBuffer);
 
-  page.drawLine({ start: { x: cardX, y: 92 }, end: { x: cardX + contentWidth, y: 92 }, thickness: 1, color: border });
+  // Rodapé com folga inferior generosa (margem ≥ 46pt ≈ 16mm) para o QR
+  // não ser cortado por impressoras com área não imprimível.
+  const footerY = 124;
+  page.drawLine({ start: { x: cardX, y: footerY }, end: { x: cardX + contentWidth, y: footerY }, thickness: 1, color: border });
 
   const qrSize = 58;
-  const qrY = 24;
+  const qrY = 46;
   page.drawImage(qrImage, {
     x: cardX,
     y: qrY,
@@ -371,28 +374,28 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
   const textX = cardX + qrSize + 12;
   page.drawText('Validação de Autenticidade Digital', {
     x: textX,
-    y: qrY + 44,
+    y: qrY + 46,
     size: 9.5,
     font: fontBold,
     color: accent,
   });
   page.drawText('Aponte a câmera do celular para verificar o registro oficial deste recibo no servidor.', {
     x: textX,
-    y: qrY + 31,
+    y: qrY + 33,
     size: 8,
     font: fontRegular,
     color: ink,
   });
   page.drawText(`Chave: ${authCode}`, {
     x: textX,
-    y: qrY + 18,
+    y: qrY + 20,
     size: 8,
     font: fontBold,
     color: ink,
   });
   page.drawText(validationUrl, {
     x: textX,
-    y: qrY + 6,
+    y: qrY + 8,
     size: 7,
     font: fontRegular,
     color: muted,

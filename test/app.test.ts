@@ -279,6 +279,109 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(reactRes.status).toBe(200);
   });
 
+  it('POST /dashboard lease.create supports suspended status and enforces season overlap rule', async () => {
+    // Tenant e imóvel dedicados
+    const tenantForm = new FormData();
+    tenantForm.set('intent', 'tenant.create');
+    tenantForm.set('id', 'tenant-status-test');
+    tenantForm.set('name', 'Tenant Status Teste');
+    tenantForm.set('email', 'status@teste.local');
+    const tenantRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: tenantForm,
+      })
+    );
+    expect(tenantRes.status).toBe(200);
+
+    const propForm = new FormData();
+    propForm.set('intent', 'property.create');
+    propForm.set('id', 'property-status-test');
+    propForm.set('name', 'Imóvel Status Teste');
+    propForm.set('address', 'Rua Teste 1');
+    propForm.set('city', 'Niterói');
+    propForm.set('state', 'RJ');
+    propForm.set('zip', '24000-000');
+    const propRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: propForm,
+      })
+    );
+    expect(propRes.status).toBe(200);
+
+    const postLease = async (id: string, status: string, start: string, end: string) => {
+      const fd = new FormData();
+      fd.set('intent', 'lease.create');
+      fd.set('id', id);
+      fd.set('tenant_id', 'tenant-status-test');
+      fd.set('property_id', 'property-status-test');
+      fd.set('start_date', start);
+      fd.set('end_date', end);
+      fd.set('due_day', '10');
+      fd.set('rent_amount', '1500');
+      fd.set('status', status);
+      return server.fetch(
+        new Request('http://localhost:3000/dashboard', {
+          method: 'POST',
+          headers: { Cookie: sessionCookie },
+          body: fd,
+        })
+      );
+    };
+
+    // 1. Contrato suspenso: não bloqueia nada e é criado com sucesso
+    const suspRes = await postLease('lease-status-susp', 'suspended', '2026-01-01', '2026-12-31');
+    expect(suspRes.status).toBe(200);
+
+    // 2. Temporada sobre imóvel com contrato suspenso -> permitida
+    const seasonOkRes = await postLease('lease-status-season', 'season', '2026-06-01', '2026-06-20');
+    expect(seasonOkRes.status).toBe(200);
+
+    // 3. Nova temporada sobrepondo a anterior -> bloqueada (400)
+    const seasonOverlapRes = await postLease('lease-status-season2', 'season', '2026-06-10', '2026-06-25');
+    expect(seasonOverlapRes.status).toBe(400);
+    const overlapJson = (await seasonOverlapRes.json()) as { error: string };
+    expect(overlapJson.error).toContain('Temporada só pode ser criada');
+
+    // 4. Status inválido -> bloqueado
+    const invalidRes = await postLease('lease-status-invalid', 'invalid-status', '2026-06-10', '2026-06-25');
+    expect(invalidRes.status).toBe(400);
+
+    // 5. Reativar o suspenso (vira ativo) e confirmar que ativo não conflita
+    const reactForm = new FormData();
+    reactForm.set('intent', 'lease.reactivate');
+    reactForm.set('id', 'lease-status-susp');
+    const reactRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: reactForm,
+      })
+    );
+    expect(reactRes.status).toBe(200);
+
+    // Cleanup
+    const del = async (intent: string, id: string) => {
+      const fd = new FormData();
+      fd.set('intent', intent);
+      fd.set('id', id);
+      await server.fetch(
+        new Request('http://localhost:3000/dashboard', {
+          method: 'POST',
+          headers: { Cookie: sessionCookie },
+          body: fd,
+        })
+      );
+    };
+    await del('lease.delete', 'lease-status-susp');
+    await del('lease.delete', 'lease-status-season');
+    await del('property.delete', 'property-status-test');
+    await del('tenant.delete', 'tenant-status-test');
+  });
+
   it('POST /dashboard receipt.create and batch-pay', async () => {
     const createForm = new FormData();
     createForm.set('intent', 'receipt.create');

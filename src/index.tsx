@@ -339,10 +339,33 @@ app.post('/dashboard', async (c) => {
         const endDate = String(formData['end_date'] || '');
         const dueDay = Number(formData['due_day']);
         const rentAmount = Number(formData['rent_amount']);
+        const status = String(formData['status'] || 'active');
+        if (!['active', 'suspended', 'season'].includes(status)) {
+          throw new Error('Status de contrato inválido.');
+        }
         if (!tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
           throw new Error('Preencha todos os campos do contrato.');
         }
-        await db.insert(leases).values({ id, tenantId, propertyId, startDate, endDate, dueDay, rentAmount });
+        // Contratos de locação comum ou temporada não podem sobrepor outro contrato vigente
+        // no mesmo imóvel. Contrato suspenso (moradia própria / permuta) não bloqueia.
+        if (status === 'active' || status === 'season') {
+          const overlap = await db.select({ id: leases.id }).from(leases).where(
+            and(
+              eq(leases.propertyId, propertyId),
+              inArray(leases.status, ['active', 'season']),
+              lte(leases.startDate, endDate),
+              gte(leases.endDate, startDate)
+            )
+          ).limit(1);
+          if (overlap.length > 0) {
+            throw new Error(
+              status === 'season'
+                ? 'Este imóvel já possui contrato vigente no período. Temporada só pode ser criada em imóvel sem contrato ativo ou com contrato suspenso.'
+                : 'Este imóvel já possui contrato vigente no período.'
+            );
+          }
+        }
+        await db.insert(leases).values({ id, tenantId, propertyId, startDate, endDate, dueDay, rentAmount, status });
         break;
       }
       case 'lease.update': {
@@ -353,14 +376,42 @@ app.post('/dashboard', async (c) => {
         const endDate = String(formData['end_date'] || '');
         const dueDay = Number(formData['due_day']);
         const rentAmount = Number(formData['rent_amount']);
+        const status = String(formData['status'] || '');
         if (!id || !tenantId || !propertyId || !startDate || !endDate || !Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31 || !Number.isFinite(rentAmount)) {
           throw new Error('Preencha todos os campos do contrato.');
         }
-        await db.update(leases).set({ tenantId, propertyId, startDate, endDate, dueDay, rentAmount, updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, id));
+        if (status && !['active', 'suspended', 'season', 'terminated'].includes(status)) {
+          throw new Error('Status de contrato inválido.');
+        }
+        if ((status === 'active' || status === 'season')) {
+          const overlap = await db.select({ id: leases.id }).from(leases).where(
+            and(
+              eq(leases.propertyId, propertyId),
+              ne(leases.id, id),
+              inArray(leases.status, ['active', 'season']),
+              lte(leases.startDate, endDate),
+              gte(leases.endDate, startDate)
+            )
+          ).limit(1);
+          if (overlap.length > 0) {
+            throw new Error(
+              status === 'season'
+                ? 'Este imóvel já possui contrato vigente no período. Temporada só pode ser criada em imóvel sem contrato ativo ou com contrato suspenso.'
+                : 'Este imóvel já possui contrato vigente no período.'
+            );
+          }
+        }
+        const updateValues: Record<string, unknown> = { tenantId, propertyId, startDate, endDate, dueDay, rentAmount, updatedAt: sql`(datetime('now'))` };
+        if (status) updateValues.status = status;
+        await db.update(leases).set(updateValues).where(eq(leases.id, id));
         break;
       }
       case 'lease.terminate': {
         await db.update(leases).set({ status: 'terminated', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
+        break;
+      }
+      case 'lease.suspend': {
+        await db.update(leases).set({ status: 'suspended', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
         break;
       }
       case 'lease.reactivate': {
@@ -1033,6 +1084,7 @@ app.get('/contract-pdf', async (c) => {
     end_date: leases.endDate,
     due_day: leases.dueDay,
     rent_amount: leases.rentAmount,
+    status: leases.status,
     tenant_name: contractTAlias.name,
     tenant_phone: contractTAlias.phone,
     tenant_cpf: contractTAlias.cpf,
@@ -1068,6 +1120,7 @@ app.get('/contract-pdf', async (c) => {
     endDate: lease.end_date,
     dueDay: lease.due_day,
     rentAmount: lease.rent_amount,
+    status: lease.status,
     baseUrl: await resolvePublicBaseUrl(c),
   });
   return new Response(pdfBytes as BodyInit, {

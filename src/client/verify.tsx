@@ -36,8 +36,7 @@ export function VerificationPage(props: VerificationData) {
     <div className="login-page" style={{ padding: '2rem 1rem', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="card" style={{ width: '100%', maxWidth: '640px', padding: '2rem' }}>
         <div className="brand-lockup" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <img src="/logomarca.png" alt="Aluxen" className="login-logomarca logo-theme-light" />
-          <img src="/logomarca-light.png" alt="Aluxen" className="login-logomarca logo-theme-dark" />
+          <img src="/logomarca.png" alt="Aluxen" className="login-logomarca" />
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
             Portal Oficial de Verificação e Autenticidade Digital
           </p>
@@ -161,8 +160,8 @@ export function VerificationPage(props: VerificationData) {
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Status de Vigência:</span>
                     <span>
-                      <span className={`status-badge ${props.status === 'active' ? 'paid' : 'overdue'}`}>
-                        {props.status === 'active' ? 'Ativo' : 'Encerrado'}
+                      <span className={`status-badge ${props.status === 'active' ? 'paid' : props.status === 'suspended' ? 'due' : props.status === 'season' ? 'partial' : 'overdue'}`}>
+                        {props.status === 'active' ? 'Ativo' : props.status === 'suspended' ? 'Suspenso' : props.status === 'season' ? 'Temporada' : 'Encerrado'}
                       </span>
                     </span>
                   </div>

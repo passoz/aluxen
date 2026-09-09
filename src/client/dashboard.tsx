@@ -248,12 +248,12 @@ export function DashboardPage(initialData: DashboardProps) {
 
   const [tenantForm, setTenantForm] = useState({ name: '', email: '', phone: '', cpf: '' });
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', city: '', state: '', zip: '' });
-  const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
+  const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '', status: 'active' });
   const [receiptForm, setReceiptForm] = useState({ lease_id: '', due_date: '', paid_at: '', amount: '', category: 'rent' as 'rent' | 'extra', description: '', tenant_id: '', property_id: '' });
 
   const [tenantDraft, setTenantDraft] = useState({ id: '', name: '', email: '', phone: '', cpf: '' });
   const [propertyDraft, setPropertyDraft] = useState({ id: '', name: '', address: '', city: '', state: '', zip: '' });
-  const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
+  const [leaseDraft, setLeaseDraft] = useState({ id: '', tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '', status: 'active' });
   const [receiptDraft, setReceiptDraft] = useState({ id: '', lease_id: '', due_date: '', paid_at: '', amount: '' });
   const [payDraft, setPayDraft] = useState<{ id: string; amount: string; pay_amount: string; paid_at: string }>({ id: '', amount: '', pay_amount: '', paid_at: '' });
   const [payModalOpen, setPayModalOpen] = useState(false);
@@ -264,7 +264,7 @@ export function DashboardPage(initialData: DashboardProps) {
   const [tenantSearch, setTenantSearch] = useState('');
   const [propertySearch, setPropertySearch] = useState('');
   const [leaseSearch, setLeaseSearch] = useState('');
-  const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'terminated'>('all');
+  const [leaseStatus, setLeaseStatus] = useState<'all' | 'active' | 'suspended' | 'season' | 'terminated'>('all');
   // Persistência dos filtros + ordenação da tabela de Recibos via localStorage
   // (chave única por usuário evita mistura entre contas no mesmo navegador).
   const receiptFiltersKey = `aluxen:filters:receipts:${user}`;
@@ -652,6 +652,8 @@ export function DashboardPage(initialData: DashboardProps) {
     () =>
       leaseItems.filter((item) => {
         if (leaseStatus === 'active' && item.status !== 'active') return false;
+        if (leaseStatus === 'suspended' && item.status !== 'suspended') return false;
+        if (leaseStatus === 'season' && item.status !== 'season') return false;
         if (leaseStatus === 'terminated' && item.status !== 'terminated') return false;
         return `${item.tenant_name} ${item.property_name} ${item.start_date} ${item.end_date}`
           .toLowerCase()
@@ -827,6 +829,7 @@ export function DashboardPage(initialData: DashboardProps) {
       end_date: item.end_date,
       due_day: String(item.due_day || '1'),
       rent_amount: item.rent_amount,
+      status: item.status || 'active',
     });
     setModalType('leases');
   }
@@ -1004,7 +1007,16 @@ export function DashboardPage(initialData: DashboardProps) {
                   : tab === 'properties'
                   ? `${propertyItems.length} imóvel(is)`
                   : tab === 'leases'
-                  ? `${leaseItems.filter((l) => l.status === 'active').length} contrato(s) ativo(s)`
+                  ? (() => {
+                      const act = leaseItems.filter((l) => l.status === 'active').length;
+                      const sus = leaseItems.filter((l) => l.status === 'suspended').length;
+                      const sea = leaseItems.filter((l) => l.status === 'season').length;
+                      const parts = [];
+                      if (act) parts.push(`${act} ativo(s)`);
+                      if (sus) parts.push(`${sus} suspenso(s)`);
+                      if (sea) parts.push(`${sea} temporada(s)`);
+                      return parts.join(' • ') || `${leaseItems.length} contrato(s)`;
+                    })()
                   : `${receiptItems.length} recibo(s)`}
               </span>
             </div>
@@ -1227,9 +1239,11 @@ export function DashboardPage(initialData: DashboardProps) {
                 </button>
               </div>
               <FilterBar value={leaseSearch} onChange={setLeaseSearch} placeholder="Buscar por inquilino, imóvel ou período">
-                <SmallSelect value={leaseStatus} onChange={(v) => setLeaseStatus(v as 'all' | 'active' | 'terminated')}>
+                <SmallSelect value={leaseStatus} onChange={(v) => setLeaseStatus(v as 'all' | 'active' | 'suspended' | 'season' | 'terminated')}>
                   <option value="all">Todos</option>
                   <option value="active">Ativos</option>
+                  <option value="suspended">Suspensos</option>
+                  <option value="season">Temporada</option>
                   <option value="terminated">Encerrados</option>
                 </SmallSelect>
               </FilterBar>
@@ -1291,8 +1305,8 @@ export function DashboardPage(initialData: DashboardProps) {
                           </td>
                           <td data-label="Imóvel">{lease.property_name}</td>
                           <td data-label="Status">
-                            <span className={`status-badge ${lease.status === 'active' ? 'paid' : 'overdue'}`}>
-                              {lease.status === 'active' ? 'Ativo' : 'Encerrado'}
+                            <span className={`status-badge ${lease.status === 'active' ? 'paid' : lease.status === 'suspended' ? 'due' : lease.status === 'season' ? 'partial' : 'overdue'}`}>
+                              {lease.status === 'active' ? 'Ativo' : lease.status === 'suspended' ? 'Suspenso' : lease.status === 'season' ? 'Temporada' : 'Encerrado'}
                             </span>
                           </td>
                           <td data-label="Período">
@@ -1337,6 +1351,55 @@ export function DashboardPage(initialData: DashboardProps) {
                                 btnClass="btn btn-sm btn-outline"
                                 confirmMessage="Encerrar este contrato? Ele ficará inativo."
                               />
+                            ) : lease.status === 'season' ? (
+                              <DeleteRowButton
+                                intent="lease.terminate"
+                                tab="leases"
+                                id={lease.id}
+                                onOptimisticDelete={() =>
+                                  setLeaseItems((current) =>
+                                    current.map((row) => (row.id === lease.id ? { ...row, status: 'terminated' } : row))
+                                  )
+                                }
+                                onSettled={settleAfterMutation}
+                                queueOfflineMutation={queueOfflineMutation}
+                                btnLabel="Encerrar temporada"
+                                btnClass="btn btn-sm btn-outline"
+                                confirmMessage="Encerrar esta temporada?"
+                              />
+                            ) : lease.status === 'suspended' ? (
+                              <>
+                                <DeleteRowButton
+                                  intent="lease.reactivate"
+                                  tab="leases"
+                                  id={lease.id}
+                                  onOptimisticDelete={() =>
+                                    setLeaseItems((current) =>
+                                      current.map((row) => (row.id === lease.id ? { ...row, status: 'active' } : row))
+                                    )
+                                  }
+                                  onSettled={settleAfterMutation}
+                                  queueOfflineMutation={queueOfflineMutation}
+                                  btnLabel="Ativar"
+                                  btnClass="btn btn-sm btn-secondary"
+                                  confirmMessage="Tornar este contrato ativo novamente?"
+                                />
+                                <DeleteRowButton
+                                  intent="lease.terminate"
+                                  tab="leases"
+                                  id={lease.id}
+                                  onOptimisticDelete={() =>
+                                    setLeaseItems((current) =>
+                                      current.map((row) => (row.id === lease.id ? { ...row, status: 'terminated' } : row))
+                                    )
+                                  }
+                                  onSettled={settleAfterMutation}
+                                  queueOfflineMutation={queueOfflineMutation}
+                                  btnLabel="Encerrar"
+                                  btnClass="btn btn-sm btn-outline"
+                                  confirmMessage="Encerrar este contrato suspenso?"
+                                />
+                              </>
                             ) : (
                               <DeleteRowButton
                                 intent="lease.reactivate"
@@ -2059,6 +2122,7 @@ export function DashboardPage(initialData: DashboardProps) {
                                   end_date: payload.end_date || '',
                                   due_day: payload.due_day || '1',
                                   rent_amount: payload.rent_amount || '0',
+                                  status: payload.status || row.status || 'active',
                                   tenant_name: tenant?.name || '-',
                                   property_name: property?.name || '-',
                                 }
@@ -2076,6 +2140,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           end_date: '',
                           due_day: '1',
                           rent_amount: '',
+                          status: 'active',
                         });
                         setModalType('');
                       }
@@ -2094,6 +2159,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       end_date: '',
                       due_day: '1',
                       rent_amount: '',
+                      status: 'active',
                     });
                     setModalType('');
                   });
@@ -2130,6 +2196,18 @@ export function DashboardPage(initialData: DashboardProps) {
                       {property.name}
                     </option>
                   ))}
+                </CustomSelect>
+                <CustomSelect
+                  id="modal-lease-status"
+                  name="status"
+                  value={leaseDraft.status}
+                  onChange={(v) => setLeaseDraft((current) => ({ ...current, status: v }))}
+                  label="Status"
+                >
+                  <option value="active">Ativo</option>
+                  <option value="suspended">Suspenso (sem cobrança automática)</option>
+                  <option value="season">Temporada</option>
+                  <option value="terminated">Encerrado</option>
                 </CustomSelect>
                 <DatePickerInput
                   id="modal-lease-start"
@@ -2183,6 +2261,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       end_date: '',
                       due_day: '1',
                       rent_amount: '',
+                      status: 'active',
                     });
                     setModalType('');
                   }}
@@ -2214,7 +2293,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           rent_amount: payload.rent_amount || '0',
                           tenant_name: tenant?.name || '-',
                           property_name: property?.name || '-',
-                          status: 'active',
+                          status: payload.status || 'active',
                         };
                         setLeaseItems((current) => [item, ...current]);
                       },
@@ -2227,6 +2306,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           end_date: '',
                           due_day: '1',
                           rent_amount: '',
+                          status: 'active',
                         });
                         setCreateModalType('');
                       }
@@ -2244,6 +2324,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       end_date: '',
                       due_day: '1',
                       rent_amount: '',
+                      status: 'active',
                     });
                     setCreateModalType('');
                   });
@@ -2280,6 +2361,17 @@ export function DashboardPage(initialData: DashboardProps) {
                       {property.name}
                     </option>
                   ))}
+                </CustomSelect>
+                <CustomSelect
+                  id="create-lease-status"
+                  name="status"
+                  value={leaseForm.status}
+                  onChange={(v) => setLeaseForm((current) => ({ ...current, status: v }))}
+                  label="Status"
+                >
+                  <option value="active">Ativo</option>
+                  <option value="suspended">Suspenso (sem cobrança automática)</option>
+                  <option value="season">Temporada</option>
                 </CustomSelect>
                 <DatePickerInput
                   id="create-lease-start"

@@ -18,6 +18,7 @@ export type ContractPdfInput = {
   endDate: string;
   dueDay: number;
   rentAmount: number;
+  status?: string;
   baseUrl?: string;
 };
 
@@ -224,7 +225,13 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   const today = new Date();
   const contractDate = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' }).format(today);
 
-  const title = 'CONTRATO DE LOCAÇÃO RESIDENCIAL';
+  const isSeason = input.status === 'season';
+  const isSuspended = input.status === 'suspended';
+  const title = isSeason
+    ? 'CONTRATO DE LOCAÇÃO POR TEMPORADA'
+    : isSuspended
+    ? 'CONTRATO DE LOCAÇÃO RESIDENCIAL (SEM COBRANÇA AUTOMÁTICA)'
+    : 'CONTRATO DE LOCAÇÃO RESIDENCIAL';
   const titleWidth = fontBold.widthOfTextAtSize(title, 15);
   currentPage.drawText(title, {
     x: (width - titleWidth) / 2,
@@ -244,7 +251,6 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   const landlordCpf = (await getSetting('landlord_cpf')) || '';
   const landlordAddress = await getSetting('landlord_address');
   bodyLabel('Nome:', landlordName);
-  cursorY -= 20;
   if (landlordCpf) {
     bodyLabel('CPF:', landlordCpf);
   }
@@ -282,7 +288,9 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
 
   sectionTitle('Cláusula 2ª - DA DESTINAÇÃO');
   bodyText(
-    `A presente LOCAÇÃO destina-se restritivamente ao uso do imóvel para fins residenciais, restando proibido ao LOCATÁRIO, sublocá-lo ou usá-lo de forma diferente do previsto, salvo autorização expressa do LOCADOR.`
+    isSeason
+      ? `A presente LOCAÇÃO destina-se ao uso do imóvel para fins de TEMPORADA (veraneio e lazer), pelo período pactuado na Cláusula 21ª, restando proibido ao LOCATÁRIO sublocá-lo ou usá-lo de forma diferente do previsto, salvo autorização expressa do LOCADOR.`
+      : `A presente LOCAÇÃO destina-se restritivamente ao uso do imóvel para fins residenciais, restando proibido ao LOCATÁRIO, sublocá-lo ou usá-lo de forma diferente do previsto, salvo autorização expressa do LOCADOR.`
   );
 
   sectionTitle('Cláusula 3ª - DO ESTADO DO IMÓVEL');
@@ -317,9 +325,19 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   );
 
   sectionTitle('Cláusula 9ª - DO ALUGUEL');
-  bodyText(
-    `Como aluguel mensal, o LOCATÁRIO se obrigará a pagar o valor de ${rentStr} (${rentExt}), a ser efetuado diretamente ao LOCADOR, devendo fazê-lo até o dia ${dueDayExt} do mês vincendo, sob pena de multa, correções e despesas previstas nas Cláusulas 14ª e 15ª.`
-  );
+  if (isSeason) {
+    bodyText(
+      `Pela utilização do imóvel durante a temporada, o LOCATÁRIO pagará ao LOCADOR o valor de ${rentStr} (${rentExt}), a ser pago conforme pactuado entre as partes, sem que isso configure locação por prazo indeterminado ou mensalidade recorrente, sob pena de multa, correções e despesas previstas nas Cláusulas 14ª e 15ª.`
+    );
+  } else if (isSuspended) {
+    bodyText(
+      `Este contrato é mantido para fins de registro de posse/uso do imóvel, sem cobrança automática de aluguel. Eventual valor acordado entre as partes (${rentStr}) poderá ser quitado mediante recibo emitido manualmente.`
+    );
+  } else {
+    bodyText(
+      `Como aluguel mensal, o LOCATÁRIO se obrigará a pagar o valor de ${rentStr} (${rentExt}), a ser efetuado diretamente ao LOCADOR, devendo fazê-lo até o dia ${dueDayExt} do mês vincendo, sob pena de multa, correções e despesas previstas nas Cláusulas 14ª e 15ª.`
+    );
+  }
 
   sectionTitle('Cláusula 10ª - DO RECIBO');
   bodyText(
@@ -388,7 +406,9 @@ export async function createContractPdfBuffer(input: ContractPdfInput): Promise<
   const endDay = endParts[2] ?? 1;
 
   bodyText(
-    `A presente locação terá o lapso temporal de validade de 12 meses, a iniciar-se no dia ${startDay}, do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(startYear, startMonth))} no ano de ${startYear} e findar-se no dia ${endDay} do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(endYear, endMonth))} no ano de ${endYear}, data a qual o imóvel deverá ser devolvido nas condições previstas na Cláusula 5ª, efetivando-se com a entrega das chaves, independentemente de aviso ou qualquer outra medida judicial ou extrajudicial.`
+    isSeason || isSuspended
+      ? `A presente locação terá o lapso temporal de validade compreendido entre o dia ${startDay}, do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(startYear, startMonth))} no ano de ${startYear} e o dia ${endDay} do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(endYear, endMonth))} no ano de ${endYear}, data a qual o imóvel deverá ser devolvido nas condições previstas na Cláusula 5ª, efetivando-se com a entrega das chaves, independentemente de aviso ou qualquer outra medida judicial ou extrajudicial.`
+      : `A presente locação terá o lapso temporal de validade de 12 meses, a iniciar-se no dia ${startDay}, do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(startYear, startMonth))} no ano de ${startYear} e findar-se no dia ${endDay} do mês ${new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(new Date(endYear, endMonth))} no ano de ${endYear}, data a qual o imóvel deverá ser devolvido nas condições previstas na Cláusula 5ª, efetivando-se com a entrega das chaves, independentemente de aviso ou qualquer outra medida judicial ou extrajudicial.`
   );
 
   sectionTitle('Cláusula 22ª - DA PRORROGAÇÃO');
