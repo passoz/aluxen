@@ -125,7 +125,7 @@ export function DashboardPage(initialData: DashboardProps) {
   const [tenantForm, setTenantForm] = useState({ name: '', email: '', phone: '', cpf: '' });
   const [propertyForm, setPropertyForm] = useState({ name: '', address: '', city: '', state: '', zip: '' });
   const [leaseForm, setLeaseForm] = useState({ tenant_id: '', property_id: '', start_date: '', end_date: '', due_day: '1', rent_amount: '' });
-  const [receiptForm, setReceiptForm] = useState({ lease_id: '', due_date: '', paid_at: '', amount: '' });
+  const [receiptForm, setReceiptForm] = useState({ lease_id: '', due_date: '', paid_at: '', amount: '', category: 'rent' as 'rent' | 'extra', description: '', tenant_id: '', property_id: '' });
 
   const [tenantDraft, setTenantDraft] = useState({ id: '', name: '', email: '', phone: '', cpf: '' });
   const [propertyDraft, setPropertyDraft] = useState({ id: '', name: '', address: '', city: '', state: '', zip: '' });
@@ -2240,7 +2240,13 @@ export function DashboardPage(initialData: DashboardProps) {
           ) : null}
 
           {createModalType === 'receipts' ? (
-            <Modal title="Novo Pagamento" onClose={() => setCreateModalType('')}>
+            <Modal
+              title={receiptForm.category === 'extra' ? 'Nova Taxa Avulsa' : 'Novo Pagamento de Aluguel'}
+              onClose={() => {
+                setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '', category: 'rent', description: '', tenant_id: '', property_id: '' });
+                setCreateModalType('');
+              }}
+            >
               <form
                 className="stack"
                 onSubmit={(event) => {
@@ -2249,22 +2255,29 @@ export function DashboardPage(initialData: DashboardProps) {
                       event,
                       (payload) => {
                         const lease = receiptLeaseMeta(payload.lease_id || '');
+                        const tenant = tenantItems.find((t) => t.id === (payload.tenant_id || lease?.tenant_id || ''));
+                        const property = propertyItems.find((p) => p.id === (payload.property_id || lease?.property_id || ''));
                         const item = {
                           id: payload.id || createId(),
-                          lease_id: payload.lease_id || '',
+                          lease_id: payload.lease_id || null,
+                          tenant_id: payload.tenant_id || lease?.tenant_id || null,
+                          property_id: payload.property_id || lease?.property_id || null,
+                          category: (payload.category === 'extra' ? 'extra' : 'rent') as 'rent' | 'extra',
+                          description: payload.description || null,
                           due_date: payload.due_date || '',
                           paid_at: payload.paid_at || null,
                           amount: payload.amount || '0',
+                          paid_amount: null,
                           pdf_path: null,
                           generated_key: null,
-                          tenant_name: lease?.tenant_name || '-',
-                          property_name: lease?.property_name || '-',
+                          tenant_name: tenant?.name || lease?.tenant_name || '-',
+                          property_name: property?.name || lease?.property_name || '-',
                         };
                         setReceiptItems((current) => [item, ...current]);
                       },
                       'Cadastro pendente de sincronização.',
                       () => {
-                        setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '' });
+                        setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '', category: 'rent', description: '', tenant_id: '', property_id: '' });
                         setCreateModalType('');
                       }
                     )
@@ -2273,29 +2286,105 @@ export function DashboardPage(initialData: DashboardProps) {
                   }
                   event.preventDefault();
                   const formData = new FormData(event.currentTarget);
-                  void sendMutation(formData, 'Pagamento cadastrado com sucesso.', () => {
-                    setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '' });
+                  void sendMutation(formData, receiptForm.category === 'extra' ? 'Taxa avulsa cadastrada com sucesso.' : 'Pagamento cadastrado com sucesso.', () => {
+                    setReceiptForm({ lease_id: '', due_date: '', paid_at: '', amount: '', category: 'rent', description: '', tenant_id: '', property_id: '' });
                     setCreateModalType('');
                   });
                 }}
               >
                 <input type="hidden" name="intent" value="receipt.create" />
                 <input type="hidden" name="tab" value="receipts" />
-                <CustomSelect
-                  id="create-receipt-lease"
-                  name="lease_id"
-                  value={receiptForm.lease_id}
-                  onChange={(v) => setReceiptForm((current) => ({ ...current, lease_id: v }))}
-                  label="Contrato"
-                  required
-                >
-                  <option value="">Selecione</option>
-                  {leaseItems.map((lease) => (
-                    <option key={lease.id} value={lease.id}>
-                      {lease.tenant_name} / {lease.property_name}
-                    </option>
-                  ))}
-                </CustomSelect>
+                <input type="hidden" name="category" value={receiptForm.category} />
+
+                {/* Mode toggle */}
+                <div style={{ display: 'flex', gap: '0.5rem', padding: '0.25rem', background: 'var(--surface-subtle)', borderRadius: 'var(--radius-md)', marginBottom: '0.25rem' }}>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1, padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                      background: receiptForm.category === 'rent' ? 'var(--surface)' : 'transparent',
+                      color: receiptForm.category === 'rent' ? 'var(--text)' : 'var(--text-muted)',
+                      boxShadow: receiptForm.category === 'rent' ? 'var(--shadow-sm)' : 'none',
+                    }}
+                    onClick={() => setReceiptForm((f) => ({ ...f, category: 'rent', description: '', tenant_id: '', property_id: '' }))}
+                  >
+                    Aluguel / Contrato
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1, padding: '0.45rem 0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 600, border: 'none', cursor: 'pointer',
+                      background: receiptForm.category === 'extra' ? 'var(--surface)' : 'transparent',
+                      color: receiptForm.category === 'extra' ? 'var(--text)' : 'var(--text-muted)',
+                      boxShadow: receiptForm.category === 'extra' ? 'var(--shadow-sm)' : 'none',
+                    }}
+                    onClick={() => setReceiptForm((f) => ({ ...f, category: 'extra', lease_id: '' }))}
+                  >
+                    Taxa Avulsa
+                  </button>
+                </div>
+
+                {receiptForm.category === 'rent' ? (
+                  <CustomSelect
+                    id="create-receipt-lease"
+                    name="lease_id"
+                    value={receiptForm.lease_id}
+                    onChange={(v) => setReceiptForm((current) => ({ ...current, lease_id: v }))}
+                    label="Contrato"
+                    required
+                  >
+                    <option value="">Selecione</option>
+                    {leaseItems.map((lease) => (
+                      <option key={lease.id} value={lease.id}>
+                        {lease.tenant_name} / {lease.property_name}
+                      </option>
+                    ))}
+                  </CustomSelect>
+                ) : (
+                  <>
+                    <div>
+                      <label htmlFor="create-receipt-desc" style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
+                        Descrição <span style={{ color: 'var(--danger)' }}>*</span>
+                      </label>
+                      <input
+                        id="create-receipt-desc"
+                        name="description"
+                        type="text"
+                        className="input"
+                        placeholder="Ex: Taxa de condomínio, Multa, Pintura…"
+                        value={receiptForm.description}
+                        onChange={(e) => setReceiptForm((f) => ({ ...f, description: e.target.value }))}
+                        required
+                        autoComplete="off"
+                      />
+                    </div>
+                    <CustomSelect
+                      id="create-receipt-tenant"
+                      name="tenant_id"
+                      value={receiptForm.tenant_id}
+                      onChange={(v) => setReceiptForm((f) => ({ ...f, tenant_id: v }))}
+                      label="Inquilino (opcional)"
+                    >
+                      <option value="">Nenhum</option>
+                      {tenantItems.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </CustomSelect>
+                    <CustomSelect
+                      id="create-receipt-property"
+                      name="property_id"
+                      value={receiptForm.property_id}
+                      onChange={(v) => setReceiptForm((f) => ({ ...f, property_id: v }))}
+                      label="Imóvel (opcional)"
+                    >
+                      <option value="">Nenhum</option>
+                      {propertyItems.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </CustomSelect>
+                  </>
+                )}
+
                 <DatePickerInput
                   id="create-receipt-due"
                   name="due_date"
@@ -2320,7 +2409,7 @@ export function DashboardPage(initialData: DashboardProps) {
                   required
                 />
                 <button type="submit" className="btn btn-primary" disabled={busy}>
-                  Adicionar pagamento
+                  {receiptForm.category === 'extra' ? 'Cadastrar taxa avulsa' : 'Adicionar pagamento'}
                 </button>
               </form>
             </Modal>
