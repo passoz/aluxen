@@ -78,6 +78,113 @@ export interface DashboardProps {
   activeTenantIds: string[];
 }
 
+function PdfDropdown({ id }: { id: string }) {
+  const [open, setOpen] = useState(false);
+  const [dropup, setDropup] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (wrapperRef.current && menuRef.current) {
+      const triggerRect = wrapperRef.current.getBoundingClientRect();
+      const menuHeight = menuRef.current.getBoundingClientRect().height || 120;
+      const margin = 8;
+      const spaceBelow = window.innerHeight - triggerRect.bottom - margin;
+      const spaceAbove = triggerRect.top - margin;
+      setDropup(spaceBelow < menuHeight && spaceAbove > spaceBelow);
+      setAlignRight(triggerRect.right > window.innerWidth / 2);
+    }
+    function handleClickOutside(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        className="btn btn-sm btn-secondary"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="true"
+        aria-expanded={open}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+      >
+        PDF
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          style={{
+            position: 'absolute',
+            zIndex: 120,
+            minWidth: '170px',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '0.25rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2px',
+            ...(dropup
+              ? { bottom: 'calc(100% + 4px)', top: 'auto' }
+              : { top: 'calc(100% + 4px)', bottom: 'auto' }),
+            ...(alignRight ? { right: 0, left: 'auto' } : { left: 0, right: 'auto' }),
+          }}
+          role="menu"
+        >
+          <a
+            className="btn btn-sm btn-secondary"
+            href={`/pdf?id=${id}`}
+            target="_blank"
+            rel="noreferrer"
+            role="menuitem"
+            style={{ justifyContent: 'flex-start', fontWeight: 500 }}
+            onClick={() => setOpen(false)}
+          >
+            Abrir PDF
+          </a>
+          <a
+            className="btn btn-sm btn-secondary"
+            href={`/pdf?id=${id}&assinatura=false`}
+            target="_blank"
+            rel="noreferrer"
+            role="menuitem"
+            style={{ justifyContent: 'flex-start', fontWeight: 500 }}
+            onClick={() => setOpen(false)}
+          >
+            PDF s/ assinatura
+          </a>
+          <a
+            className="btn btn-sm btn-secondary"
+            href={`/pdf?id=${id}`}
+            target="_blank"
+            rel="noreferrer"
+            download
+            role="menuitem"
+            style={{ justifyContent: 'flex-start', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            onClick={() => setOpen(false)}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Download
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function DashboardPage(initialData: DashboardProps) {
   const [tab, setTab] = useState<Tab>(initialData.tab);
   const [user] = useState(initialData.user);
@@ -1328,41 +1435,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           </td>
                           <td data-label="PDF">
                             <div className="row-actions">
-                              <a className="btn btn-sm btn-secondary" href={`/pdf?id=${receipt.id}`} target="_blank" rel="noreferrer">
-                                Abrir PDF
-                              </a>
-                              <a
-                                className="btn btn-sm btn-secondary"
-                                href={`/pdf?id=${receipt.id}&assinatura=false`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                PDF s/ assinatura
-                              </a>
-                              <a
-                                className="btn btn-sm btn-secondary"
-                                href={`/pdf?id=${receipt.id}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                download
-                              >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2.2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                  <polyline points="7 10 12 15 17 10" />
-                                  <line x1="12" y1="15" x2="12" y2="3" />
-                                </svg>{' '}
-                                Download
-                              </a>
+                              <PdfDropdown id={receipt.id} />
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline"
