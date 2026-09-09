@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Brand,
   MenuGlyph,
@@ -80,32 +81,100 @@ export interface DashboardProps {
 
 function PdfDropdown({ id }: { id: string }) {
   const [open, setOpen] = useState(false);
-  const [dropup, setDropup] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    if (wrapperRef.current && menuRef.current) {
-      const triggerRect = wrapperRef.current.getBoundingClientRect();
-      const menuHeight = menuRef.current.getBoundingClientRect().height || 120;
-      const margin = 8;
-      const spaceBelow = window.innerHeight - triggerRect.bottom - margin;
-      const spaceAbove = triggerRect.top - margin;
-      setDropup(spaceBelow < menuHeight && spaceAbove > spaceBelow);
-      setAlignRight(triggerRect.right > window.innerWidth / 2);
+    function reposition() {
+      if (!triggerRef.current) return;
+      const r = triggerRef.current.getBoundingClientRect();
+      const menuH = 120; // approximate; menu is short
+      const spaceBelow = window.innerHeight - r.bottom;
+      const goUp = spaceBelow < menuH && r.top > spaceBelow;
+      const goLeft = r.left + 170 > window.innerWidth;
+      setMenuStyle({
+        position: 'fixed',
+        zIndex: 9999,
+        minWidth: '170px',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        boxShadow: 'var(--shadow-lg)',
+        padding: '0.25rem',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '2px',
+        ...(goUp
+          ? { bottom: window.innerHeight - r.top + 4, top: 'auto' }
+          : { top: r.bottom + 4, bottom: 'auto' }),
+        ...(goLeft
+          ? { right: window.innerWidth - r.right, left: 'auto' }
+          : { left: r.left, right: 'auto' }),
+      });
     }
+    reposition();
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
     function handleClickOutside(e: MouseEvent) {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, [open]);
 
+  const menu = (
+    <div style={menuStyle} role="menu">
+      <a
+        className="btn btn-sm btn-secondary"
+        href={`/pdf?id=${id}`}
+        target="_blank"
+        rel="noreferrer"
+        role="menuitem"
+        style={{ justifyContent: 'flex-start', fontWeight: 500 }}
+        onClick={() => setOpen(false)}
+      >
+        Abrir PDF
+      </a>
+      <a
+        className="btn btn-sm btn-secondary"
+        href={`/pdf?id=${id}&assinatura=false`}
+        target="_blank"
+        rel="noreferrer"
+        role="menuitem"
+        style={{ justifyContent: 'flex-start', fontWeight: 500 }}
+        onClick={() => setOpen(false)}
+      >
+        PDF s/ assinatura
+      </a>
+      <a
+        className="btn btn-sm btn-secondary"
+        href={`/pdf?id=${id}`}
+        target="_blank"
+        rel="noreferrer"
+        download
+        role="menuitem"
+        style={{ justifyContent: 'flex-start', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+        onClick={() => setOpen(false)}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        Download
+      </a>
+    </div>
+  );
+
   return (
-    <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
         className="btn btn-sm btn-secondary"
         onClick={() => setOpen((v) => !v)}
@@ -118,72 +187,11 @@ function PdfDropdown({ id }: { id: string }) {
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      {open && (
-        <div
-          ref={menuRef}
-          style={{
-            position: 'absolute',
-            zIndex: 120,
-            minWidth: '170px',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg)',
-            padding: '0.25rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px',
-            ...(dropup
-              ? { bottom: 'calc(100% + 4px)', top: 'auto' }
-              : { top: 'calc(100% + 4px)', bottom: 'auto' }),
-            ...(alignRight ? { right: 0, left: 'auto' } : { left: 0, right: 'auto' }),
-          }}
-          role="menu"
-        >
-          <a
-            className="btn btn-sm btn-secondary"
-            href={`/pdf?id=${id}`}
-            target="_blank"
-            rel="noreferrer"
-            role="menuitem"
-            style={{ justifyContent: 'flex-start', fontWeight: 500 }}
-            onClick={() => setOpen(false)}
-          >
-            Abrir PDF
-          </a>
-          <a
-            className="btn btn-sm btn-secondary"
-            href={`/pdf?id=${id}&assinatura=false`}
-            target="_blank"
-            rel="noreferrer"
-            role="menuitem"
-            style={{ justifyContent: 'flex-start', fontWeight: 500 }}
-            onClick={() => setOpen(false)}
-          >
-            PDF s/ assinatura
-          </a>
-          <a
-            className="btn btn-sm btn-secondary"
-            href={`/pdf?id=${id}`}
-            target="_blank"
-            rel="noreferrer"
-            download
-            role="menuitem"
-            style={{ justifyContent: 'flex-start', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
-            onClick={() => setOpen(false)}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Download
-          </a>
-        </div>
-      )}
-    </div>
+      {open && createPortal(menu, document.body)}
+    </>
   );
 }
+
 
 export function DashboardPage(initialData: DashboardProps) {
   const [tab, setTab] = useState<Tab>(initialData.tab);
