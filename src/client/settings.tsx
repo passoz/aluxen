@@ -149,11 +149,11 @@ export function SettingsPage(props: SettingsProps) {
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--glass-border)' }} />
 
-        {/* 3. Robô do WhatsApp (Disparo Automático) */}
+        {/* 3. Envio automático pelo WhatsApp */}
         <div className="stack">
-          <h2 style={{ fontSize: '1.1rem' }}>Robô do WhatsApp (Disparo Automático)</h2>
+          <h2 style={{ fontSize: '1.1rem' }}>Envio automático pelo WhatsApp</h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: 0 }}>
-            Conecte o WhatsApp Web para permitir que o sistema envie recibos e contratos automaticamente pelo robô em segundo plano.
+            Conecte o WhatsApp para que o sistema envie recibos e contratos automaticamente, sem sair do Aluxen.
           </p>
 
           {statusMessage ? (
@@ -182,7 +182,7 @@ export function SettingsPage(props: SettingsProps) {
                   <strong style={{ color: 'var(--primary)' }}>WhatsApp Conectado e Ativo</strong>
                 </div>
                 <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  O robô está pronto para disparar recibos e contratos de forma 100% headless.
+                  O WhatsApp está conectado e pronto para enviar recibos e contratos automaticamente.
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
                   <button
@@ -210,7 +210,7 @@ export function SettingsPage(props: SettingsProps) {
                   <strong style={{ color: 'var(--text-muted)' }}>Nenhum WhatsApp Conectado</strong>
                 </div>
                 <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: 0 }}>
-                  Faça login escaneando o QR Code pelo seu celular para habilitar o envio automático via robô.
+                  Escaneie o QR Code com o seu celular para habilitar o envio automático pelo WhatsApp.
                 </p>
                 <div>
                   <button
@@ -270,7 +270,7 @@ export function SettingsPage(props: SettingsProps) {
       <ConfirmModal
         open={logoutWhatsappConfirm}
         title="Desconectar WhatsApp"
-        message="Deseja realmente desconectar o WhatsApp do robô?"
+        message="Deseja realmente desconectar o WhatsApp? O envio automático ficará indisponível até conectar novamente."
         confirmLabel="Desconectar"
         tone="danger"
         busy={disconnecting}

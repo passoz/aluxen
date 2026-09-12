@@ -27,6 +27,7 @@ import {
   whatsappLoginManager,
 } from './whatsapp/service';
 import { resolveProfileDir } from './whatsapp/browser';
+import { createSendJob, updateSendJobStage, completeSendJob, failSendJob, getSendJob } from './whatsapp/send-jobs';
 
 import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
@@ -1535,18 +1536,36 @@ app.post('/api/whatsapp/send', async (c) => {
     return c.json({ error: 'Destinatário e mensagem são obrigatórios.' }, 400);
   }
 
-  try {
-    const result = await sendWhatsAppMessageHeadless(to, message);
-    return c.json({ ok: true, result });
-  } catch (error) {
-    return c.json(
-      {
-        ok: false,
-        error: error instanceof Error ? error.message : 'Falha ao enviar mensagem via WhatsApp.',
-      },
-      400
-    );
+  const job = createSendJob(userId);
+
+  // O envio roda em segundo plano; o cliente acompanha as etapas por /api/whatsapp/send/status.
+  void (async () => {
+    try {
+      const result = await sendWhatsAppMessageHeadless(to, message, (stage) =>
+        updateSendJobStage(job.id, stage)
+      );
+      completeSendJob(job.id, result);
+    } catch (error) {
+      failSendJob(
+        job.id,
+        error instanceof Error ? error.message : 'Falha ao enviar mensagem via WhatsApp.'
+      );
+    }
+  })();
+
+  return c.json({ ok: true, jobId: job.id });
+});
+
+app.get('/api/whatsapp/send/status', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const job = getSendJob(c.req.query('jobId') || '');
+  if (!job || job.userId !== userId) {
+    return c.json({ error: 'Envio não encontrado.' }, 404);
   }
+
+  return c.json({ ok: true, job });
 });
 
 const port = Number(process.env.PORT) || 3000;

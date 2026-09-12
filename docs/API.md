@@ -259,17 +259,34 @@ Gera a mensagem formatada para WhatsApp e a URL direta (`wa.me`).
 ```
 
 ### `POST /api/whatsapp/send`
-Dispara a mensagem em segundo plano utilizando o robô headless.
+Inicia o envio automático pelo WhatsApp em segundo plano e responde imediatamente com o identificador do acompanhamento.
 - **Corpo**:
   - `to` (string, número de telefone do destinatário)
   - `message` (string, texto da mensagem a ser enviada)
 - **Resposta**:
 ```json
+{ "ok": true, "jobId": "0f5b1c2e-..." }
+```
+
+### `GET /api/whatsapp/send/status?jobId=...`
+Consulta o andamento do envio iniciado em `POST /api/whatsapp/send`.
+- **Etapas** (`job.stage`): `preparing`, `connecting`, `opening_chat`, `sending`, `confirming`, `done`
+- **Status** (`job.status`): `running`, `done`, `error`
+- **Resposta**:
+```json
 {
   "ok": true,
-  "success": true,
-  "to": "5511999998888",
-  "message": "Mensagem enviada com sucesso!",
-  "timestamp": "2026-09-08T14:35:00.000Z"
+  "job": {
+    "id": "0f5b1c2e-...",
+    "status": "done",
+    "stage": "done",
+    "result": {
+      "success": true,
+      "to": "5511999998888",
+      "message": "Olá, *João da Silva*!...",
+      "timestamp": "2026-09-08T14:35:00.000Z"
+    }
+  }
 }
 ```
+Jobs expiram 5 minutos após a última atualização. Envios de outros usuários retornam `404`.

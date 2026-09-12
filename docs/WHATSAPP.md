@@ -166,7 +166,8 @@ Todas as rotas exigem sessão autenticada de usuário:
 | `POST` | `/api/whatsapp/login/cancel` | Cancela o processo de pareamento ativo. |
 | `POST` | `/api/whatsapp/logout` | Desconecta o WhatsApp e limpa a sessão do robô. |
 | `POST` | `/api/whatsapp/preview` | Retorna o preview do texto da mensagem formatada e URL direta (`wa.me`). |
-| `POST` | `/api/whatsapp/send` | Dispara a mensagem através do robô headless em segundo plano. |
+| `POST` | `/api/whatsapp/send` | Inicia o envio automático em segundo plano e retorna o `jobId` do acompanhamento. |
+| `GET` | `/api/whatsapp/send/status` | Polling do andamento do envio (`preparing`, `connecting`, `opening_chat`, `sending`, `confirming`, `done`). |
 
 ---
 

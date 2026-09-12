@@ -1227,9 +1227,9 @@ export function WhatsAppConnectModal({ open, onClose, onSuccess }: WhatsAppConne
         {state.status === 'starting' && (
           <div style={{ padding: '2rem 1rem' }}>
             <div className="loading-spinner" style={{ margin: '0 auto 1rem' }} />
-            <p style={{ fontWeight: 600, fontSize: '1rem' }}>Iniciando WhatsApp Web...</p>
+            <p style={{ fontWeight: 600, fontSize: '1rem' }}>Iniciando conexão com o WhatsApp...</p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-              Carregando o navegador e gerando o QR Code seguro.
+              Gerando o QR Code seguro para a conexão.
             </p>
           </div>
         )}
@@ -1289,7 +1289,7 @@ export function WhatsAppConnectModal({ open, onClose, onSuccess }: WhatsAppConne
               QR Code lido com sucesso!
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-              Sincronizando conversas e gravando chaves de autenticação...
+              Sincronizando suas conversas e finalizando a conexão...
             </p>
           </div>
         )}
@@ -1314,7 +1314,7 @@ export function WhatsAppConnectModal({ open, onClose, onSuccess }: WhatsAppConne
             </div>
             <h3 style={{ fontSize: '1.125rem', marginBottom: '0.5rem' }}>WhatsApp Conectado!</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', maxWidth: 360, margin: '0 auto 1.5rem' }}>
-              O robô do Aluxen está autenticado e pronto para disparar recibos e contratos de forma automática.
+              O WhatsApp está conectado ao Aluxen e pronto para enviar recibos e contratos automaticamente.
             </p>
             <button type="button" className="btn btn-primary" onClick={onClose} style={{ minWidth: 140 }}>
               Concluir

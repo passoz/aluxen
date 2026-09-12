@@ -1,5 +1,5 @@
 import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError, isChromiumAvailable, DESKTOP_USER_AGENT } from './browser';
-import type { SendResult, WhatsAppStatus } from './types';
+import type { SendResult, SendStage, WhatsAppStatus } from './types';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 export { whatsappLoginManager } from './login-manager';
@@ -140,12 +140,17 @@ export async function checkWhatsAppSessionStatus(deep = false): Promise<WhatsApp
   }
 }
 
-export async function sendWhatsAppMessageHeadless(to: string, message: string): Promise<SendResult> {
+export async function sendWhatsAppMessageHeadless(
+  to: string,
+  message: string,
+  onStage?: (stage: SendStage) => void
+): Promise<SendResult> {
   const cleanNumber = formatWhatsAppNumber(to);
   if (!cleanNumber || cleanNumber.length < 12) {
     throw new Error(`Número de telefone "${to}" inválido para envio via WhatsApp.`);
   }
 
+  onStage?.('connecting');
   const browser = await launchBrowser({ headless: true });
   try {
     const pages = await browser.pages();
@@ -155,6 +160,7 @@ export async function sendWhatsAppMessageHeadless(to: string, message: string): 
     const url = `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
     console.log(`[WhatsApp] Navegando para conversa com ${cleanNumber}...`);
 
+    onStage?.('opening_chat');
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     // 1. Aguardar o carregamento da conversa e do botão de envio (ou alerta de número inválido)
@@ -195,6 +201,7 @@ export async function sendWhatsAppMessageHeadless(to: string, message: string): 
     await Bun.sleep(1000);
 
     // 3. Clicar no botão Enviar real
+    onStage?.('sending');
     const sent = await page.evaluate((btnSel) => {
       const sendBtn = document.querySelector(btnSel)?.closest('button');
       if (sendBtn) {
@@ -216,6 +223,7 @@ export async function sendWhatsAppMessageHeadless(to: string, message: string): 
     }
 
     console.log('[WhatsApp] Mensagem disparada. Aguardando transmissão pelo WebSocket...');
+    onStage?.('confirming');
 
     // 4. Aguardar a confirmação de envio (relógio pendente desaparece e vira check)
     // Dá até 15 segundos para o WhatsApp Web confirmar a transmissão aos servidores

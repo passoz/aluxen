@@ -24,7 +24,7 @@ import {
   WhatsAppConnectModal,
   ConfirmModal,
 } from '../components/ui';
-import type { WhatsAppStatus } from '../whatsapp/types';
+import type { SendJob, SendStage, WhatsAppStatus } from '../whatsapp/types';
 import {
   IconTenants,
   IconProperties,
@@ -202,6 +202,44 @@ function PdfDropdown({ id }: { id: string }) {
 }
 
 
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
+}
+
+function friendlyWhatsAppError(raw: string): string {
+  const message = raw.toLowerCase();
+  if (message.includes('already running')) {
+    return 'Já existe um envio em andamento. Aguarde a conclusão e tente novamente.';
+  }
+  if (message.includes('chromium') || message.includes('failed to launch')) {
+    return 'O envio automático está indisponível neste dispositivo no momento.';
+  }
+  if (message.includes('expirad') || message.includes('autenticad') || message.includes('whatsapp:login')) {
+    return 'Sua conexão com o WhatsApp expirou. Conecte novamente para enviar.';
+  }
+  if (
+    message.includes('waiting failed') ||
+    message.includes('timeout') ||
+    message.includes('exceeded') ||
+    message.includes('botão de envio') ||
+    message.includes('tempo esgotado')
+  ) {
+    return 'Não foi possível concluir o envio pelo WhatsApp agora. Tente novamente em instantes.';
+  }
+  return raw;
+}
+
+/** Etapas exibidas ao usuário durante o envio automático pelo WhatsApp. */
+const WHATSAPP_SEND_STEPS: { stage: SendStage; label: string }[] = [
+  { stage: 'preparing', label: 'Preparando o envio' },
+  { stage: 'connecting', label: 'Conectando ao WhatsApp' },
+  { stage: 'opening_chat', label: 'Abrindo a conversa' },
+  { stage: 'sending', label: 'Enviando a mensagem' },
+  { stage: 'confirming', label: 'Confirmando a entrega' },
+];
+
 export function DashboardPage(initialData: DashboardProps) {
   const [tab, setTab] = useState<Tab>(initialData.tab);
   const [user] = useState(initialData.user);
@@ -354,6 +392,7 @@ export function DashboardPage(initialData: DashboardProps) {
 
   const [busy, setBusy] = useState(false);
   const syncInFlight = useRef(false);
+  const sendPollRef = useRef<{ cancelled: boolean } | null>(null);
   const [whatsappModal, setWhatsappModal] = useState<{
     open: boolean;
     loading: boolean;
@@ -366,6 +405,7 @@ export function DashboardPage(initialData: DashboardProps) {
     message: string;
     directUrl: string;
     sending: boolean;
+    sendingStage?: SendStage;
     error?: string;
     success?: string;
   } | null>(null);
@@ -386,7 +426,10 @@ export function DashboardPage(initialData: DashboardProps) {
     void loadWhatsAppStatus();
   }, [loadWhatsAppStatus]);
 
+  useEffect(() => () => stopSendPolling(), []);
+
   const openWhatsAppModal = async (type: 'receipt' | 'lease', id: string) => {
+    stopSendPolling();
     void loadWhatsAppStatus();
     setWhatsappModal({
       open: true,
@@ -462,14 +505,51 @@ export function DashboardPage(initialData: DashboardProps) {
     }
   };
 
+  const stopSendPolling = () => {
+    if (sendPollRef.current) sendPollRef.current.cancelled = true;
+    sendPollRef.current = null;
+  };
+
+  const whatsappSendStepIndex =
+    whatsappModal?.sending && whatsappModal.sendingStage
+      ? WHATSAPP_SEND_STEPS.findIndex((step) => step.stage === whatsappModal.sendingStage)
+      : -1;
+
+  const failWhatsAppSend = (rawMessage: string) => {
+    stopSendPolling();
+    const raw = rawMessage.toLowerCase();
+    const isLoginErr =
+      !raw.includes('chromium') &&
+      (raw.includes('expirad') ||
+        raw.includes('autenticad') ||
+        raw.includes('whatsapp:login') ||
+        raw.includes('nenhum') ||
+        raw.includes('encontrado'));
+    setWhatsappModal((prev) =>
+      prev
+        ? { ...prev, sending: false, sendingStage: undefined, error: friendlyWhatsAppError(rawMessage) }
+        : null
+    );
+    if (isLoginErr) {
+      setConnectWhatsappOpen(true);
+    }
+  };
+
   const sendAutomatedWhatsApp = async () => {
     if (!whatsappModal) return;
     if (whatsappStatus && !whatsappStatus.isLoggedIn) {
       setConnectWhatsappOpen(true);
       return;
     }
-    setWhatsappModal((prev) => (prev ? { ...prev, sending: true, error: undefined, success: undefined } : null));
 
+    stopSendPolling();
+    setWhatsappModal((prev) =>
+      prev
+        ? { ...prev, sending: true, sendingStage: 'preparing', error: undefined, success: undefined }
+        : null
+    );
+
+    let jobId = '';
     try {
       const formData = new FormData();
       formData.set('to', whatsappModal.phone);
@@ -480,28 +560,68 @@ export function DashboardPage(initialData: DashboardProps) {
         body: formData,
         credentials: 'same-origin',
       });
-      const data = (await res.json()) as { ok?: boolean; error?: string };
+      const data = (await res.json()) as { ok?: boolean; jobId?: string; error?: string };
 
-      if (data.ok) {
-        setWhatsappModal((prev) =>
-          prev ? { ...prev, sending: false, success: 'Mensagem enviada com sucesso pelo robô!' } : null
-        );
-      } else {
-        const isLoginErr =
-          data.error?.includes('expirada') ||
-          data.error?.includes('autenticado') ||
-          data.error?.includes('Nenhum') ||
-          data.error?.includes('encontrado');
-        setWhatsappModal((prev) =>
-          prev ? { ...prev, sending: false, error: data.error || 'Falha ao enviar mensagem.' } : null
-        );
-        if (isLoginErr) {
-          setConnectWhatsappOpen(true);
-        }
+      if (!data.ok || !data.jobId) {
+        failWhatsAppSend(data.error || 'Não foi possível iniciar o envio.');
+        return;
       }
+      jobId = data.jobId;
     } catch {
-      setWhatsappModal((prev) =>
-        prev ? { ...prev, sending: false, error: 'Erro de comunicação com o servidor.' } : null
+      failWhatsAppSend('Erro de comunicação com o servidor.');
+      return;
+    }
+
+    const poll = { cancelled: false };
+    sendPollRef.current = poll;
+    const deadline = Date.now() + 4 * 60 * 1000;
+
+    while (!poll.cancelled && Date.now() < deadline) {
+      await delay(1200);
+      if (poll.cancelled) return;
+
+      let job: SendJob | undefined;
+      try {
+        const statusRes = await fetch(
+          `/api/whatsapp/send/status?jobId=${encodeURIComponent(jobId)}`,
+          { credentials: 'same-origin' }
+        );
+        const statusData = (await statusRes.json()) as { ok?: boolean; job?: SendJob };
+        job = statusData.job;
+      } catch {
+        // Oscilação momentânea de rede: mantém o acompanhamento.
+        continue;
+      }
+      if (poll.cancelled) return;
+      if (!job) continue;
+
+      if (job.status === 'done') {
+        sendPollRef.current = null;
+        setWhatsappModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                sending: false,
+                sendingStage: undefined,
+                success: 'Mensagem enviada com sucesso pelo WhatsApp!',
+              }
+            : null
+        );
+        return;
+      }
+
+      if (job.status === 'error') {
+        failWhatsAppSend(job.error || 'Falha ao enviar mensagem.');
+        return;
+      }
+
+      const stage = job.stage;
+      setWhatsappModal((prev) => (prev ? { ...prev, sendingStage: stage } : null));
+    }
+
+    if (!poll.cancelled) {
+      failWhatsAppSend(
+        'O envio está demorando mais que o esperado. Confira a conversa no WhatsApp antes de tentar novamente.'
       );
     }
   };
@@ -2765,7 +2885,11 @@ export function DashboardPage(initialData: DashboardProps) {
           {whatsappModal?.open ? (
             <Modal
               title={`Enviar ${whatsappModal.type === 'receipt' ? 'Recibo' : 'Contrato'} por WhatsApp`}
-              onClose={() => setWhatsappModal(null)}
+              onClose={() => {
+                if (whatsappModal.sending) return;
+                stopSendPolling();
+                setWhatsappModal(null);
+              }}
             >
               <div className="stack">
                 {whatsappModal.loading ? (
@@ -2777,6 +2901,62 @@ export function DashboardPage(initialData: DashboardProps) {
                   <>
                     {whatsappModal.success ? <div className="success">{whatsappModal.success}</div> : null}
                     {whatsappModal.error ? <div className="error">{whatsappModal.error}</div> : null}
+
+                    {whatsappModal.sending ? (
+                      <div
+                        style={{
+                          background: 'var(--surface-subtle)',
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--radius-md)',
+                          padding: '0.875rem 1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '0.875rem' }}>
+                          <div className="loading-spinner" style={{ width: '14px', height: '14px' }} />
+                          <span>Enviando pelo WhatsApp...</span>
+                        </div>
+                        <ul
+                          style={{
+                            listStyle: 'none',
+                            margin: 0,
+                            padding: 0,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.3rem',
+                          }}
+                        >
+                          {WHATSAPP_SEND_STEPS.map((step, index) => {
+                            const isDone = whatsappSendStepIndex > index;
+                            const isActive = whatsappSendStepIndex === index;
+                            return (
+                              <li
+                                key={step.stage}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  fontSize: '0.8125rem',
+                                  color: isDone
+                                    ? 'var(--text-secondary)'
+                                    : isActive
+                                      ? 'var(--text-primary)'
+                                      : 'var(--text-muted)',
+                                }}
+                              >
+                                <span aria-hidden="true">{isDone ? '✓' : isActive ? '●' : '○'}</span>
+                                <span style={{ fontWeight: isActive ? 600 : 400 }}>{step.label}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+                          Mantenha esta janela aberta até a conclusão. O envio leva alguns segundos.
+                        </p>
+                      </div>
+                    ) : null}
 
                     <div
                       style={{
@@ -2815,8 +2995,8 @@ export function DashboardPage(initialData: DashboardProps) {
                           <span style={{ fontSize: '0.875rem' }}>{whatsappStatus.isLoggedIn ? '🟢' : '🔴'}</span>
                           <span>
                             {whatsappStatus.isLoggedIn
-                              ? 'Robô conectado e pronto para envio automático.'
-                              : 'Robô do WhatsApp desconectado.'}
+                              ? 'WhatsApp conectado — envio automático disponível.'
+                              : 'WhatsApp não conectado.'}
                           </span>
                         </div>
                         {!whatsappStatus.isLoggedIn && (
@@ -2837,6 +3017,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       <input
                         id="whatsapp-phone"
                         type="text"
+                        disabled={whatsappModal.sending}
                         value={whatsappModal.phone}
                         onChange={(e) => {
                           const val = e.target.value;
@@ -2859,6 +3040,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       <textarea
                         id="whatsapp-message"
                         rows={8}
+                        disabled={whatsappModal.sending}
                         style={{ fontFamily: 'inherit', resize: 'vertical' }}
                         value={whatsappModal.message}
                         onChange={(e) => {
@@ -2907,17 +3089,17 @@ export function DashboardPage(initialData: DashboardProps) {
                         {whatsappModal.sending ? (
                           <>
                             <div className="loading-spinner" style={{ width: '14px', height: '14px' }} />
-                            Enviando via Robô...
+                            Enviando...
                           </>
                         ) : (
-                          'Enviar via Robô (Headless)'
+                          'Envio automático pelo WhatsApp'
                         )}
                       </button>
                     </div>
 
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', textAlign: 'center' }}>
-                      &bull; <strong>Abrir no WhatsApp:</strong> Abre no WhatsApp Web ou celular com a mensagem pronta para envio imediato.<br />
-                      &bull; <strong>Enviar via Robô:</strong> Dispara em segundo plano usando a automação conectada ao Chromium.
+                      &bull; <strong>Abrir no WhatsApp:</strong> abre o WhatsApp com a mensagem pronta para envio manual.<br />
+                      &bull; <strong>Envio automático:</strong> envia a mensagem pelo WhatsApp conectado e acompanha o envio até a confirmação.
                     </p>
                   </>
                 )}
