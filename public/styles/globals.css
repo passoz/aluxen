@@ -1579,6 +1579,8 @@ input[type="checkbox"] {
     padding: 1.25rem 1rem !important;
     box-shadow: var(--shadow-xl);
     border-right: none;
+    /* Acima do .sidebar-backdrop (999), abaixo do .hamburger-float (1100). */
+    z-index: 1000;
   }
 
   .sidebar.mobile-open {
