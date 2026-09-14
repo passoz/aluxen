@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { relations, sql } from 'drizzle-orm';
 
 export const users = sqliteTable('users', {
@@ -75,6 +75,35 @@ export const settings = sqliteTable('settings', {
   value: text('value').notNull(),
 });
 
+/**
+ * Trilha de auditoria — registro imutável de tudo que muda o estado do sistema
+ * (cadastros, valores, contratos, emissões de documentos, acessos e backups).
+ *
+ * `changes` guarda um JSON `[{ field, label, from, to }]` com valores já
+ * formatados para leitura humana; `metadata` guarda contexto adicional.
+ */
+export const auditLogs = sqliteTable('audit_logs', {
+  id: text('id').primaryKey(),
+  createdAt: text('created_at').notNull(),
+  actorId: text('actor_id'),
+  actorName: text('actor_name'),
+  action: text('action').notNull(),
+  entity: text('entity').notNull(),
+  entityId: text('entity_id'),
+  entityLabel: text('entity_label'),
+  summary: text('summary').notNull(),
+  changes: text('changes'),
+  metadata: text('metadata'),
+  origin: text('origin').notNull().default('web'),
+  ip: text('ip'),
+  userAgent: text('user_agent'),
+  requestId: text('request_id'),
+}, (table) => [
+  index('audit_logs_created_at_idx').on(table.createdAt),
+  index('audit_logs_entity_idx').on(table.entity, table.entityId),
+  index('audit_logs_action_idx').on(table.action),
+]);
+
 // Relacionamentos
 export const tenantsRelations = relations(tenants, ({ many }) => ({
   leases: many(leases),
@@ -124,3 +153,5 @@ export type NewLease = typeof leases.$inferInsert;
 export type Receipt = typeof receipts.$inferSelect;
 export type NewReceipt = typeof receipts.$inferInsert;
 export type Setting = typeof settings.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type NewAuditLog = typeof auditLogs.$inferInsert;

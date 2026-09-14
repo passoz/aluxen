@@ -163,6 +163,21 @@ O esquema está declarado em `src/db/schema.ts`:
    - `key`: Identificador único da configuração (`landlord_name`, `landlord_cpf`, `landlord_email`, `app_url`, etc.).
    - `value`: Conteúdo em formato texto ou JSON.
 
+7. **`audit_logs`** (Trilha de Auditoria):
+   - `id`: UUIDv7.
+   - `created_at`: Timestamp local com milissegundos (`YYYY-MM-DDTHH:mm:ss.SSS`).
+   - `actor_id` / `actor_name`: Usuário autenticado que executou a ação (`NULL` em acessos anônimos, como tentativas de login negadas e emissões por link público).
+   - `action`: Ação executada (ex.: `tenant.update`, `receipt.pay`, `document.receipt`, `auth.login`).
+   - `entity` / `entity_id` / `entity_label`: Área afetada e rótulo humano do registro no momento do evento (nome do inquilino, do imóvel, competência do pagamento) — preservado mesmo após exclusão do registro.
+   - `summary`: Descrição legível do evento em português.
+   - `changes`: JSON `[{ field, label, from, to }]` com o diff campo a campo **já formatado** (moeda em BRL, datas em `dd/mm/aaaa`, situações traduzidas).
+   - `metadata`: JSON com contexto adicional (competência gerada, tamanho do lote, protocolo de envio, motivo de falha).
+   - `origin`: `web` (painel autenticado), `public` (link com token) ou `job` (rotina automática).
+   - `ip`, `user_agent`, `request_id`: Correlação com o log estruturado da requisição.
+   - Índices em `created_at`, `(entity, entity_id)` e `action`.
+
+   A tabela é **append-only na prática**: nenhuma rota atualiza ou remove eventos, e segredos (senhas, tokens, cookies) nunca são gravados.
+
 ---
 
 ## 5. Fluxo de Execução de Requisições
@@ -189,6 +204,35 @@ Para preservar a compatibilidade de formulários HTML padrão e permitir envio o
 | `receipt.generate-month` | Geração mensal em lote | Cria recibos para todos os contratos ativos do mês selecionado que ainda não foram gerados. |
 | `receipt.batch-pay` | Baixa em lote | Marca múltiplos recibos como pagos no timestamp atual. |
 | `receipt.delete` | Remove recibo | Exclui o registro e arquivos associados. |
+
+---
+
+### 5.3. Fluxo de Auditoria
+
+Toda mutação bem-sucedida em `POST /dashboard`, `POST /settings`, emissões de PDF, envios por WhatsApp, backups e acessos passa por `recordAudit()` (`src/utils/audit.ts`):
+
+1. O contexto da requisição é montado uma única vez por request (`createAuditContext`): usuário, IP (respeitando `x-forwarded-for`), user-agent, `requestId` e origem.
+2. Para cada operação, o estado **antes** é lido do banco, a mutação é aplicada e o estado **depois** é relido.
+3. `diffAuditFields()` compara os dois snapshots conforme a especificação de campos da entidade e devolve apenas o que realmente mudou, com os valores formatados para leitura.
+4. O evento é inserido em `audit_logs` e replicado no log estruturado (`scope: audit`).
+
+Regras de projeto:
+
+- Operações sem alteração real (salvar um formulário idêntico) **não** geram evento — a trilha registra mudanças, não cliques.
+- A gravação é "melhor esforço": se a auditoria falhar, a operação de negócio já efetivada não é desfeita, mas a falha é registrada em `error` no log.
+- Operações em lote (baixa/exclusão de vários recibos) geram **um evento por recibo**, com `metadata.batch` indicando o tamanho do lote.
+
+### 5.4. Observabilidade e Logs
+
+`src/utils/logger.ts` implementa o logger estruturado usado por todo o runtime (zero dependências):
+
+- **Níveis**: `debug`, `info`, `warn`, `error` e `silent`, controlados por `LOG_LEVEL`.
+- **Formatos**: `pretty` (linha legível, padrão em TTY) e `json` (JSON Lines, padrão fora de TTY e em containers), controlados por `LOG_FORMAT`.
+- **Escopos**: `http` (requisições), `audit` (trilha), `db`, `db.migrate`, `db.seed`, `whatsapp`, `whatsapp.login`, `whatsapp.browser` e `app` (boot).
+- **Redação**: qualquer campo cujo nome contenha `password`/`senha`, `token`, `secret`, `cookie`, `authorization`, `api_key`, `hash` ou `session` é substituído por `[redigido]` antes da escrita.
+- **Erros**: objetos `Error` são serializados com `name`, `message` e as primeiras linhas do `stack`.
+- **Middleware HTTP**: gera um `requestId` curto por requisição, mede a duração e classifica o evento — estáticos em `debug`, 4xx em `warn`, 5xx em `error` e requisições acima de 1 s em `warn`. O mesmo `requestId` aparece na página/JSON de erro e na trilha de auditoria, permitindo reconstruir o que aconteceu a partir de um protocolo.
+- **Erros não tratados**: `app.onError` registra o stack trace e responde com uma página amigável (ou JSON, para rotas `/api`), em vez do erro genérico do framework.
 
 ---
 

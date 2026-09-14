@@ -33,10 +33,13 @@ import {
   IconLogout,
   IconSettings,
   IconDashboard,
+  IconHistory,
   IconWhatsApp,
 } from '../components/icons';
 
 import { MetricsView } from './metrics';
+import { HistoryView } from './history';
+import type { AuditPage } from '../utils/audit-meta';
 
 import type {
   Tenant,
@@ -83,6 +86,7 @@ export interface DashboardProps {
   receipts: Receipt[];
   activeTenantIds: string[];
   metrics?: MetricsPayload;
+  history?: AuditPage;
 }
 
 function PdfDropdown({ id }: { id: string }) {
@@ -263,7 +267,7 @@ export function DashboardPage(initialData: DashboardProps) {
     const handlePopState = () => {
       const url = new URL(window.location.href);
       const urlTab = url.searchParams.get('tab') as Tab;
-      if (urlTab && ['dashboard', 'tenants', 'properties', 'leases', 'receipts'].includes(urlTab)) {
+      if (urlTab && ['dashboard', 'tenants', 'properties', 'leases', 'receipts', 'history'].includes(urlTab)) {
         setTab(urlTab);
       }
     };
@@ -1082,6 +1086,19 @@ export function DashboardPage(initialData: DashboardProps) {
               {!collapsed || mobileMenuOpen ? <span className="nav-label">Pagamentos</span> : null}
             </a>
           </li>
+          <li>
+            <a
+              href="/dashboard?tab=history"
+              className={tab === 'history' ? 'active' : ''}
+              onClick={(e) => {
+                setMobileMenuOpen(false);
+                switchTab('history', e);
+              }}
+            >
+              <span className="nav-icon"><IconHistory /></span>
+              {!collapsed || mobileMenuOpen ? <span className="nav-label">Histórico</span> : null}
+            </a>
+          </li>
         </ul>
         <div className="sidebar-footer">
           <DataButtons collapsed={collapsed && !mobileMenuOpen} />
@@ -1112,6 +1129,8 @@ export function DashboardPage(initialData: DashboardProps) {
                   ? 'Imóveis'
                   : tab === 'leases'
                   ? 'Contratos de Locação'
+                  : tab === 'history'
+                  ? 'Histórico e Auditoria'
                   : 'Pagamentos e Recibos'}
               </h1>
               <p className="subtitle">
@@ -1137,6 +1156,8 @@ export function DashboardPage(initialData: DashboardProps) {
                       if (sea) parts.push(`${sea} temporada(s)`);
                       return parts.join(' • ') || `${leaseItems.length} contrato(s)`;
                     })()
+                  : tab === 'history'
+                  ? 'Trilha de auditoria'
                   : `${receiptItems.length} recibo(s)`}
               </span>
             </div>
@@ -1145,6 +1166,8 @@ export function DashboardPage(initialData: DashboardProps) {
           {toast ? <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} /> : null}
 
           {tab === 'dashboard' ? <MetricsView initialMetrics={initialData.metrics} /> : null}
+
+          {tab === 'history' ? <HistoryView initial={initialData.history} /> : null}
 
           {tab === 'tenants' ? (
             <section className="card stack-lg">

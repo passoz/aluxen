@@ -2,7 +2,10 @@ import { launchBrowser, openWhatsApp, resolveProfileDir, SessionExpiredError, is
 import type { SendResult, SendStage, WhatsAppStatus } from './types';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { createLogger } from '../utils/logger';
 export { whatsappLoginManager } from './login-manager';
+
+const log = createLogger('whatsapp');
 
 export function formatWhatsAppNumber(phone: string): string {
   const digits = phone.replace(/\D/g, '');
@@ -158,7 +161,7 @@ export async function sendWhatsAppMessageHeadless(
     await page.setUserAgent(DESKTOP_USER_AGENT);
 
     const url = `https://web.whatsapp.com/send?phone=${cleanNumber}&text=${encodeURIComponent(message)}`;
-    console.log(`[WhatsApp] Navegando para conversa com ${cleanNumber}...`);
+    log.debug('Abrindo conversa no WhatsApp Web', { phone: cleanNumber });
 
     onStage?.('opening_chat');
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -222,7 +225,7 @@ export async function sendWhatsAppMessageHeadless(
       }
     }
 
-    console.log('[WhatsApp] Mensagem disparada. Aguardando transmissão pelo WebSocket...');
+    log.debug('Mensagem disparada, aguardando confirmação do WhatsApp Web');
     onStage?.('confirming');
 
     // 4. Aguardar a confirmação de envio (relógio pendente desaparece e vira check)
@@ -235,7 +238,7 @@ export async function sendWhatsAppMessageHeadless(
       });
 
       if (!isStillPending) {
-        console.log(`[WhatsApp] Mensagem transmitida com sucesso aos servidores em ${i + 1}s.`);
+        log.info('Mensagem confirmada pelo WhatsApp Web', { seconds: i + 1 });
         break;
       }
     }

@@ -3,6 +3,9 @@ import { launchBrowser, resolveProfileDir, isChromiumAvailable } from './browser
 import type { LoginState } from './types';
 import QRCode from 'qrcode';
 import { existsSync, rmSync } from 'node:fs';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('whatsapp.login');
 
 class WhatsAppLoginManager {
   private browser: Browser | null = null;
@@ -56,7 +59,7 @@ class WhatsAppLoginManager {
         }
       }, 180000);
 
-      console.log('[WhatsApp Login] Acessando web.whatsapp.com...');
+      log.debug('Acessando web.whatsapp.com para leitura do QR Code');
       await this.page.goto('https://web.whatsapp.com', {
         waitUntil: 'domcontentloaded',
         timeout: 60000,
@@ -64,7 +67,7 @@ class WhatsAppLoginManager {
 
       this.startMonitoring();
     } catch (err: any) {
-      console.error('[WhatsApp Login] Erro ao iniciar:', err);
+      log.error('Falha ao iniciar o login do WhatsApp', { error: err });
       await this.cancelLogin(err?.message || 'Falha ao iniciar o WhatsApp Web.');
     }
 
@@ -90,7 +93,7 @@ class WhatsAppLoginManager {
         });
 
         if (isChatsLoaded) {
-          console.log('[WhatsApp Login] Login detectado! Sincronizando dados...');
+          log.info('Login detectado no WhatsApp Web, sincronizando dados');
           if (this.monitorTimer) clearInterval(this.monitorTimer);
           if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
           this.isProcessing = false;
@@ -107,7 +110,7 @@ class WhatsAppLoginManager {
           this.browser = null;
           this.page = null;
           this.state = { status: 'connected', message: 'WhatsApp conectado com sucesso ao Aluxen!' };
-          console.log('[WhatsApp Login] Sessão salva em:', resolveProfileDir());
+          log.info('Sessão do WhatsApp Web salva', { profileDir: resolveProfileDir() });
           return;
         }
 
@@ -194,7 +197,7 @@ class WhatsAppLoginManager {
       try {
         rmSync(profileDir, { recursive: true, force: true });
       } catch (err) {
-        console.warn('Aviso ao remover diretório de perfil:', err);
+        log.warn('Não foi possível remover o diretório de perfil', { error: err });
       }
     }
 

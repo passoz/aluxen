@@ -1545,6 +1545,141 @@ input[type="checkbox"] {
   display: none;
 }
 
+/* ==========================================================================
+   Histórico & Auditoria
+   ========================================================================== */
+
+.history-section .filter-bar .small-select,
+.history-section .filter-bar .custom-date-picker {
+  width: auto;
+  min-width: 148px;
+}
+
+.history-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--text-secondary);
+}
+
+.history-badge.create {
+  background: var(--primary-tint);
+  color: var(--primary);
+  border-color: var(--primary-tint-border);
+}
+
+.history-badge.update {
+  background: rgba(59, 130, 246, 0.14);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.history-badge.delete,
+.history-badge.failure {
+  background: var(--danger-tint);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.history-badge.issue {
+  background: rgba(99, 102, 241, 0.14);
+  color: #6366f1;
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.history-badge.access {
+  background: var(--warning-tint);
+  color: var(--warning);
+  border-color: var(--warning-border);
+}
+
+.history-table .history-when {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.history-record {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.history-entity {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.history-summary {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.history-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+}
+
+.modal-card-wide {
+  width: min(760px, 100%);
+}
+
+.history-changes {
+  table-layout: fixed;
+}
+
+.history-changes th:first-child,
+.history-changes td:first-child {
+  width: 28%;
+}
+
+.history-changes td {
+  overflow-wrap: anywhere;
+}
+
+.history-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.history-meta dt {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.history-meta dd {
+  margin: 0.2rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.history-changes td.history-old {
+  color: var(--danger);
+}
+
+.history-changes td.history-new {
+  color: var(--primary);
+  font-weight: 600;
+}
+
 @media (max-width: 768px) {
   .hamburger-float {
     display: flex;
@@ -1605,5 +1740,10 @@ input[type="checkbox"] {
   .pagination {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .history-section .filter-bar .small-select,
+  .history-section .filter-bar .custom-date-picker {
+    width: 100%;
   }
 }

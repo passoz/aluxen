@@ -1,18 +1,43 @@
 import { Hono } from 'hono';
-import { logger } from 'hono/logger';
+import type { Handler } from 'hono';
 import { serveStatic } from 'hono/bun';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { existsSync } from 'fs';
 import path from 'path';
 
-import { initializeDatabase, getSetting, setSetting, db } from './db';
+import { initializeDatabase, getSetting, setSetting, db, sqlite } from './db';
 import { tenants, properties, leases, receipts, users } from './db/schema';
 import { sql, eq, and, desc, asc, isNull, isNotNull, lt, gt, lte, gte, ne, or, inArray, aliasedTable } from 'drizzle-orm';
 import { createId } from './utils/id';
+import { createLogger } from './utils/logger';
 import { loginUser, changePassword } from './utils/auth';
 import { getUserId, requireUserId, setUserSession, clearUserSession } from './utils/session';
-import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr } from './utils/format';
+import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr, RECEIPT_CATEGORY_LABELS } from './utils/format';
+import {
+  buildAuditCsv,
+  clientIp,
+  createAuditContext,
+  describeLease,
+  describeReceipt,
+  diffAuditFields,
+  getLeaseSnapshot,
+  getPropertySnapshot,
+  getReceiptSnapshot,
+  getTenantSnapshot,
+  listAudit,
+  listAuditForExport,
+  readAuditQuery,
+  recordAudit,
+  resolveAuditActor,
+  LEASE_AUDIT_FIELDS,
+  PROPERTY_AUDIT_FIELDS,
+  RECEIPT_AUDIT_FIELDS,
+  TENANT_AUDIT_FIELDS,
+} from './utils/audit';
+import type { AuditPage } from './utils/audit-meta';
+import { DEFAULT_AUDIT_QUERY } from './utils/audit-meta';
+import type { AppEnv } from './types/http';
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
@@ -41,9 +66,108 @@ if (!existsSync(path.join(process.cwd(), 'public', 'dist', 'client.js'))) {
   await buildClientBundle();
 }
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
-app.use('*', logger());
+const httpLog = createLogger('http');
+const appLog = createLogger('app');
+
+/** Página de erro mínima (sem React) para falhas de rota ou exceções não tratadas. */
+function renderErrorPage(title: string, message: string, requestId: string): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aluxen | ${title}</title>
+    <link rel="stylesheet" href="/styles/globals.css" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <main class="login-page">
+      <section class="card login-card">
+        <h1>${title}</h1>
+        <p class="subtitle">${message}</p>
+        <p class="subtitle">Protocolo: <strong>${requestId || '—'}</strong></p>
+        <a class="btn btn-primary" href="/dashboard?tab=dashboard">Voltar ao painel</a>
+      </section>
+    </main>
+  </body>
+</html>`;
+}
+
+// Log estruturado de todas as requisições: método, rota, status, duração, origem e usuário.
+app.use('*', async (c, next) => {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  c.set('requestId', requestId);
+  const startedAt = performance.now();
+
+  await next();
+
+  const url = new URL(c.req.url);
+  const status = c.res.status;
+  const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+  const lastSegment = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
+  const fields = {
+    requestId,
+    method: c.req.method,
+    path: url.pathname,
+    query: url.search ? url.search.slice(1) : undefined,
+    status,
+    durationMs,
+    ip: clientIp(c),
+    userId: getUserId(c) || undefined,
+  };
+
+  if (lastSegment.includes('.')) {
+    httpLog.debug('Arquivo estático servido', fields);
+    return;
+  }
+  if (status >= 500) {
+    httpLog.error('Requisição falhou', fields);
+    return;
+  }
+  if (status >= 400) {
+    httpLog.warn('Requisição recusada', fields);
+    return;
+  }
+  if (durationMs >= 1000) {
+    httpLog.warn('Requisição lenta', fields);
+    return;
+  }
+  httpLog.info('Requisição concluída', fields);
+});
+
+// Exceções não tratadas: log com stack + resposta amigável com protocolo de correlação.
+app.onError((error, c) => {
+  const url = new URL(c.req.url);
+  const requestId = c.get('requestId') || '';
+  httpLog.error('Erro não tratado', {
+    requestId,
+    method: c.req.method,
+    path: url.pathname,
+    error,
+  });
+
+  const wantsJson =
+    url.pathname.startsWith('/api') ||
+    c.req.query('json') === 'true' ||
+    (c.req.header('accept') || '').includes('application/json');
+  if (wantsJson) {
+    return c.json({ error: 'Erro interno do servidor.', requestId }, 500);
+  }
+  return c.html(renderErrorPage('Erro interno', 'Não foi possível concluir a operação. Tente novamente.', requestId), 500);
+});
+
+app.notFound((c) => {
+  const url = new URL(c.req.url);
+  const requestId = c.get('requestId') || '';
+  httpLog.warn('Rota não encontrada', { requestId, method: c.req.method, path: url.pathname });
+
+  if (url.pathname.startsWith('/api') || c.req.query('json') === 'true') {
+    return c.json({ error: 'Rota não encontrada.', requestId }, 404);
+  }
+  return c.html(renderErrorPage('Página não encontrada', 'O endereço acessado não existe no Aluxen.', requestId), 404);
+});
 
 // Servir arquivos estáticos (CSS, JS compilado, ícones, imagens)
 app.use('/*', serveStatic({ root: './public' }));
@@ -127,8 +251,14 @@ app.get('/login', (c) => {
 
 // Login - POST
 app.post('/login', async (c) => {
-  const ip = c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'unknown';
-  if (!checkRateLimit(ip)) {
+  const anonymousAudit = createAuditContext(c, null);
+  if (!checkRateLimit(anonymousAudit.ip)) {
+    await recordAudit(anonymousAudit, {
+      action: 'auth.login-failed',
+      entity: 'user',
+      summary: 'Tentativa de acesso bloqueada pelo limite de tentativas',
+      metadata: { reason: 'Limite de tentativas por minuto excedido' },
+    });
     const html = renderHtml(
       'Aluxen | Entrar',
       'login',
@@ -143,30 +273,57 @@ app.post('/login', async (c) => {
   const password = String(body['password'] || '');
 
   if (!username || !password) {
+    await recordAudit(anonymousAudit, {
+      action: 'auth.login-failed',
+      entity: 'user',
+      entityLabel: username || null,
+      summary: 'Tentativa de acesso com usuário ou senha em branco',
+      metadata: { reason: 'Campos obrigatórios ausentes' },
+    });
     const html = renderHtml('Aluxen | Entrar', 'login', { error: 'Informe usuário e senha.' }, <LoginPage error="Informe usuário e senha." />);
     return c.html(html, 400);
   }
 
   const user = await loginUser(username, password);
   if (!user) {
+    await recordAudit(anonymousAudit, {
+      action: 'auth.login-failed',
+      entity: 'user',
+      entityLabel: username,
+      summary: `Tentativa de acesso negada para "${username}"`,
+      metadata: { reason: 'Credenciais inválidas' },
+    });
     const html = renderHtml('Aluxen | Entrar', 'login', { error: 'Credenciais inválidas.' }, <LoginPage error="Credenciais inválidas." />);
     return c.html(html, 401);
   }
 
   setUserSession(c, user.id);
+  await recordAudit(createAuditContext(c, { id: user.id, name: user.username }), {
+    action: 'auth.login',
+    entity: 'user',
+    entityId: user.id,
+    entityLabel: user.username,
+    summary: `Acesso ao sistema por "${user.username}"`,
+  });
   return c.redirect('/dashboard?tab=dashboard');
 });
 
 // Logout
-app.post('/logout', (c) => {
+const handleLogout: Handler<AppEnv> = async (c) => {
+  const actor = await resolveAuditActor(getUserId(c));
   clearUserSession(c);
+  await recordAudit(createAuditContext(c, actor), {
+    action: 'auth.logout',
+    entity: 'user',
+    entityId: actor?.id ?? null,
+    entityLabel: actor?.name ?? null,
+    summary: actor ? `Saída do sistema de "${actor.name}"` : 'Saída do sistema',
+  });
   return c.redirect('/login');
-});
+};
 
-app.get('/logout', (c) => {
-  clearUserSession(c);
-  return c.redirect('/login');
-});
+app.post('/logout', handleLogout);
+app.get('/logout', handleLogout);
 
 // Dashboard - GET
 app.get('/dashboard', async (c) => {
@@ -175,7 +332,7 @@ app.get('/dashboard', async (c) => {
     return c.redirect('/login');
   }
   const urlTab = c.req.query('tab') as Tab;
-  const tab: Tab = ['dashboard', 'tenants', 'properties', 'leases', 'receipts'].includes(urlTab) ? (urlTab as Tab) : 'dashboard';
+  const tab: Tab = ['dashboard', 'tenants', 'properties', 'leases', 'receipts', 'history'].includes(urlTab) ? (urlTab as Tab) : 'dashboard';
 
   const tAlias = aliasedTable(tenants, 't');
   const pAlias = aliasedTable(properties, 'p');
@@ -243,6 +400,8 @@ app.get('/dashboard', async (c) => {
     computeMetrics(),
   ]);
 
+  const history: AuditPage | undefined = tab === 'history' ? await listAudit(DEFAULT_AUDIT_QUERY) : undefined;
+
   const dashboardData: DashboardProps = {
     tab,
     user: userRow?.username || 'admin',
@@ -252,6 +411,7 @@ app.get('/dashboard', async (c) => {
     receipts: receiptsList as unknown as Receipt[],
     activeTenantIds: activeTenantIdRows.map((r) => r.tenant_id).filter((id): id is string => !!id),
     metrics,
+    history,
   };
 
   if (c.req.query('json') === 'true') {
@@ -276,6 +436,7 @@ app.post('/dashboard', async (c) => {
 
   const formData = await c.req.parseBody();
   const intent = String(formData['intent'] || '');
+  const audit = createAuditContext(c, await resolveAuditActor(userId));
 
   try {
     switch (intent) {
@@ -287,6 +448,14 @@ app.post('/dashboard', async (c) => {
         const cpf = String(formData['cpf'] || '').trim();
         if (!name || !email) throw new Error('Nome e email são obrigatórios.');
         await db.insert(tenants).values({ id, name, email, phone: phone || null, cpf: cpf || null });
+        await recordAudit(audit, {
+          action: 'tenant.create',
+          entity: 'tenant',
+          entityId: id,
+          entityLabel: name,
+          summary: `Inquilino "${name}" cadastrado`,
+          changes: diffAuditFields(null, { name, email, phone: phone || null, cpf: cpf || null }, TENANT_AUDIT_FIELDS),
+        });
         break;
       }
       case 'tenant.update': {
@@ -296,14 +465,33 @@ app.post('/dashboard', async (c) => {
         const phone = String(formData['phone'] || '').trim();
         const cpf = String(formData['cpf'] || '').trim();
         if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
+        const before = await getTenantSnapshot(id);
         await db.update(tenants).set({ name, email, phone: phone || null, cpf: cpf || null, updatedAt: sql`(datetime('now'))` }).where(eq(tenants.id, id));
+        const after = await getTenantSnapshot(id);
+        await recordAudit(audit, {
+          action: 'tenant.update',
+          entity: 'tenant',
+          entityId: id,
+          entityLabel: after?.name ?? name,
+          summary: `Inquilino "${after?.name ?? name}" alterado`,
+          changes: diffAuditFields(before, after, TENANT_AUDIT_FIELDS),
+        });
         break;
       }
       case 'tenant.delete': {
         const tenantId = String(formData['id']);
         const activeLease = await db.select({ id: leases.id }).from(leases).where(and(eq(leases.tenantId, tenantId), eq(leases.status, 'active'))).limit(1);
         if (activeLease.length > 0) throw new Error('Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.');
+        const before = await getTenantSnapshot(tenantId);
         await db.delete(tenants).where(eq(tenants.id, tenantId));
+        await recordAudit(audit, {
+          action: 'tenant.delete',
+          entity: 'tenant',
+          entityId: tenantId,
+          entityLabel: before?.name ?? null,
+          summary: `Inquilino "${before?.name ?? tenantId}" excluído`,
+          changes: diffAuditFields(before, null, TENANT_AUDIT_FIELDS),
+        });
         break;
       }
       case 'property.create': {
@@ -315,6 +503,14 @@ app.post('/dashboard', async (c) => {
         const zip = String(formData['zip'] || '').trim();
         if (!name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
         await db.insert(properties).values({ id, name, address, city, state, zip: zip || null });
+        await recordAudit(audit, {
+          action: 'property.create',
+          entity: 'property',
+          entityId: id,
+          entityLabel: name,
+          summary: `Imóvel "${name}" cadastrado`,
+          changes: diffAuditFields(null, { name, address, city, state, zip: zip || null }, PROPERTY_AUDIT_FIELDS),
+        });
         break;
       }
       case 'property.update': {
@@ -325,11 +521,31 @@ app.post('/dashboard', async (c) => {
         const state = String(formData['state'] || '').trim();
         const zip = String(formData['zip'] || '').trim();
         if (!id || !name || !address || !city || !state) throw new Error('Preencha nome, endereço, cidade e estado.');
+        const before = await getPropertySnapshot(id);
         await db.update(properties).set({ name, address, city, state, zip: zip || null, updatedAt: sql`(datetime('now'))` }).where(eq(properties.id, id));
+        const after = await getPropertySnapshot(id);
+        await recordAudit(audit, {
+          action: 'property.update',
+          entity: 'property',
+          entityId: id,
+          entityLabel: after?.name ?? name,
+          summary: `Imóvel "${after?.name ?? name}" alterado`,
+          changes: diffAuditFields(before, after, PROPERTY_AUDIT_FIELDS),
+        });
         break;
       }
       case 'property.delete': {
-        await db.delete(properties).where(eq(properties.id, String(formData['id'])));
+        const id = String(formData['id']);
+        const before = await getPropertySnapshot(id);
+        await db.delete(properties).where(eq(properties.id, id));
+        await recordAudit(audit, {
+          action: 'property.delete',
+          entity: 'property',
+          entityId: id,
+          entityLabel: before?.name ?? null,
+          summary: `Imóvel "${before?.name ?? id}" excluído`,
+          changes: diffAuditFields(before, null, PROPERTY_AUDIT_FIELDS),
+        });
         break;
       }
       case 'lease.create': {
@@ -367,6 +583,16 @@ app.post('/dashboard', async (c) => {
           }
         }
         await db.insert(leases).values({ id, tenantId, propertyId, startDate, endDate, dueDay, rentAmount, status });
+        const created = await getLeaseSnapshot(id);
+        const createdLabel = describeLease(created);
+        await recordAudit(audit, {
+          action: 'lease.create',
+          entity: 'lease',
+          entityId: id,
+          entityLabel: createdLabel,
+          summary: `Contrato de ${createdLabel} criado`,
+          changes: diffAuditFields(null, created, LEASE_AUDIT_FIELDS),
+        });
         break;
       }
       case 'lease.update': {
@@ -404,23 +630,53 @@ app.post('/dashboard', async (c) => {
         }
         const updateValues: Record<string, unknown> = { tenantId, propertyId, startDate, endDate, dueDay, rentAmount, updatedAt: sql`(datetime('now'))` };
         if (status) updateValues.status = status;
+        const beforeLease = await getLeaseSnapshot(id);
         await db.update(leases).set(updateValues).where(eq(leases.id, id));
+        const afterLease = await getLeaseSnapshot(id);
+        const afterLabel = describeLease(afterLease);
+        await recordAudit(audit, {
+          action: 'lease.update',
+          entity: 'lease',
+          entityId: id,
+          entityLabel: afterLabel,
+          summary: `Contrato de ${afterLabel} alterado`,
+          changes: diffAuditFields(beforeLease, afterLease, LEASE_AUDIT_FIELDS),
+        });
         break;
       }
-      case 'lease.terminate': {
-        await db.update(leases).set({ status: 'terminated', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
-        break;
-      }
-      case 'lease.suspend': {
-        await db.update(leases).set({ status: 'suspended', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
-        break;
-      }
+      case 'lease.terminate':
+      case 'lease.suspend':
       case 'lease.reactivate': {
-        await db.update(leases).set({ status: 'active', updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, String(formData['id'])));
+        const leaseId = String(formData['id']);
+        const nextStatus = intent === 'lease.terminate' ? 'terminated' : intent === 'lease.suspend' ? 'suspended' : 'active';
+        const actionLabel = intent === 'lease.terminate' ? 'encerrado' : intent === 'lease.suspend' ? 'suspenso' : 'reativado';
+        const beforeLease = await getLeaseSnapshot(leaseId);
+        await db.update(leases).set({ status: nextStatus, updatedAt: sql`(datetime('now'))` }).where(eq(leases.id, leaseId));
+        const afterLease = await getLeaseSnapshot(leaseId);
+        const leaseLabel = describeLease(afterLease);
+        await recordAudit(audit, {
+          action: intent,
+          entity: 'lease',
+          entityId: leaseId,
+          entityLabel: leaseLabel,
+          summary: `Contrato de ${leaseLabel} ${actionLabel}`,
+          changes: diffAuditFields(beforeLease, afterLease, LEASE_AUDIT_FIELDS),
+        });
         break;
       }
       case 'lease.delete': {
-        await db.delete(leases).where(eq(leases.id, String(formData['id'])));
+        const leaseId = String(formData['id']);
+        const beforeLease = await getLeaseSnapshot(leaseId);
+        const deletedLabel = describeLease(beforeLease);
+        await db.delete(leases).where(eq(leases.id, leaseId));
+        await recordAudit(audit, {
+          action: 'lease.delete',
+          entity: 'lease',
+          entityId: leaseId,
+          entityLabel: deletedLabel,
+          summary: `Contrato de ${deletedLabel} excluído`,
+          changes: diffAuditFields(beforeLease, null, LEASE_AUDIT_FIELDS),
+        });
         break;
       }
       case 'receipt.create':
@@ -475,7 +731,18 @@ app.post('/dashboard', async (c) => {
             paidAmount: paidAmount != null ? paidAmount : null,
             pdfPath: null,
           });
+          const created = await getReceiptSnapshot(id);
+          const createdLabel = describeReceipt(created);
+          await recordAudit(audit, {
+            action: 'receipt.create',
+            entity: 'receipt',
+            entityId: id,
+            entityLabel: createdLabel,
+            summary: `Pagamento lançado para ${createdLabel}`,
+            changes: diffAuditFields(null, created, RECEIPT_AUDIT_FIELDS),
+          });
         } else {
+          const before = await getReceiptSnapshot(id);
           await db.update(receipts).set({
             leaseId,
             tenantId,
@@ -489,6 +756,16 @@ app.post('/dashboard', async (c) => {
             pdfPath: null,
             updatedAt: sql`(datetime('now'))`,
           }).where(eq(receipts.id, id));
+          const after = await getReceiptSnapshot(id);
+          const afterLabel = describeReceipt(after);
+          await recordAudit(audit, {
+            action: 'receipt.update',
+            entity: 'receipt',
+            entityId: id,
+            entityLabel: afterLabel,
+            summary: `Pagamento de ${afterLabel} alterado`,
+            changes: diffAuditFields(before, after, RECEIPT_AUDIT_FIELDS),
+          });
         }
         break;
       }
@@ -508,7 +785,18 @@ app.post('/dashboard', async (c) => {
             now.getHours()
           ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
         }
+        const beforePay = await getReceiptSnapshot(id);
         await db.update(receipts).set({ paidAt, paidAmount: payAmount, updatedAt: sql`(datetime('now'))` }).where(eq(receipts.id, id));
+        const afterPay = await getReceiptSnapshot(id);
+        const paidLabel = describeReceipt(afterPay);
+        await recordAudit(audit, {
+          action: 'receipt.pay',
+          entity: 'receipt',
+          entityId: id,
+          entityLabel: paidLabel,
+          summary: `Baixa de ${paidLabel} registrada`,
+          changes: diffAuditFields(beforePay, afterPay, RECEIPT_AUDIT_FIELDS),
+        });
         break;
       }
       case 'receipt.generate-monthly': {
@@ -528,10 +816,11 @@ app.post('/dashboard', async (c) => {
           .from(leases)
           .where(and(eq(leases.status, 'active'), lte(leases.startDate, monthEnd), gte(leases.endDate, monthStart)));
 
+        const inserted = [];
         for (const lease of activeLeasesRows) {
           const dueDay = Math.min(Number(lease.dueDay) || 1, getDaysInMonth(year, month));
           const dueDate = `${monthKey}-${String(dueDay).padStart(2, '0')}`;
-          await db.insert(receipts).values({
+          const rows = await db.insert(receipts).values({
             id: createId(),
             leaseId: lease.id,
             tenantId: lease.tenantId,
@@ -543,12 +832,32 @@ app.post('/dashboard', async (c) => {
             amount: lease.rentAmount,
             pdfPath: null,
             generatedKey: `${lease.id}:${monthKey}`,
-          }).onConflictDoNothing({ target: receipts.generatedKey });
+          }).onConflictDoNothing({ target: receipts.generatedKey }).returning({ id: receipts.id });
+          inserted.push(...rows);
         }
+        await recordAudit(audit, {
+          action: 'receipt.generate-monthly',
+          entity: 'receipt',
+          entityId: monthKey,
+          entityLabel: `Competência ${monthKey.slice(5)}/${monthKey.slice(0, 4)}`,
+          summary: `Geração automática de ${inserted.length} pagamento(s) para ${monthKey.slice(5)}/${monthKey.slice(0, 4)}`,
+          metadata: { month: monthKey, count: inserted.length },
+        });
         break;
       }
       case 'receipt.delete': {
-        await db.delete(receipts).where(eq(receipts.id, String(formData['id'])));
+        const id = String(formData['id']);
+        const beforeDelete = await getReceiptSnapshot(id);
+        const deletedLabel = describeReceipt(beforeDelete);
+        await db.delete(receipts).where(eq(receipts.id, id));
+        await recordAudit(audit, {
+          action: 'receipt.delete',
+          entity: 'receipt',
+          entityId: id,
+          entityLabel: deletedLabel,
+          summary: `Pagamento de ${deletedLabel} excluído`,
+          changes: diffAuditFields(beforeDelete, null, RECEIPT_AUDIT_FIELDS),
+        });
         break;
       }
       case 'receipt.batch-pay': {
@@ -558,15 +867,44 @@ app.post('/dashboard', async (c) => {
         const paidAt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(
           now.getHours()
           ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const beforeBatch = await Promise.all(ids.map((receiptId) => getReceiptSnapshot(receiptId)));
         for (const receiptId of ids) {
           await db.update(receipts).set({ paidAt, paidAmount: sql`${receipts.amount}`, updatedAt: sql`(datetime('now'))` }).where(eq(receipts.id, receiptId));
+        }
+        const afterBatch = await Promise.all(ids.map((receiptId) => getReceiptSnapshot(receiptId)));
+        for (const [index, receiptId] of ids.entries()) {
+          const after = afterBatch[index] ?? null;
+          const batchLabel = describeReceipt(after);
+          await recordAudit(audit, {
+            action: 'receipt.batch-pay',
+            entity: 'receipt',
+            entityId: receiptId,
+            entityLabel: batchLabel,
+            summary: `Baixa em lote de ${batchLabel} registrada`,
+            changes: diffAuditFields(beforeBatch[index] ?? null, after, RECEIPT_AUDIT_FIELDS),
+            metadata: { batch: ids.length },
+          });
         }
         break;
       }
       case 'receipt.batch-delete': {
         const ids = (formData['ids'] || '').toString().split(',').filter(Boolean);
         if (!ids.length) throw new Error('Nenhum recibo selecionado.');
+        const beforeBatch = await Promise.all(ids.map((receiptId) => getReceiptSnapshot(receiptId)));
         await db.delete(receipts).where(inArray(receipts.id, ids));
+        for (const [index, receiptId] of ids.entries()) {
+          const before = beforeBatch[index] ?? null;
+          const batchLabel = describeReceipt(before);
+          await recordAudit(audit, {
+            action: 'receipt.batch-delete',
+            entity: 'receipt',
+            entityId: receiptId,
+            entityLabel: batchLabel,
+            summary: `Pagamento de ${batchLabel} excluído em lote`,
+            changes: diffAuditFields(before, null, RECEIPT_AUDIT_FIELDS),
+            metadata: { batch: ids.length },
+          });
+        }
         break;
       }
       default:
@@ -620,6 +958,7 @@ app.post('/settings', async (c) => {
   let landlordCpf = (await getSetting('landlord_cpf')) || '';
   let landlordEmail = (await getSetting('landlord_email')) || '';
   let appUrl = (await getSetting('app_url')) || '';
+  const audit = createAuditContext(c, await resolveAuditActor(userId));
 
   try {
     if (intent === 'save-landlord') {
@@ -630,6 +969,22 @@ app.post('/settings', async (c) => {
       await setSetting('landlord_name', name);
       await setSetting('landlord_cpf', cpf);
       await setSetting('landlord_email', email);
+      await recordAudit(audit, {
+        action: 'setting.landlord',
+        entity: 'setting',
+        entityId: 'landlord',
+        entityLabel: name,
+        summary: `Dados do locador "${name}" alterados`,
+        changes: diffAuditFields(
+          { name: landlordName, cpf: landlordCpf, email: landlordEmail },
+          { name, cpf, email },
+          [
+            { key: 'name', label: 'Nome' },
+            { key: 'cpf', label: 'CPF' },
+            { key: 'email', label: 'E-mail' },
+          ]
+        ),
+      });
       landlordName = name;
       landlordCpf = cpf;
       landlordEmail = email;
@@ -646,6 +1001,14 @@ app.post('/settings', async (c) => {
     if (intent === 'save-app-url') {
       const url = String(formData['app_url'] || '').trim();
       await setSetting('app_url', url);
+      await recordAudit(audit, {
+        action: 'setting.app-url',
+        entity: 'setting',
+        entityId: 'app_url',
+        entityLabel: 'URL pública do sistema',
+        summary: url ? `URL pública do sistema definida como "${url}"` : 'URL pública do sistema removida',
+        changes: diffAuditFields({ url: appUrl }, { url }, [{ key: 'url', label: 'URL pública' }]),
+      });
       appUrl = url;
 
       const html = renderHtml(
@@ -663,6 +1026,14 @@ app.post('/settings', async (c) => {
       const confirmPassword = String(formData['confirm_password'] || '');
       if (newPassword !== confirmPassword) throw new Error('Nova senha e confirmação não conferem.');
       await changePassword(userId, currentPassword, newPassword);
+      await recordAudit(audit, {
+        action: 'user.password',
+        entity: 'user',
+        entityId: userId,
+        entityLabel: user?.username ?? null,
+        summary: `Senha do usuário "${user?.username || 'administrador'}" alterada`,
+        metadata: { username: user?.username ?? null },
+      });
 
       const html = renderHtml(
         'Aluxen | Configurações',
@@ -717,7 +1088,6 @@ export async function computeMetrics(): Promise<MetricsPayload> {
   const categoryMap = new Map<string, { count: number; total: number; label: string }>();
   const tenantPaidMap = new Map<string, { total: number; count: number }>();
 
-  const labelByCategory: Record<string, string> = { rent: 'Aluguel', extra: 'Avulsa' };
   const monthsBack = 6;
 
   for (const r of allReceiptsRows) {
@@ -754,7 +1124,7 @@ export async function computeMetrics(): Promise<MetricsPayload> {
     monthlyMap.set(monthKey, monthEntry);
 
     const cat = r.category || 'rent';
-    const catEntry = categoryMap.get(cat) || { count: 0, total: 0, label: labelByCategory[cat] || cat };
+    const catEntry = categoryMap.get(cat) || { count: 0, total: 0, label: RECEIPT_CATEGORY_LABELS[cat] || cat };
     catEntry.count++;
     catEntry.total += amount;
     categoryMap.set(cat, catEntry);
@@ -842,6 +1212,40 @@ app.get('/metrics', async (c) => {
   return c.json(metrics);
 });
 
+// Histórico de auditoria (aba Histórico) — página de eventos com filtros.
+app.get('/audit', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+
+  const query = readAuditQuery(new URLSearchParams(c.req.url.split('?')[1] || ''));
+  return c.json(await listAudit(query));
+});
+
+// Exportação CSV da trilha com os mesmos filtros da aba Histórico.
+app.get('/audit/export', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.redirect('/login');
+
+  const query = readAuditQuery(new URLSearchParams(c.req.url.split('?')[1] || ''));
+  const entries = await listAuditForExport(query);
+  const filename = `aluxen-historico-${new Date().toISOString().split('T')[0]}.csv`;
+
+  await recordAudit(createAuditContext(c, await resolveAuditActor(userId)), {
+    action: 'history.export',
+    entity: 'backup',
+    entityLabel: filename,
+    summary: `Histórico de auditoria exportado em CSV com ${entries.length} evento(s)`,
+    metadata: { fileName: filename, count: entries.length },
+  });
+
+  return new Response(buildAuditCsv(entries), {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+});
+
 app.get('/export', async (c) => {
   const userId = requireUserId(c);
   if (!userId) return c.redirect('/login');
@@ -862,6 +1266,21 @@ app.get('/export', async (c) => {
   };
 
   const filename = `aluxen-backup-${new Date().toISOString().split('T')[0]}.json`;
+
+  await recordAudit(createAuditContext(c, await resolveAuditActor(userId)), {
+    action: 'backup.export',
+    entity: 'backup',
+    entityLabel: filename,
+    summary: `Backup exportado com ${tenantsRows.length} inquilino(s), ${propertiesRows.length} imóvel(is), ${leasesRows.length} contrato(s) e ${receiptsRows.length} pagamento(s)`,
+    metadata: {
+      fileName: filename,
+      tenants: tenantsRows.length,
+      properties: propertiesRows.length,
+      leases: leasesRows.length,
+      receipts: receiptsRows.length,
+    },
+  });
+
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
       'Content-Type': 'application/json',
@@ -974,6 +1393,20 @@ app.post('/import', async (c) => {
     return c.text(error instanceof Error ? error.message : 'Erro ao importar dados.', 400);
   }
 
+  await recordAudit(createAuditContext(c, await resolveAuditActor(userId)), {
+    action: 'backup.import',
+    entity: 'backup',
+    entityLabel: file.name,
+    summary: `Backup importado com ${data.tenants.length} inquilino(s), ${data.properties.length} imóvel(is), ${data.leases.length} contrato(s) e ${data.receipts.length} pagamento(s)`,
+    metadata: {
+      fileName: file.name,
+      tenants: data.tenants.length,
+      properties: data.properties.length,
+      leases: data.leases.length,
+      receipts: data.receipts.length,
+    },
+  });
+
   return c.redirect('/dashboard?tab=dashboard&toast=importado');
 });
 
@@ -1051,6 +1484,23 @@ app.get('/pdf', async (c) => {
     signature: showSignature,
     baseUrl: await resolvePublicBaseUrl(c),
   });
+
+  const receiptLabel = describeReceipt({
+    tenant_name: receipt.tenant_name,
+    property_name: receipt.property_name,
+    dueDate: receipt.due_date,
+    description: receipt.description,
+  });
+
+  await recordAudit(createAuditContext(c, await resolveAuditActor(userId), userId ? 'web' : 'public'), {
+    action: 'document.receipt',
+    entity: 'document',
+    entityId: receipt.id,
+    entityLabel: receiptLabel,
+    summary: `Recibo de ${receiptLabel} emitido`,
+    metadata: { kind: 'Recibo', signature: showSignature },
+  });
+
   return new Response(pdfBytes as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
@@ -1124,6 +1574,17 @@ app.get('/contract-pdf', async (c) => {
     status: lease.status,
     baseUrl: await resolvePublicBaseUrl(c),
   });
+
+  const leaseLabel = describeLease(lease);
+  await recordAudit(createAuditContext(c, await resolveAuditActor(userId), userId ? 'web' : 'public'), {
+    action: 'document.contract',
+    entity: 'document',
+    entityId: lease.id,
+    entityLabel: leaseLabel,
+    summary: `Contrato de ${leaseLabel} emitido`,
+    metadata: { kind: 'Contrato', signature: true },
+  });
+
   return new Response(pdfBytes as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
@@ -1358,7 +1819,14 @@ app.post('/api/whatsapp/logout', async (c) => {
   const userId = requireUserId(c);
   if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
 
+  const audit = createAuditContext(c, await resolveAuditActor(userId));
   await whatsappLoginManager.logout();
+  await recordAudit(audit, {
+    action: 'whatsapp.logout',
+    entity: 'whatsapp',
+    entityLabel: 'Sessão do WhatsApp Web',
+    summary: 'Sessão do WhatsApp Web desconectada',
+  });
   return c.json({ ok: true, message: 'WhatsApp desconectado com sucesso.' });
 });
 
@@ -1536,6 +2004,8 @@ app.post('/api/whatsapp/send', async (c) => {
     return c.json({ error: 'Destinatário e mensagem são obrigatórios.' }, 400);
   }
 
+  const audit = createAuditContext(c, await resolveAuditActor(userId));
+  const destination = formatWhatsAppNumber(to) || to;
   const job = createSendJob(userId);
 
   // O envio roda em segundo plano; o cliente acompanha as etapas por /api/whatsapp/send/status.
@@ -1545,11 +2015,25 @@ app.post('/api/whatsapp/send', async (c) => {
         updateSendJobStage(job.id, stage)
       );
       completeSendJob(job.id, result);
+      await recordAudit(audit, {
+        action: 'whatsapp.send',
+        entity: 'whatsapp',
+        entityId: job.id,
+        entityLabel: destination,
+        summary: `Mensagem enviada para ${destination} pelo WhatsApp`,
+        metadata: { phone: to, jobId: job.id },
+      });
     } catch (error) {
-      failSendJob(
-        job.id,
-        error instanceof Error ? error.message : 'Falha ao enviar mensagem via WhatsApp.'
-      );
+      const reason = error instanceof Error ? error.message : 'Falha ao enviar mensagem via WhatsApp.';
+      failSendJob(job.id, reason);
+      await recordAudit(audit, {
+        action: 'whatsapp.send-failed',
+        entity: 'whatsapp',
+        entityId: job.id,
+        entityLabel: destination,
+        summary: `Falha ao enviar mensagem para ${destination} pelo WhatsApp`,
+        metadata: { phone: to, jobId: job.id, reason: reason.slice(0, 300) },
+      });
     }
   })();
 
@@ -1570,10 +2054,14 @@ app.get('/api/whatsapp/send/status', async (c) => {
 
 const port = Number(process.env.PORT) || 3000;
 const lanIp = getLocalIpAddress();
-console.log(`🚀 Aluxen rodando localmente em http://localhost:${port}`);
-if (lanIp) {
-  console.log(`📱 Acesso pelo celular (mesmo Wi-Fi): http://${lanIp}:${port}`);
-}
+appLog.info('Aluxen iniciado', {
+  url: `http://localhost:${port}`,
+  lanUrl: lanIp ? `http://${lanIp}:${port}` : undefined,
+  database: sqlite.filename,
+  nodeEnv: process.env.NODE_ENV || 'development',
+  pid: process.pid,
+});
+
 export default {
   port,
   fetch: app.fetch,

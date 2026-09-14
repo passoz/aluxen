@@ -73,7 +73,7 @@ export type PendingIds = {
   receipts: Set<string>;
 };
 
-export const tabs = ['dashboard', 'tenants', 'properties', 'leases', 'receipts'] as const;
+export const tabs = ['dashboard', 'tenants', 'properties', 'leases', 'receipts', 'history'] as const;
 export type Tab = (typeof tabs)[number];
 
 export interface MetricsPayload {

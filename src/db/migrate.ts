@@ -3,6 +3,9 @@ import { db, getSqlite } from './index';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('db.migrate');
 
 export function runMigrations(customMigrationsFolder?: string) {
   const migrationsFolder = customMigrationsFolder || path.join(process.cwd(), 'drizzle');
@@ -75,7 +78,7 @@ export function runMigrations(customMigrationsFolder?: string) {
       }
     }
   } catch (err) {
-    console.warn('Pre-migration check warning:', err);
+    log.warn('Verificação pré-migração falhou', { error: err });
   }
 
   // 3. Executar migrações do Drizzle
@@ -83,8 +86,8 @@ export function runMigrations(customMigrationsFolder?: string) {
 }
 
 if (import.meta.main) {
-  console.log('Running migrations...');
+  log.info('Aplicando migrações pendentes');
   runMigrations();
-  console.log('Migrations complete!');
+  log.info('Migrações aplicadas com sucesso');
 }
 

@@ -262,10 +262,26 @@ export function Toast({ message, tone, onClose }: { message: string; tone: 'succ
   return <div className={`toast ${tone}`}>{message}</div>;
 }
 
-export function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
-      <div className="modal-card" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`modal-card${wide ? ' modal-card-wide' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="modal-header">
           <h3>{title}</h3>
           <button type="button" className="btn btn-sm btn-secondary" onClick={onClose}>

@@ -19,7 +19,9 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
   - [8. Integração e Robô do WhatsApp Web](#8-integração-e-robô-do-whatsapp-web)
   - [9. Configurações do Locador & URL Pública](#9-configurações-do-locador--url-pública)
   - [10. Backup & Restauração JSON](#10-backup--restauração-json)
-  - [11. PWA, Responsividade & Sincronização Offline](#11-pwa-responsividade--sincronização-offline)
+  - [11. Histórico & Auditoria](#11-histórico--auditoria)
+  - [12. PWA, Responsividade & Sincronização Offline](#12-pwa-responsividade--sincronização-offline)
+  - [13. Observabilidade & Logs Estruturados](#13-observabilidade--logs-estruturados)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Scripts Disponíveis](#-scripts-disponíveis)
@@ -126,11 +128,24 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Exportação Completa (`/export`)**: Gera download imediato de arquivo `aluxen-backup-YYYY-MM-DD.json` contendo todas as tabelas (inquilinos, imóveis, contratos, recibos e configurações).
 - **Restauração / Importação (`/import`)**: Upload do arquivo JSON para restaurar ou migrar a base inteira em uma transação atômica.
 
-### 11. PWA, Responsividade & Sincronização Offline
+### 11. Histórico & Auditoria
+- **Trilha de auditoria completa (`audit_logs`)**: toda operação relevante é registrada com autor, data/hora, IP, protocolo da requisição e o **diff campo a campo** (valor antes → valor depois) já formatado em português.
+- Cobre cadastros e alterações de inquilinos e imóveis, criação/alteração/encerramento de contratos, lançamentos, baixas (individuais e em lote), geração mensal, alteração de valores e de dados do locador, troca de senha, **emissões de PDF** (recibo e contrato), envios pelo WhatsApp, backups e acessos (login, tentativas negadas e saída).
+- **Aba "Histórico" no painel**: filtros por área, ação, usuário e período, busca textual, ordenação cronológica, paginação, detalhe do evento com tabela *antes/depois* e **exportação CSV** (compatível com Excel em português).
+- Senhas, tokens e cookies **nunca** são gravados na trilha.
+
+### 12. PWA, Responsividade & Sincronização Offline
 - Suporte a Progressive Web App com manifesto (`/manifest.webmanifest`) e ícones em alta resolução para instalação no celular (iOS e Android).
 - **Fila de Sincronização Offline**: Ações realizadas sem conexão à internet são retidas em `localStorage` e reenviadas ao servidor automaticamente assim que a conectividade for restabelecida.
 - Sidebar retrátil com persistência no navegador e Drawer mobile para operação confortável em telas pequenas.
 - Seletor de tema **Claro / Escuro** integrado.
+
+### 13. Observabilidade & Logs Estruturados
+- **Logger estruturado** (`src/utils/logger.ts`): uma linha por evento com timestamp ISO, nível (`debug`, `info`, `warn`, `error`), escopo (`http`, `audit`, `db`, `whatsapp`, `app`) e campos tipados.
+- **Dois formatos**: legível com cores de leitura no terminal (`pretty`, padrão em TTY) e **JSON Lines** para containers/observabilidade (`LOG_FORMAT=json`, padrão fora de TTY).
+- **Log de requisições**: método, rota, status, duração em ms, IP, usuário autenticado e `requestId` — o mesmo protocolo aparece na resposta de erro e na trilha de auditoria. Estáticos vão para `debug`; 4xx para `warn`; 5xx e requisições acima de 1 s para `error`/`warn`.
+- **Tratamento de erros**: exceções não tratadas são logadas com rastreio de pilha e devolvem uma página/JSON amigável com o protocolo de correlação (em vez de "Internal Server Error" genérico).
+- **Redação automática** de campos sensíveis (`password`, `token`, `secret`, `cookie`, `hash`, `session`) em qualquer log.
 
 ---
 
@@ -196,6 +211,8 @@ O Aluxen funciona perfeitamente com valores padrão pré-configurados, mas você
 | `SEED_PASSWORD` | `senha-de-teste` | Senha inicial do usuário administrador. |
 | `DEFAULT_LANDLORD_NAME`| `Locador` | Nome padrão do locador inserido nas configurações iniciais. |
 | `DEFAULT_LANDLORD_CPF` | `""` | CPF inicial do locador. |
+| `LOG_LEVEL` | `info` | Nível mínimo dos logs: `debug`, `info`, `warn`, `error` ou `silent`. |
+| `LOG_FORMAT` | `json` fora de TTY, `pretty` em terminal | Formato de saída do logger (`json` para JSON Lines ou `pretty` para leitura humana). |
 
 ---
 
@@ -314,6 +331,7 @@ aluxen/
 │   ├── client/                 # Componentes React de página hidratados no navegador
 │   │   ├── index.tsx           # Entry point da hidratação com hydrateRoot
 │   │   ├── dashboard.tsx       # Painel administrativo com abas e modais
+│   │   ├── history.tsx         # Aba de Histórico e Auditoria (filtros e diff)
 │   │   ├── login.tsx           # Tela de autenticação com tratamento de erros
 │   │   ├── settings.tsx        # Configurações do locador, WhatsApp e senhas
 │   │   └── verify.tsx          # Portal público de validação de documentos
@@ -326,11 +344,15 @@ aluxen/
 │   │   ├── migrate.ts          # Executor de migrações automáticas
 │   │   └── seed-demo.ts        # Dados demonstrativos para testes
 │   ├── types/                  # Tipagens TypeScript compartilhadas
-│   │   └── dashboard.ts        # Tipos de entidades (Tenant, Property, Lease, Receipt)
+│   │   ├── dashboard.ts        # Tipos de entidades (Tenant, Property, Lease, Receipt)
+│   │   └── http.ts             # Variáveis tipadas de request do Hono (requestId)
 │   ├── utils/                  # Utilitários de sistema
 │   │   ├── auth.ts             # Lógica de login e alteração de senha (bcryptjs)
 │   │   ├── auth-token.ts       # Geração e checagem de tokens HMAC e QR Codes
 │   │   ├── session.ts          # Gerenciamento do cookie de sessão HTTP-only
+│   │   ├── logger.ts           # Logger estruturado (níveis, JSON/pretty, redação)
+│   │   ├── audit.ts            # Trilha de auditoria: gravação, diffs e consultas
+│   │   ├── audit-meta.ts       # Rótulos e formatação de eventos (cliente/servidor)
 │   │   ├── format.ts           # Formatadores de moeda, datas BR, CPF e telefone
 │   │   ├── id.ts               # Gerador de identificadores únicos UUIDv7
 │   │   ├── pdf.ts              # Gerador do Recibo de Pagamento em PDF
@@ -343,7 +365,8 @@ aluxen/
 │       ├── login.ts            # Script CLI para pareamento via terminal
 │       └── types.ts            # Interfaces e estados de conexão
 └── test/                       # Suíte de testes automatizados
-    ├── app.test.ts             # Testes de integração de rotas, PDFs e APIs
+    ├── app.test.ts             # Testes de integração de rotas, PDFs, APIs e auditoria
+    ├── logger.test.ts          # Testes do logger (níveis, formatos e redação)
     ├── datepicker.test.tsx     # Testes unitários do seletor de datas
     └── migration.test.ts       # Testes de integridade do esquema e migrações
 ```

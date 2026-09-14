@@ -7,6 +7,9 @@ import { existsSync, mkdirSync } from 'fs';
 import * as schema from './schema';
 import { createId } from '../utils/id';
 import { runMigrations } from './migrate';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('db');
 
 declare global {
   var __aluxenSqlite: Database | undefined;
@@ -102,7 +105,7 @@ export async function initializeDatabase(): Promise<void> {
           client.run('PRAGMA foreign_keys=ON;');
         }
       } catch (err) {
-        console.warn('Receipts schema alignment notice:', err);
+        log.warn('Ajuste de schema de recibos ignorado', { error: err });
       }
 
       // Seed do usuário administrador (apenas se não existir usuário cadastrado)

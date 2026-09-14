@@ -2,6 +2,9 @@ import puppeteer from 'puppeteer-core';
 import type { Browser, Page } from 'puppeteer-core';
 import { resolve } from 'node:path';
 import { existsSync, unlinkSync } from 'node:fs';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('whatsapp.browser');
 
 export function resolveProfileDir(): string {
   if (process.env.WHATSAPP_PROFILE_DIR) {
@@ -112,7 +115,7 @@ export async function openWhatsApp(
   await page.setUserAgent(DESKTOP_USER_AGENT);
 
   if (!silent) {
-    console.log('[WhatsApp] Acessando web.whatsapp.com...');
+    log.debug('Acessando web.whatsapp.com');
   }
 
   await page.goto('https://web.whatsapp.com', {

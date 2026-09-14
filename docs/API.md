@@ -14,6 +14,7 @@ Esta documentação cataloga todos os endpoints HTTP expostos pela aplicação B
 6. [Emissão de Documentos em PDF](#6-emissão-de-documentos-em-pdf)
 7. [Portal Público de Validação](#7-portal-público-de-validação)
 8. [Integração e Automação do WhatsApp](#8-integração-e-automação-do-whatsapp)
+9. [Histórico e Auditoria](#9-histórico-e-auditoria)
 
 ---
 
@@ -73,6 +74,8 @@ Invalida o cookie de sessão e redireciona para `/login`.
 
 ### `POST /dashboard` (Mutations)
 Executa operações de escrita no sistema. Identificado pelo campo `intent`.
+
+Toda mutação concluída com sucesso é registrada na **trilha de auditoria** (`audit_logs`) com autor, data/hora, IP, protocolo da requisição e o diff dos campos alterados (valores antes/depois). Ajustes que não alteram nenhum campo não geram evento.
 
 #### Inquilinos (`tenants`):
 - `intent: "tenant.create"`:
@@ -290,3 +293,65 @@ Consulta o andamento do envio iniciado em `POST /api/whatsapp/send`.
 }
 ```
 Jobs expiram 5 minutos após a última atualização. Envios de outros usuários retornam `404`.
+
+---
+
+## 9. Histórico e Auditoria
+
+### `GET /dashboard?tab=history`
+Renderiza a aba **Histórico e Auditoria** no servidor, já com a primeira página da trilha (25 eventos mais recentes) embutida no HTML. Os filtros subsequentes são carregados via `GET /audit`.
+
+### `GET /audit`
+- **Autenticação**: Requerida (Sessão).
+- **Resposta**: `200 OK` (JSON).
+
+| Query Param | Padrão | Descrição |
+|---|---|---|
+| `page` | `1` | Página solicitada. |
+| `pageSize` | `25` | Eventos por página (mínimo 5, máximo 200). |
+| `order` | `desc` | Ordenação cronológica (`asc` ou `desc`). |
+| `entity` | — | Filtra pela área (`tenant`, `property`, `lease`, `receipt`, `setting`, `user`, `document`, `whatsapp`, `backup`). |
+| `action` | — | Filtra pela ação exata (ex.: `tenant.update`, `receipt.pay`, `document.receipt`). |
+| `actor` | — | Filtra pelo nome do usuário que executou a ação. |
+| `from` / `to` | — | Intervalo de datas (`YYYY-MM-DD`), inclusivo, no fuso do servidor. |
+| `search` | — | Busca textual em resumo, registro, autor e identificador. |
+
+```json
+{
+  "items": [
+    {
+      "id": "01a0a2f8-...",
+      "createdAt": "2026-09-14T09:42:11.503",
+      "actorId": "01a08355-...",
+      "actorName": "passoz",
+      "action": "receipt.pay",
+      "entity": "receipt",
+      "entityId": "01a09fee-...",
+      "entityLabel": "Clarice Lispector · Casa das Dunas · 09/2026",
+      "summary": "Baixa de Clarice Lispector · Casa das Dunas · 09/2026 registrada",
+      "changes": [
+        { "field": "paidAt", "label": "Pago em", "from": null, "to": "10/09/2026 09:42" },
+        { "field": "paidAmount", "label": "Valor pago", "from": null, "to": "R$ 2.500,00" }
+      ],
+      "metadata": {},
+      "origin": "web",
+      "ip": "192.168.0.10",
+      "userAgent": "Mozilla/5.0 ...",
+      "requestId": "70580d14"
+    }
+  ],
+  "total": 128,
+  "page": 1,
+  "pageSize": 25,
+  "actors": ["passoz"]
+}
+```
+
+`createdAt` usa o horário local do servidor (`YYYY-MM-DDTHH:mm:ss.SSS`), a mesma convenção dos demais horários do sistema. `changes` traz valores já formatados para leitura (moeda em BRL, datas em `dd/mm/aaaa`, situações traduzidas). `metadata` guarda contexto adicional do evento (competência gerada, lote, protocolo de envio, motivo de falha). Segredos nunca são gravados: senhas, tokens e sessões são omitidos ou redigidos.
+
+### `GET /audit/export`
+- **Autenticação**: Requerida (Sessão).
+- **Query Params**: os mesmos filtros de `GET /audit`.
+- **Resposta**: `200 OK` com `Content-Type: text/csv; charset=utf-8` e `Content-Disposition: attachment; filename="aluxen-historico-YYYY-MM-DD.csv"`.
+- CSV com BOM UTF-8 e separador `;` (abre direto no Excel em português), com as colunas *Data/Hora, Usuário, Ação, Registro, Resumo, Alterações, Origem, IP, Request*. Limitado a 5.000 linhas por arquivo.
+- A própria exportação é registrada na trilha (`history.export`).

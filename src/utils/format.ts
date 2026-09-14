@@ -38,6 +38,18 @@ export function getReceiptStatusLabel(status: string) {
   return 'A vencer';
 }
 
+export const LEASE_STATUS_LABELS: Record<string, string> = {
+  active: 'Ativo',
+  suspended: 'Suspenso',
+  season: 'Temporada',
+  terminated: 'Encerrado',
+};
+
+export const RECEIPT_CATEGORY_LABELS: Record<string, string> = {
+  rent: 'Aluguel',
+  extra: 'Avulsa',
+};
+
 export function formatCurrency(value: string | number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value));
 }

@@ -2,11 +2,14 @@ import { initializeDatabase, setSetting } from './index';
 import { db } from './index';
 import { tenants, properties, leases, receipts } from './schema';
 import { createId } from '../utils/id';
+import { createLogger } from '../utils/logger';
+
+const log = createLogger('db.seed');
 
 export async function seedDemoData(): Promise<void> {
   await initializeDatabase();
 
-  console.log('Populando banco de dados de teste com dados de demonstração...');
+  log.info('Populando banco de dados de demonstração');
 
   // Limpar tabelas para dados frescos de teste (mantendo usuário admin)
   await db.delete(receipts);
@@ -73,12 +76,13 @@ export async function seedDemoData(): Promise<void> {
     { id: createId(), leaseId: l2, dueDate: '2026-08-25', paidAt: null, amount: 3200.0, generatedKey: `${l2}:2026-08-late` },
   ]);
 
-  console.log('✓ Banco de demonstração populado com sucesso!');
-  console.log('- 5 Inquilinos cadastrados');
-  console.log('- 4 Imóveis cadastrados');
-  console.log('- 4 Contratos de Locação (3 ativos, 1 encerrado)');
-  console.log('- 6 Recibos de Pagamento (3 pagos, 2 a vencer, 1 vencido)');
-  console.log('- Usuário: passoz | Senha: senha-de-teste');
+  log.info('Banco de demonstração populado', {
+    tenants: 5,
+    properties: 4,
+    leases: 4,
+    receipts: 6,
+    user: 'passoz',
+  });
 }
 
 if (import.meta.main) {

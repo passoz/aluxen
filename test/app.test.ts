@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { Receipt } from '../src/types/dashboard';
+import type { AuditPage } from '../src/utils/audit-meta';
 import { inflateSync } from 'node:zlib';
 import server from '../src/index';
 import { generateAuthToken } from '../src/utils/auth-token';
-import { getReceiptStatus, getReceiptStatusLabel } from '../src/utils/format';
+import { formatCurrency, getReceiptStatus, getReceiptStatusLabel } from '../src/utils/format';
+import { createId } from '../src/utils/id';
 
 function extractPdfText(bytes: ArrayBuffer): string {
   const binary = Buffer.from(bytes);
@@ -1106,5 +1108,220 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(html).toContain('Top inquilinos por valor pago');
     expect(html).toContain('Ocupação por imóvel');
     expect(html).not.toContain('Carregando métricas…');
+  });
+
+  async function fetchAudit(query: string): Promise<AuditPage> {
+    const res = await server.fetch(
+      new Request(`http://localhost:3000/audit?${query}`, {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    return (await res.json()) as AuditPage;
+  }
+
+  async function postDashboard(fields: Record<string, string>): Promise<Response> {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.set(key, value);
+    return server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: form,
+      })
+    );
+  }
+
+  it('GET /audit exige autenticação e devolve página filtrada para sessões válidas', async () => {
+    const anonymous = await server.fetch(new Request('http://localhost:3000/audit'));
+    expect(anonymous.status).toBe(401);
+
+    const page = await fetchAudit('entity=tenant&page=1&pageSize=5');
+    expect(page.page).toBe(1);
+    expect(page.pageSize).toBe(5);
+    expect(page.total).toBeGreaterThan(0);
+    expect(page.items.length).toBeLessThanOrEqual(5);
+    expect(page.items.every((item) => item.entity === 'tenant')).toBe(true);
+    expect(page.actors).toContain('passoz');
+    expect(page.items[0]?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}$/);
+  });
+
+  it('trilha registra alteração de nome do inquilino com valores antes e depois', async () => {
+    const tenantId = createId();
+
+    const createRes = await postDashboard({
+      intent: 'tenant.create',
+      id: tenantId,
+      name: 'Auditoria Antes',
+      email: 'auditoria@aluxen.test',
+      phone: '(22) 90000-0000',
+    });
+    expect(createRes.status).toBe(200);
+
+    const updateRes = await postDashboard({
+      intent: 'tenant.update',
+      id: tenantId,
+      name: 'Auditoria Depois',
+      email: 'auditoria@aluxen.test',
+      phone: '(22) 90000-0000',
+    });
+    expect(updateRes.status).toBe(200);
+
+    const page = await fetchAudit(`entity=tenant&action=tenant.update&search=${tenantId}`);
+    expect(page.total).toBe(1);
+
+    const entry = page.items[0]!;
+    expect(entry.actorName).toBe('passoz');
+    expect(entry.origin).toBe('web');
+    expect(entry.entityLabel).toBe('Auditoria Depois');
+    expect(entry.summary).toContain('Auditoria Depois');
+    expect(entry.changes).toEqual([
+      { field: 'name', label: 'Nome', from: 'Auditoria Antes', to: 'Auditoria Depois' },
+    ]);
+
+    // Campos inalterados não geram ruído na trilha
+    expect(entry.changes.some((change) => change.field === 'email')).toBe(false);
+
+    const deleteRes = await postDashboard({ intent: 'tenant.delete', id: tenantId });
+    expect(deleteRes.status).toBe(200);
+  });
+
+  it('trilha registra alteração de valor do pagamento em formato monetário', async () => {
+    const receiptId = createId();
+    const baseFields = {
+      id: receiptId,
+      lease_id: createdLeaseId,
+      category: 'rent',
+      due_date: '2026-07-10',
+    };
+
+    const createRes = await postDashboard({ intent: 'receipt.create', ...baseFields, amount: '1200.50' });
+    expect(createRes.status).toBe(200);
+
+    const updateRes = await postDashboard({ intent: 'receipt.update', ...baseFields, amount: '1350.75' });
+    expect(updateRes.status).toBe(200);
+
+    const page = await fetchAudit(`entity=receipt&action=receipt.update&search=${receiptId}`);
+    expect(page.total).toBe(1);
+
+    const entry = page.items[0]!;
+    expect(entry.entity).toBe('receipt');
+    const amountChange = entry.changes.find((change) => change.field === 'amount');
+    expect(amountChange?.label).toBe('Valor');
+    expect(amountChange?.from).toBe(formatCurrency(1200.5));
+    expect(amountChange?.to).toBe(formatCurrency(1350.75));
+
+    const deleteRes = await postDashboard({ intent: 'receipt.delete', id: receiptId });
+    expect(deleteRes.status).toBe(200);
+  });
+
+  it('trilha registra emissão de recibo em PDF', async () => {
+    const receiptId = createId();
+    const createRes = await postDashboard({
+      intent: 'receipt.create',
+      id: receiptId,
+      lease_id: createdLeaseId,
+      category: 'rent',
+      due_date: '2026-08-10',
+      amount: '900',
+      paid_at: '2026-08-10T09:30',
+    });
+    expect(createRes.status).toBe(200);
+
+    const pdfRes = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${receiptId}`, { headers: { Cookie: sessionCookie } })
+    );
+    expect(pdfRes.status).toBe(200);
+
+    const page = await fetchAudit(`entity=document&action=document.receipt&search=${receiptId}`);
+    expect(page.total).toBeGreaterThanOrEqual(1);
+    const entry = page.items[0]!;
+    expect(entry.summary).toContain('emitido');
+    expect(entry.metadata['kind']).toBe('Recibo');
+    expect(entry.actorName).toBe('passoz');
+
+    const deleteRes = await postDashboard({ intent: 'receipt.delete', id: receiptId });
+    expect(deleteRes.status).toBe(200);
+  });
+
+  it('trilha registra troca de senha sem gravar as senhas informadas', async () => {
+    const temporary = 'troca-temporaria-456';
+
+    const changeForm = new FormData();
+    changeForm.set('intent', 'change-password');
+    changeForm.set('current_password', 'senha-de-teste');
+    changeForm.set('new_password', temporary);
+    changeForm.set('confirm_password', temporary);
+    const changeRes = await server.fetch(
+      new Request('http://localhost:3000/settings', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: changeForm,
+      })
+    );
+    expect(changeRes.status).toBe(200);
+    expect(await changeRes.text()).toContain('Senha alterada com sucesso.');
+
+    const restoreForm = new FormData();
+    restoreForm.set('intent', 'change-password');
+    restoreForm.set('current_password', temporary);
+    restoreForm.set('new_password', 'senha-de-teste');
+    restoreForm.set('confirm_password', 'senha-de-teste');
+    const restoreRes = await server.fetch(
+      new Request('http://localhost:3000/settings', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: restoreForm,
+      })
+    );
+    expect(restoreRes.status).toBe(200);
+
+    const page = await fetchAudit('action=user.password');
+    expect(page.total).toBeGreaterThanOrEqual(2);
+    expect(page.items[0]!.summary).toContain('Senha do usuário');
+    const serialized = JSON.stringify(page);
+    expect(serialized).not.toContain(temporary);
+    expect(serialized).not.toContain('senha-de-teste');
+  });
+
+  it('trilha registra tentativa de acesso negada sem expor a senha', async () => {
+    const page = await fetchAudit('action=auth.login-failed&search=usuario_inexistente');
+    expect(page.total).toBeGreaterThanOrEqual(1);
+
+    const entry = page.items[0]!;
+    expect(entry.entityLabel).toBe('usuario_inexistente');
+    expect(entry.metadata['reason']).toBe('Credenciais inválidas');
+    expect(JSON.stringify(page)).not.toContain('senha_errada');
+  });
+
+  it('GET /audit/export gera CSV com cabeçalho, BOM e eventos filtrados', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/audit/export?entity=tenant&action=tenant.create', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/csv');
+    expect(res.headers.get('content-disposition')).toContain('aluxen-historico-');
+
+    const csv = await res.text();
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    expect(csv).toContain('"Data/Hora";"Usuário";"Ação";"Registro";"Resumo"');
+    expect(csv).toContain('tenant.create');
+    expect(csv).not.toContain('lease.create');
+  });
+
+  it('GET /dashboard?tab=history renderiza a trilha de auditoria no SSR', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/dashboard?tab=history', {
+        headers: { Cookie: sessionCookie },
+      })
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Histórico e Auditoria');
+    expect(html).toContain('Trilha de auditoria');
+    expect(html).toContain('history-table');
+    expect(html).toContain('Exportar CSV');
   });
 });
