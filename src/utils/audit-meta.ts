@@ -117,6 +117,10 @@ export const ACTION_META: Record<string, ActionMeta> = {
   'setting.landlord': { label: 'Dados do locador alterados', entity: 'setting', tone: 'update' },
   'setting.app-url': { label: 'URL pública alterada', entity: 'setting', tone: 'update' },
   'user.password': { label: 'Senha alterada', entity: 'user', tone: 'update' },
+  'auth.client-login': { label: 'Acesso do locatário', entity: 'tenant', tone: 'access' },
+  'auth.client-login-failed': { label: 'Acesso do locatário negado', entity: 'tenant', tone: 'failure' },
+  'auth.client-logout': { label: 'Saída do locatário', entity: 'tenant', tone: 'access' },
+  'auth.client-password': { label: 'Senha do locatário alterada', entity: 'tenant', tone: 'update' },
   'auth.login': { label: 'Acesso ao sistema', entity: 'user', tone: 'access' },
   'auth.login-failed': { label: 'Tentativa de acesso negada', entity: 'user', tone: 'failure' },
   'auth.logout': { label: 'Saída do sistema', entity: 'user', tone: 'access' },
@@ -133,6 +137,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
 export const AUDIT_ORIGIN_LABELS: Record<string, string> = {
   web: 'Painel',
   public: 'Link público',
+  client: 'Área do Cliente',
   job: 'Rotina automática',
 };
 

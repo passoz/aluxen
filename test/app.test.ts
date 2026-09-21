@@ -4,7 +4,7 @@ import type { AuditPage } from '../src/utils/audit-meta';
 import { inflateSync } from 'node:zlib';
 import server from '../src/index';
 import { generateAuthToken } from '../src/utils/auth-token';
-import { formatCurrency, getReceiptStatus, getReceiptStatusLabel } from '../src/utils/format';
+import { formatCurrency, formatDateBr, getReceiptStatus, getReceiptStatusLabel } from '../src/utils/format';
 import { createId } from '../src/utils/id';
 
 function extractPdfText(bytes: ArrayBuffer): string {
@@ -1327,5 +1327,360 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(html).toContain('Trilha de auditoria');
     expect(html).toContain('history-table');
     expect(html).toContain('Exportar CSV');
+  });
+});
+
+describe('Área do Cliente (locatário)', () => {
+  const CLIENT_IP = '203.0.113.10';
+  const NEW_PASSWORD = 'portal-seguro-1';
+  // Cada execução cria o próprio cadastro: o banco de testes pode ser reaproveitado entre execuções.
+  const RUN_TAG = crypto.randomUUID().slice(0, 8).toUpperCase();
+  const TENANT_A_NAME = `Locatário Portal A ${RUN_TAG}`;
+  const TENANT_B_NAME = `Locatário Portal B ${RUN_TAG}`;
+  const PROPERTY_A_NAME = `Imóvel Portal Cliente ${RUN_TAG}`;
+  const PROPERTY_B_NAME = `Imóvel Portal Cliente B ${RUN_TAG}`;
+  const CPF_A_DIGITS = Array.from(crypto.getRandomValues(new Uint8Array(11)), (byte) => byte % 10).join('');
+  const CPF_B_DIGITS = Array.from(crypto.getRandomValues(new Uint8Array(11)), (byte) => byte % 10).join('');
+  const formatCpf = (digits: string) => `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  const UNPAID_DESCRIPTION = `Taxa de Portal Não Paga ${RUN_TAG}`;
+
+  let adminCookie = '';
+  let clientCookie = '';
+  let tenantAId = '';
+  let tenantBId = '';
+  let leaseAId = '';
+  let leaseBId = '';
+  let paidReceiptAId = '';
+  let unpaidReceiptAId = '';
+  let paidReceiptBId = '';
+
+  async function adminPost(path: string, fields: Record<string, string>) {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.set(key, value);
+    return server.fetch(
+      new Request(`http://localhost:3000${path}`, {
+        method: 'POST',
+        headers: { Cookie: adminCookie },
+        body: form,
+      })
+    );
+  }
+
+  function clientLogin(password: string, cpf: string = CPF_A_DIGITS, ip: string = CLIENT_IP) {
+    const form = new FormData();
+    form.set('cpf', cpf);
+    form.set('password', password);
+    return server.fetch(
+      new Request('http://localhost:3000/portal/login', {
+        method: 'POST',
+        headers: { 'x-forwarded-for': ip },
+        body: form,
+      })
+    );
+  }
+
+  it('prepara inquilinos, contratos e recibos de apoio', async () => {
+    const loginForm = new FormData();
+    loginForm.set('username', 'passoz');
+    loginForm.set('password', 'senha-de-teste');
+    const loginRes = await server.fetch(new Request('http://localhost:3000/login', { method: 'POST', body: loginForm }));
+    expect(loginRes.status).toBe(302);
+    adminCookie = (loginRes.headers.get('set-cookie') || '').split(';')[0] || '';
+    expect(adminCookie).toContain('__aluxen_session=');
+
+    await adminPost('/dashboard', { intent: 'tenant.create', name: TENANT_A_NAME, email: `portal.a.${RUN_TAG}@teste.local`, cpf: formatCpf(CPF_A_DIGITS) });
+    await adminPost('/dashboard', { intent: 'tenant.create', name: TENANT_B_NAME, email: `portal.b.${RUN_TAG}@teste.local`, cpf: formatCpf(CPF_B_DIGITS) });
+    await adminPost('/dashboard', {
+      intent: 'property.create',
+      name: PROPERTY_A_NAME,
+      address: 'Rua das Flores, 10',
+      city: 'Cabo Frio',
+      state: 'RJ',
+    });
+    await adminPost('/dashboard', {
+      intent: 'property.create',
+      name: PROPERTY_B_NAME,
+      address: 'Rua das Conchas, 20',
+      city: 'Cabo Frio',
+      state: 'RJ',
+    });
+
+    const listRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: adminCookie } })
+    );
+    const listData = (await listRes.json()) as {
+      tenants: Array<{ id: string; name: string }>;
+      properties: Array<{ id: string; name: string }>;
+    };
+    tenantAId = listData.tenants.find((t) => t.name === TENANT_A_NAME)?.id || '';
+    tenantBId = listData.tenants.find((t) => t.name === TENANT_B_NAME)?.id || '';
+    const propertyAId = listData.properties.find((p) => p.name === PROPERTY_A_NAME)?.id || '';
+    const propertyBId = listData.properties.find((p) => p.name === PROPERTY_B_NAME)?.id || '';
+    expect(tenantAId).toBeTruthy();
+    expect(tenantBId).toBeTruthy();
+    expect(propertyAId).toBeTruthy();
+    expect(propertyBId).toBeTruthy();
+
+    // Um imóvel por locatário: contrato vigente impede sobreposição no mesmo imóvel
+    const leaseFixtures: Array<[string, string]> = [
+      [tenantAId, propertyAId],
+      [tenantBId, propertyBId],
+    ];
+    for (const [tenantId, propertyId] of leaseFixtures) {
+      const leaseRes = await adminPost('/dashboard', {
+        intent: 'lease.create',
+        tenant_id: tenantId,
+        property_id: propertyId,
+        start_date: '2026-01-01',
+        end_date: '2026-12-31',
+        due_day: '10',
+        rent_amount: '1800',
+        status: 'active',
+      });
+      expect(leaseRes.status).toBe(200);
+    }
+
+    const leasesRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: adminCookie } })
+    );
+    const leasesData = (await leasesRes.json()) as { leases: Array<{ id: string; tenant_id: string; property_name: string }> };
+    leaseAId = leasesData.leases.find((l) => l.tenant_id === tenantAId && l.property_name === PROPERTY_A_NAME)?.id || '';
+    leaseBId = leasesData.leases.find((l) => l.tenant_id === tenantBId && l.property_name === PROPERTY_B_NAME)?.id || '';
+    expect(leaseAId).toBeTruthy();
+    expect(leaseBId).toBeTruthy();
+
+    // Recibo quitado do locatário A, cobrança avulsa em aberto de A e recibo quitado de B
+    await adminPost('/dashboard', {
+      intent: 'receipt.create',
+      lease_id: leaseAId,
+      due_date: '2026-05-10',
+      amount: '1800',
+      paid_at: '2026-05-09T10:00',
+    });
+    await adminPost('/dashboard', {
+      intent: 'receipt.create',
+      category: 'extra',
+      description: UNPAID_DESCRIPTION,
+      tenant_id: tenantAId,
+      property_id: propertyAId,
+      due_date: '2026-06-10',
+      amount: '90',
+    });
+    await adminPost('/dashboard', {
+      intent: 'receipt.create',
+      lease_id: leaseBId,
+      due_date: '2026-05-10',
+      amount: '900',
+      paid_at: '2026-05-09T11:00',
+    });
+
+    const receiptsRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: adminCookie } })
+    );
+    const receiptsData = (await receiptsRes.json()) as {
+      receipts: Array<{ id: string; lease_id: string | null; description: string | null; paid_at: string | null }>;
+    };
+    paidReceiptAId = receiptsData.receipts.find((r) => r.lease_id === leaseAId && r.paid_at)?.id || '';
+    paidReceiptBId = receiptsData.receipts.find((r) => r.lease_id === leaseBId && r.paid_at)?.id || '';
+    unpaidReceiptAId = receiptsData.receipts.find((r) => r.description === UNPAID_DESCRIPTION)?.id || '';
+    expect(paidReceiptAId).toBeTruthy();
+    expect(paidReceiptBId).toBeTruthy();
+    expect(unpaidReceiptAId).toBeTruthy();
+  });
+
+  it('GET /portal/login é uma tela separada, com link para o acesso administrativo', async () => {
+    const res = await server.fetch(new Request('http://localhost:3000/portal/login'));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Área do Cliente');
+    expect(html).toContain('action="/portal/login"');
+    expect(html).toContain('name="cpf"');
+    expect(html).toContain('href="/login"');
+  });
+
+  it('POST /portal/login autentica com o CPF sem pontuação e exige a troca da senha padrão', async () => {
+    const res = await clientLogin(CPF_A_DIGITS);
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/portal/password');
+    const setCookie = res.headers.get('set-cookie') || '';
+    expect(setCookie).toContain('__aluxen_client_session=');
+    clientCookie = setCookie.split(';')[0] || '';
+
+    // Enquanto a senha padrão valer, a leitura fica bloqueada até a troca
+    const areaRes = await server.fetch(
+      new Request('http://localhost:3000/portal', { headers: { Cookie: clientCookie } })
+    );
+    expect(areaRes.status).toBe(302);
+    expect(areaRes.headers.get('location')).toBe('/portal/password');
+
+    const passwordRes = await server.fetch(
+      new Request('http://localhost:3000/portal/password', { headers: { Cookie: clientCookie } })
+    );
+    expect(passwordRes.status).toBe(200);
+    const html = await passwordRes.text();
+    expect(html).toContain('action="/portal/password"');
+    expect(html).toContain('name="current_password"');
+    expect(html).toContain('name="new_password"');
+    expect(html).toContain('Confirmar nova senha');
+  });
+
+  it('POST /portal/login recusa senha incorreta sem revelar se o CPF existe', async () => {
+    const res = await clientLogin('senha-errada', CPF_A_DIGITS);
+    expect(res.status).toBe(401);
+    const html = await res.text();
+    expect(html).toContain('CPF ou senha inválidos.');
+
+    const unknownRes = await clientLogin('senha-errada', '00000000000', '203.0.113.11');
+    expect(unknownRes.status).toBe(401);
+  });
+
+  it('POST /portal/password valida senha atual, confirmação e rejeita o próprio CPF', async () => {
+    const wrongCurrent = new FormData();
+    wrongCurrent.set('current_password', 'nao-e-o-cpf');
+    wrongCurrent.set('new_password', NEW_PASSWORD);
+    wrongCurrent.set('confirm_password', NEW_PASSWORD);
+    const wrongRes = await server.fetch(
+      new Request('http://localhost:3000/portal/password', { method: 'POST', headers: { Cookie: clientCookie }, body: wrongCurrent })
+    );
+    expect(wrongRes.status).toBe(400);
+    expect(await wrongRes.text()).toContain('Senha atual incorreta.');
+
+    const useCpf = new FormData();
+    useCpf.set('current_password', CPF_A_DIGITS);
+    useCpf.set('new_password', CPF_A_DIGITS);
+    useCpf.set('confirm_password', CPF_A_DIGITS);
+    const cpfRes = await server.fetch(
+      new Request('http://localhost:3000/portal/password', { method: 'POST', headers: { Cookie: clientCookie }, body: useCpf })
+    );
+    expect(cpfRes.status).toBe(400);
+    expect(await cpfRes.text()).toContain('não pode ser o seu CPF');
+
+    const mismatch = new FormData();
+    mismatch.set('current_password', CPF_A_DIGITS);
+    mismatch.set('new_password', NEW_PASSWORD);
+    mismatch.set('confirm_password', 'outra-senha-1');
+    const mismatchRes = await server.fetch(
+      new Request('http://localhost:3000/portal/password', { method: 'POST', headers: { Cookie: clientCookie }, body: mismatch })
+    );
+    expect(mismatchRes.status).toBe(400);
+    expect(await mismatchRes.text()).toContain('confirmação não corresponde');
+
+    const valid = new FormData();
+    valid.set('current_password', CPF_A_DIGITS);
+    valid.set('new_password', NEW_PASSWORD);
+    valid.set('confirm_password', NEW_PASSWORD);
+    const validRes = await server.fetch(
+      new Request('http://localhost:3000/portal/password', { method: 'POST', headers: { Cookie: clientCookie }, body: valid })
+    );
+    expect(validRes.status).toBe(302);
+    expect(validRes.headers.get('location')).toBe('/portal?ok=password');
+  });
+
+  it('GET /portal lista os contratos e somente os recibos quitados do titular', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/portal', { headers: { Cookie: clientCookie } })
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+
+    expect(html).toContain(TENANT_A_NAME);
+    expect(html).toContain('Meus contratos');
+    expect(html).toContain(`/contract-pdf?id=${leaseAId}`);
+    expect(html).toContain('/validar/contrato/');
+    expect(html).toContain('Meus recibos quitados');
+    expect(html).toContain(`/pdf?id=${paidReceiptAId}`);
+    expect(html).toContain('/validar/recibo/');
+    expect(html).toContain(formatDateBr('2026-05-09'));
+    expect(html).toContain(formatCurrency(1800));
+
+    // Recibo em aberto e dados de outro locatário não aparecem
+    expect(html).not.toContain(unpaidReceiptAId);
+    expect(html).not.toContain(UNPAID_DESCRIPTION);
+    expect(html).not.toContain(TENANT_B_NAME);
+    expect(html).not.toContain(paidReceiptBId);
+  });
+
+  it('sessão do locatário não acessa documentos de outro cadastro nem recibos em aberto', async () => {
+    const ownPaid = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${paidReceiptAId}`, { headers: { Cookie: clientCookie } })
+    );
+    expect(ownPaid.status).toBe(200);
+    expect(ownPaid.headers.get('content-type')).toBe('application/pdf');
+
+    const foreignReceipt = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${paidReceiptBId}`, { headers: { Cookie: clientCookie } })
+    );
+    expect(foreignReceipt.status).toBe(403);
+    expect(await foreignReceipt.text()).toContain('não pertence ao seu cadastro');
+
+    const foreignContract = await server.fetch(
+      new Request(`http://localhost:3000/contract-pdf?id=${leaseBId}`, { headers: { Cookie: clientCookie } })
+    );
+    expect(foreignContract.status).toBe(403);
+
+    const ownUnpaid = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${unpaidReceiptAId}`, { headers: { Cookie: clientCookie } })
+    );
+    expect(ownUnpaid.status).toBe(403);
+    expect(await ownUnpaid.text()).toContain('Recibo não pago');
+
+    // O painel administrativo segue com acesso total
+    const adminView = await server.fetch(
+      new Request(`http://localhost:3000/pdf?id=${paidReceiptBId}`, { headers: { Cookie: adminCookie } })
+    );
+    expect(adminView.status).toBe(200);
+  });
+
+  it('sem sessão a Área do Cliente redireciona para o login do cliente', async () => {
+    const res = await server.fetch(new Request('http://localhost:3000/portal'));
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/portal/login');
+  });
+
+  it('após a troca, a nova senha autentica e a senha padrão deixa de valer', async () => {
+    const withNewPassword = await clientLogin(NEW_PASSWORD);
+    expect(withNewPassword.status).toBe(302);
+    expect(withNewPassword.headers.get('location')).toBe('/portal');
+
+    const withDefault = await clientLogin(CPF_A_DIGITS);
+    expect(withDefault.status).toBe(401);
+  });
+
+  it('a trilha registra os acessos e a troca de senha do locatário sem gravar senhas', async () => {
+    const loginRes = await server.fetch(
+      new Request('http://localhost:3000/audit?action=auth.client-login', { headers: { Cookie: adminCookie } })
+    );
+    expect(loginRes.status).toBe(200);
+    const page = (await loginRes.json()) as { total: number; items: Array<{ origin: string; actorName: string | null; summary: string }> };
+    expect(page.total).toBeGreaterThanOrEqual(1);
+    expect(page.items[0]!.origin).toBe('client');
+    expect(page.items[0]!.actorName).toBe(TENANT_A_NAME);
+
+    const passwordRes = await server.fetch(
+      new Request('http://localhost:3000/audit?action=auth.client-password', { headers: { Cookie: adminCookie } })
+    );
+    const passwordPage = (await passwordRes.json()) as {
+      total: number;
+      items: Array<{ entity: string; entityLabel: string | null; origin: string }>;
+    };
+    expect(passwordPage.total).toBeGreaterThanOrEqual(1);
+    expect(passwordPage.items[0]!.entity).toBe('tenant');
+    expect(passwordPage.items[0]!.entityLabel).toBe(TENANT_A_NAME);
+    expect(passwordPage.items[0]!.origin).toBe('client');
+
+    const auditHtml = await server.fetch(
+      new Request('http://localhost:3000/audit', { headers: { Cookie: adminCookie } })
+    );
+    const serialized = JSON.stringify(await auditHtml.json());
+    expect(serialized).not.toContain(NEW_PASSWORD);
+  });
+
+  it('POST /portal/logout encerra a sessão e devolve ao login do cliente', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/portal/logout', { method: 'POST', headers: { Cookie: clientCookie } })
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/portal/login');
+    expect(res.headers.get('set-cookie') || '').toContain('__aluxen_client_session=');
   });
 });

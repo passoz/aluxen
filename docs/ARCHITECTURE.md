@@ -45,7 +45,8 @@ O Aluxen foi projetado para ser um sistema de gestão imobiliária de alta perfo
 |  | /login        |                                   | /api/health   |  |
 |  | /dashboard    |                                   | /api/whatsapp |  |
 |  | /settings     |                                   | /export       |  |
-|  | /validar/...  |                                   | /import       |  |
+|  | /portal/*    |                                   | /import       |  |
+|  | /validar/...  |                                   | /audit        |  |
 |  +-------+-------+                                   +-------+-------+  |
 |          |                                                   |          |
 |          +-------------------------+-------------------------+          |
@@ -54,6 +55,7 @@ O Aluxen foi projetado para ser um sistema de gestão imobiliária de alta perfo
 |  +-------------------------------------------------------------------+  |
 |  |                        Serviços e Utilitários                     |  |
 |  |  - Auth & Sessões (bcryptjs, cookie HTTP-only)                    |  |
+|  |  - Área do Cliente do locatário (senha por CPF, sessão própria)    |  |
 |  |  - Geração de PDF (pdf-lib, recibos e contratos)                  |  |
 |  |  - Tokens Criptográficos & QR Codes (HMAC-SHA256, qrcode)         |  |
 |  |  - WhatsApp Service & Browser Headless (Puppeteer + Chromium)     |  |
@@ -120,6 +122,8 @@ O esquema está declarado em `src/db/schema.ts`:
    - `email`: Endereço de email.
    - `phone`: Número de telefone / WhatsApp com DDD.
    - `cpf`: Cadastro de Pessoa Física formatado.
+   - `passwordHash`: Hash bcrypt da senha da Área do Cliente. Nulo = senha padrão (o próprio CPF) ainda vigente.
+   - `passwordChangedAt`: Data/hora da definição da senha pessoal. Nulo mantém a troca obrigatória no primeiro acesso e o bloqueio de leitura do portal.
    - `createdAt`, `updatedAt`: Timestamps de auditoria.
 
 3. **`properties`** (Imóveis):
@@ -189,6 +193,17 @@ O esquema está declarado em `src/db/schema.ts`:
 4. Em caso de sucesso, gera um cookie HTTP-only `__aluxen_session` criptografado contendo o ID do usuário.
 5. Em caso de falha, retorna status HTTP 401 e mensagem amigável no card de login.
 
+### 5.1.1. Fluxo de Autenticação do Locatário (Área do Cliente)
+Independente do painel, com credencial e cookie próprios (`__aluxen_client_session`), implementado em `src/utils/tenant-auth.ts`:
+
+1. O locatário submete `/portal/login` com `cpf` e `password`.
+2. `normalizeCpf()` reduz o CPF informado a dígitos (11 obrigatórios) e o SQL compara com o CPF do cadastro já normalizado, tornando a máscara irrelevante.
+3. `bcrypt.compare` valida a senha quando `password_hash` existe; sem senha própria, a senha válida é o próprio CPF (mesma regra da troca de senha).
+4. Sucesso define o cookie HTTP-only de locatário; o destino é `/portal/password` enquanto `password_changed_at` for nulo — a senha padrão não libera leitura de documentos.
+5. `GET /portal` e `GET /portal/password` revalidam o cadastro a cada requisição (`getClientIdentity`); cadastro inexistente limpa a sessão.
+6. `/pdf` e `/contract-pdf` aceitam a sessão do locatário apenas para documentos do próprio cadastro (`tenantOwnsReceipt` / `tenantOwnsLease`); documentos de terceiros e recibos em aberto respondem `403`.
+7. Acessos, tentativas negadas, saídas e trocas de senha vão para a trilha de auditoria com origem `client`.
+
 ### 5.2. Fluxo de Mutations no Dashboard (`POST /dashboard`)
 Para preservar a compatibilidade de formulários HTML padrão e permitir envio offline e via AJAX, todas as mutações utilizam um campo `intent`:
 
@@ -221,6 +236,7 @@ Regras de projeto:
 - Operações sem alteração real (salvar um formulário idêntico) **não** geram evento — a trilha registra mudanças, não cliques.
 - A gravação é "melhor esforço": se a auditoria falhar, a operação de negócio já efetivada não é desfeita, mas a falha é registrada em `error` no log.
 - Operações em lote (baixa/exclusão de vários recibos) geram **um evento por recibo**, com `metadata.batch` indicando o tamanho do lote.
+- A origem distingue o canal do evento: `web` (painel do locador), `client` (Área do Cliente do locatário), `public` (links com token de autenticidade) e `job` (rotinas automáticas). Os eventos da Área do Cliente usam a ação `auth.client-*` e o autor é o próprio locatário.
 
 ### 5.4. Observabilidade e Logs
 

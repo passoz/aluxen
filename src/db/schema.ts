@@ -14,6 +14,13 @@ export const tenants = sqliteTable('tenants', {
   email: text('email').notNull(),
   phone: text('phone'),
   cpf: text('cpf'),
+  /**
+   * Credencial da Área do Cliente. `passwordHash` nulo significa que o locatário
+   * ainda usa a senha padrão (o próprio CPF, sem pontuação); `passwordChangedAt`
+   * nulo marca que a troca obrigatória do primeiro acesso ainda está pendente.
+   */
+  passwordHash: text('password_hash'),
+  passwordChangedAt: text('password_changed_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 });

@@ -40,7 +40,7 @@ function auditTimestamp(now: Date): string {
   return `${formatLocalDateTime(now)}:${seconds}.${millis}`;
 }
 
-export type AuditOrigin = 'web' | 'public' | 'job';
+export type AuditOrigin = 'web' | 'public' | 'client' | 'job';
 
 export type AuditActor = { id: string; name: string };
 

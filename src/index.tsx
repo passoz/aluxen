@@ -12,8 +12,9 @@ import { sql, eq, and, desc, asc, isNull, isNotNull, lt, gt, lte, gte, ne, or, i
 import { createId } from './utils/id';
 import { createLogger } from './utils/logger';
 import { loginUser, changePassword } from './utils/auth';
-import { getUserId, requireUserId, setUserSession, clearUserSession } from './utils/session';
-import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr, RECEIPT_CATEGORY_LABELS } from './utils/format';
+import { getUserId, requireUserId, setUserSession, clearUserSession, getClientId, setClientSession, clearClientSession } from './utils/session';
+import { loginTenant, getClientIdentity, changeTenantPassword } from './utils/tenant-auth';
+import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr, RECEIPT_CATEGORY_LABELS, LEASE_STATUS_LABELS } from './utils/format';
 import {
   buildAuditCsv,
   clientIp,
@@ -58,6 +59,13 @@ import { DashboardPage, type DashboardProps } from './client/dashboard';
 import { LoginPage } from './client/login';
 import { SettingsPage } from './client/settings';
 import { VerificationPage } from './client/verify';
+import {
+  ClientLoginPage,
+  ClientPortalPage,
+  ClientPasswordPage,
+  type ClientLeaseView,
+  type ClientReceiptView,
+} from './client/portal';
 import type { Tenant, Property, Lease, Receipt, Tab, MutationResponse, MetricsPayload } from './types/dashboard';
 
 // Garantir que o banco de dados e o bundle do cliente estão prontos
@@ -190,7 +198,12 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Template HTML idêntico ao root.tsx de main
-function renderHtml(title: string, page: 'dashboard' | 'login' | 'settings' | 'verify', props: Record<string, unknown>, content: React.ReactElement): string {
+function renderHtml(
+  title: string,
+  page: 'dashboard' | 'login' | 'settings' | 'verify' | 'client-login' | 'client-portal' | 'client-password',
+  props: Record<string, unknown>,
+  content: React.ReactElement
+): string {
   const renderedContent = renderToString(content);
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -324,6 +337,253 @@ const handleLogout: Handler<AppEnv> = async (c) => {
 
 app.post('/logout', handleLogout);
 app.get('/logout', handleLogout);
+
+// ---------------------------------------------------------------------------
+// Área do Cliente (locatário) — autenticação própria por CPF, separada do painel
+// ---------------------------------------------------------------------------
+
+/**
+ * Contratos e recibos quitados que o locatário autenticado pode consultar.
+ * Somente leitura: inclui os recibos com pagamento registrado (integral ou parcial).
+ */
+async function loadClientArea(tenantId: string): Promise<{ leases: ClientLeaseView[]; receipts: ClientReceiptView[] }> {
+  const leaseProperty = aliasedTable(properties, 'client_lp');
+  const receiptProperty = aliasedTable(properties, 'client_rp');
+
+  const [leaseRows, receiptRows] = await Promise.all([
+    db
+      .select({
+        id: leases.id,
+        start_date: leases.startDate,
+        end_date: leases.endDate,
+        due_day: leases.dueDay,
+        rent_amount: leases.rentAmount,
+        status: leases.status,
+        property_name: leaseProperty.name,
+        property_address: leaseProperty.address,
+        property_city: leaseProperty.city,
+        property_state: leaseProperty.state,
+      })
+      .from(leases)
+      .innerJoin(leaseProperty, eq(leases.propertyId, leaseProperty.id))
+      .where(eq(leases.tenantId, tenantId))
+      .orderBy(desc(leases.createdAt)),
+    db
+      .select({
+        id: receipts.id,
+        category: receipts.category,
+        description: receipts.description,
+        due_date: receipts.dueDate,
+        paid_at: receipts.paidAt,
+        amount: receipts.amount,
+        paid_amount: receipts.paidAmount,
+        property_name: sql<string>`coalesce(${leaseProperty.name}, ${receiptProperty.name}, '')`,
+      })
+      .from(receipts)
+      .leftJoin(leases, eq(receipts.leaseId, leases.id))
+      .leftJoin(leaseProperty, eq(leases.propertyId, leaseProperty.id))
+      .leftJoin(receiptProperty, eq(receipts.propertyId, receiptProperty.id))
+      .where(and(isNotNull(receipts.paidAt), or(eq(leases.tenantId, tenantId), eq(receipts.tenantId, tenantId))))
+      .orderBy(desc(receipts.paidAt)),
+  ]);
+
+  return {
+    leases: leaseRows.map((lease) => ({
+      id: lease.id,
+      propertyName: lease.property_name,
+      propertyAddress: [lease.property_address, lease.property_city, lease.property_state].filter(Boolean).join(', '),
+      period: `${formatDateBr(lease.start_date)} a ${formatDateBr(lease.end_date)}`,
+      dueDay: lease.due_day,
+      rentAmount: formatCurrency(lease.rent_amount),
+      status: lease.status,
+      statusLabel: LEASE_STATUS_LABELS[lease.status] || lease.status,
+      pdfUrl: `/contract-pdf?id=${lease.id}`,
+      validationUrl: `/validar/contrato/${lease.id}?token=${generateAuthToken('lease', lease.id)}`,
+    })),
+    receipts: receiptRows.map((receipt) => {
+      const paidAmount = receipt.paid_amount != null ? Number(receipt.paid_amount) : receipt.amount;
+      return {
+        id: receipt.id,
+        reference:
+          receipt.category === 'extra'
+            ? receipt.description || 'Cobrança avulsa'
+            : `${RECEIPT_CATEGORY_LABELS[receipt.category] || 'Aluguel'} ${formatDateBr(receipt.due_date).slice(3)}`,
+        propertyName: receipt.property_name,
+        dueDate: formatDateBr(receipt.due_date),
+        paidAt: formatDateTimeBr(receipt.paid_at),
+        amountPaid: formatCurrency(paidAmount),
+        isPartial: paidAmount > 0 && paidAmount < receipt.amount,
+        pdfUrl: `/pdf?id=${receipt.id}`,
+        validationUrl: `/validar/recibo/${receipt.id}?token=${generateAuthToken('receipt', receipt.id)}`,
+      };
+    }),
+  };
+}
+
+// Login da Área do Cliente - GET
+app.get('/portal/login', (c) => {
+  if (getClientId(c)) {
+    return c.redirect('/portal');
+  }
+  const html = renderHtml('Aluxen | Área do Cliente', 'client-login', {}, <ClientLoginPage />);
+  return c.html(html);
+});
+
+// Login da Área do Cliente - POST
+app.post('/portal/login', async (c) => {
+  if (!checkRateLimit(clientIp(c))) {
+    await recordAudit(createAuditContext(c, null, 'client'), {
+      action: 'auth.client-login-failed',
+      entity: 'tenant',
+      summary: 'Acesso à Área do Cliente bloqueado pelo limite de tentativas',
+      metadata: { reason: 'Limite de tentativas por minuto excedido' },
+    });
+    const message = 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.';
+    const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message }, <ClientLoginPage error={message} />);
+    return c.html(html, 429);
+  }
+
+  const body = await c.req.parseBody();
+  const cpf = String(body['cpf'] || '').trim();
+  const password = String(body['password'] || '');
+
+  if (!cpf || !password) {
+    const message = 'Informe CPF e senha.';
+    const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message, cpf }, <ClientLoginPage error={message} cpf={cpf} />);
+    return c.html(html, 400);
+  }
+
+  const identity = await loginTenant(cpf, password);
+  if (!identity) {
+    await recordAudit(createAuditContext(c, null, 'client'), {
+      action: 'auth.client-login-failed',
+      entity: 'tenant',
+      entityLabel: cpf,
+      summary: `Tentativa de acesso negada na Área do Cliente para o CPF informado`,
+      metadata: { reason: 'Credenciais inválidas' },
+    });
+    const message = 'CPF ou senha inválidos.';
+    const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message, cpf }, <ClientLoginPage error={message} cpf={cpf} />);
+    return c.html(html, 401);
+  }
+
+  setClientSession(c, identity.id);
+  await recordAudit(createAuditContext(c, { id: identity.id, name: identity.name }, 'client'), {
+    action: 'auth.client-login',
+    entity: 'tenant',
+    entityId: identity.id,
+    entityLabel: identity.name,
+    summary: `Acesso à Área do Cliente por "${identity.name}"`,
+  });
+  return c.redirect(identity.mustChangePassword ? '/portal/password' : '/portal');
+});
+
+// Logout da Área do Cliente
+const handleClientLogout: Handler<AppEnv> = async (c) => {
+  const tenantId = getClientId(c);
+  const identity = tenantId ? await getClientIdentity(tenantId) : null;
+  clearClientSession(c);
+  await recordAudit(createAuditContext(c, identity ? { id: identity.id, name: identity.name } : null, 'client'), {
+    action: 'auth.client-logout',
+    entity: 'tenant',
+    entityId: identity?.id ?? null,
+    entityLabel: identity?.name ?? null,
+    summary: identity ? `Saída da Área do Cliente de "${identity.name}"` : 'Saída da Área do Cliente',
+  });
+  return c.redirect('/portal/login');
+};
+
+app.post('/portal/logout', handleClientLogout);
+app.get('/portal/logout', handleClientLogout);
+
+// Área do Cliente - GET (contratos e recibos quitados, somente leitura)
+app.get('/portal', async (c) => {
+  const tenantId = getClientId(c);
+  if (!tenantId) {
+    return c.redirect('/portal/login');
+  }
+  const identity = await getClientIdentity(tenantId);
+  if (!identity) {
+    clearClientSession(c);
+    return c.redirect('/portal/login');
+  }
+  // Senha padrão (CPF) ainda vigente: a troca é obrigatória antes de qualquer leitura.
+  if (identity.mustChangePassword) {
+    return c.redirect('/portal/password');
+  }
+
+  const area = await loadClientArea(identity.id);
+  const tenantRows = await db.select({ cpf: tenants.cpf }).from(tenants).where(eq(tenants.id, identity.id)).limit(1);
+
+  const props = {
+    tenantName: identity.name,
+    tenantCpf: tenantRows[0]?.cpf || '',
+    leases: area.leases,
+    receipts: area.receipts,
+    message: c.req.query('ok') === 'senha' ? 'Senha alterada com sucesso.' : undefined,
+  };
+  const html = renderHtml('Aluxen | Área do Cliente', 'client-portal', props, <ClientPortalPage {...props} />);
+  return c.html(html);
+});
+
+// Área do Cliente - Troca de senha (GET)
+app.get('/portal/password', async (c) => {
+  const tenantId = getClientId(c);
+  if (!tenantId) {
+    return c.redirect('/portal/login');
+  }
+  const identity = await getClientIdentity(tenantId);
+  if (!identity) {
+    clearClientSession(c);
+    return c.redirect('/portal/login');
+  }
+
+  const props = { firstAccess: identity.mustChangePassword };
+  const html = renderHtml('Aluxen | Trocar senha', 'client-password', props, <ClientPasswordPage {...props} />);
+  return c.html(html);
+});
+
+// Área do Cliente - Troca de senha (POST)
+app.post('/portal/password', async (c) => {
+  const tenantId = getClientId(c);
+  if (!tenantId) {
+    return c.redirect('/portal/login');
+  }
+  const identity = await getClientIdentity(tenantId);
+  if (!identity) {
+    clearClientSession(c);
+    return c.redirect('/portal/login');
+  }
+
+  const body = await c.req.parseBody();
+  const currentPassword = String(body['current_password'] || '');
+  const newPassword = String(body['new_password'] || '');
+  const confirmation = String(body['confirm_password'] || '');
+
+  const renderError = (message: string) => {
+    const props = { firstAccess: identity.mustChangePassword, error: message };
+    return c.html(renderHtml('Aluxen | Trocar senha', 'client-password', props, <ClientPasswordPage {...props} />), 400);
+  };
+
+  if (newPassword !== confirmation) {
+    return renderError('A confirmação não corresponde à nova senha.');
+  }
+
+  try {
+    await changeTenantPassword(identity.id, currentPassword, newPassword);
+  } catch (error) {
+    return renderError(error instanceof Error ? error.message : 'Não foi possível alterar a senha.');
+  }
+
+  await recordAudit(createAuditContext(c, { id: identity.id, name: identity.name }, 'client'), {
+    action: 'auth.client-password',
+    entity: 'tenant',
+    entityId: identity.id,
+    entityLabel: identity.name,
+    summary: `Senha da Área do Cliente alterada por "${identity.name}"`,
+  });
+  return c.redirect('/portal?ok=password');
+});
 
 // Dashboard - GET
 app.get('/dashboard', async (c) => {
@@ -1410,6 +1670,27 @@ app.post('/import', async (c) => {
   return c.redirect('/dashboard?tab=dashboard&toast=importado');
 });
 
+/** Confirma que o recibo pertence ao locatário autenticado (via contrato ou recibo avulso). */
+async function tenantOwnsReceipt(tenantId: string, receiptId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: receipts.id })
+    .from(receipts)
+    .leftJoin(leases, eq(receipts.leaseId, leases.id))
+    .where(and(eq(receipts.id, receiptId), or(eq(leases.tenantId, tenantId), eq(receipts.tenantId, tenantId))))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Confirma que o contrato pertence ao locatário autenticado. */
+async function tenantOwnsLease(tenantId: string, leaseId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: leases.id })
+    .from(leases)
+    .where(and(eq(leases.id, leaseId), eq(leases.tenantId, tenantId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
 // Emissão de Recibo em PDF
 app.get('/pdf', async (c) => {
   const id = c.req.query('id');
@@ -1422,9 +1703,15 @@ app.get('/pdf', async (c) => {
 
   const userId = getUserId(c);
   const isTokenValid = token ? verifyAuthToken('receipt', id, token) : false;
+  const clientId = getClientId(c);
+  const clientOwnsReceipt = clientId ? await tenantOwnsReceipt(clientId, id) : false;
 
-  // Permite acesso se o usuário estiver logado (administrador) OU se possuir token de autenticação válido (inquilino)
-  if (!userId && !isTokenValid) {
+  // Permite acesso se o usuário estiver logado (administrador), se possuir token de
+  // autenticação válido (link público) OU se o locatário autenticado for o titular.
+  if (!userId && !isTokenValid && !clientOwnsReceipt) {
+    if (clientId) {
+      return c.text('Este documento não pertence ao seu cadastro.', 403);
+    }
     return c.redirect('/login');
   }
 
@@ -1522,9 +1809,15 @@ app.get('/contract-pdf', async (c) => {
 
   const userId = getUserId(c);
   const isTokenValid = token ? verifyAuthToken('lease', id, token) : false;
+  const clientId = getClientId(c);
+  const clientOwnsLease = clientId ? await tenantOwnsLease(clientId, id) : false;
 
-  // Permite acesso se o usuário estiver logado (administrador) OU se possuir token de autenticação válido (inquilino)
-  if (!userId && !isTokenValid) {
+  // Permite acesso se o usuário estiver logado (administrador), se possuir token de
+  // autenticação válido (link público) OU se o locatário autenticado for o titular.
+  if (!userId && !isTokenValid && !clientOwnsLease) {
+    if (clientId) {
+      return c.text('Este documento não pertence ao seu cadastro.', 403);
+    }
     return c.redirect('/login');
   }
 

@@ -33,6 +33,10 @@ export function LoginPage({ error: initialError }: LoginProps) {
             {busy ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+
+        <p className="subtitle" style={{ marginTop: '1.25rem', marginBottom: 0, textAlign: 'center', fontSize: '0.85rem' }}>
+          <a href="/portal/login">Área do Cliente</a>
+        </p>
       </div>
     </div>
   );

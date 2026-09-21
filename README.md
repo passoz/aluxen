@@ -22,6 +22,7 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
   - [11. Histórico & Auditoria](#11-histórico--auditoria)
   - [12. PWA, Responsividade & Sincronização Offline](#12-pwa-responsividade--sincronização-offline)
   - [13. Observabilidade & Logs Estruturados](#13-observabilidade--logs-estruturados)
+  - [14. Área do Cliente (Portal do Locatário)](#14-área-do-cliente-portal-do-locatário)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Scripts Disponíveis](#-scripts-disponíveis)
@@ -60,6 +61,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 1. Autenticação & Segurança
 - **Sessões HTTP-only Seguras**: Armazenadas em cookie criptografado (`__aluxen_session`), com flags `HttpOnly`, `SameSite=Lax`, e validade de 30 dias.
+- **Duas autenticações independentes**: o painel do locador (`__aluxen_session`) e a **Área do Cliente** do locatário (`__aluxen_client_session`) usam cookies distintos, sem privilégios cruzados — a sessão do locatário não abre nenhuma rota administrativa.
 - **Proteção contra Força Bruta**: Rate limiting em memória por IP (padrão de 5 tentativas por minuto, configurável via `RATE_LIMIT_MAX`).
 - **Hashes Criptográficos**: Senhas protegidas com `bcryptjs` (salt cost 10).
 - **Usuário Administrador Automático**: Semeado no boot caso nenhum usuário exista (`passoz` / `senha-de-teste`, customizável via variáveis de ambiente).
@@ -147,6 +149,14 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Tratamento de erros**: exceções não tratadas são logadas com rastreio de pilha e devolvem uma página/JSON amigável com o protocolo de correlação (em vez de "Internal Server Error" genérico).
 - **Redação automática** de campos sensíveis (`password`, `token`, `secret`, `cookie`, `hash`, `session`) em qualquer log.
 
+### 14. Área do Cliente (Portal do Locatário)
+- **Login próprio e separado do painel**: `/portal/login`, com link cruzado entre as duas telas. O locatário acessa apenas os próprios documentos; nenhuma rota de escrita é exposta.
+- **Credencial inicial por CPF**: usuário e senha são o CPF sem pontuação (`529.982.247-25` → `52998224725`). A busca aceita o CPF formatado ou só dígitos.
+- **Troca obrigatória no primeiro acesso**: enquanto a senha padrão estiver vigente, o portal bloqueia a leitura (`/portal` → `/portal/password`). Depois da troca, a senha pessoal (mínimo 6 caracteres, diferente do CPF) passa a valer e o CPF deixa de autenticar.
+- **Leitura de contrato e recibos quitados**: contratos do titular com vigência, dia de vencimento e valor do aluguel; recibos **apenas os já quitados** (integrais ou parciais), com data e valor pago, PDF e link de autenticidade.
+- **Isolamento por titular**: recibos em aberto e documentos de outros locatários não aparecem na listagem nem podem ser baixados via `/pdf` e `/contract-pdf` (`403`).
+- **Auditoria integrada**: acessos, tentativas negadas, saídas e trocas de senha do locatário são registrados na trilha com a origem `client` (Área do Cliente).
+
 ---
 
 ## 🚀 Guia Rápido de Instalação e Execução
@@ -186,8 +196,8 @@ bun run start
 ```
 
 ### Credenciais Padrão no Primeiro Acesso
-- **Usuário**: `passoz`
-- **Senha**: `senha-de-teste`
+- **Painel administrativo**: usuário `passoz` / senha `senha-de-teste`.
+- **Área do Cliente (locatário)** — `/portal/login`: usuário e senha são o **CPF do locatário sem pontuação** (ex.: CPF `529.982.247-25` → login `52998224725` e senha `52998224725`). A troca de senha é exigida no primeiro acesso. Locatários sem CPF cadastrado não conseguem entrar — complete o cadastro em *Inquilinos*.
 
 ---
 
@@ -292,8 +302,10 @@ A aplicação possui testes unitários e de integração de ponta a ponta constr
 
 Executar os testes:
 ```bash
-bun test
+bun run test
 ```
+
+O script recria o banco de testes em `data-test/` (`DB_DIR=data-test`) a cada execução, de modo que a suíte nunca toca no banco de desenvolvimento/produção (`aluxen.db`).
 
 Verificar a integridade dos tipos TypeScript:
 ```bash
@@ -333,6 +345,7 @@ aluxen/
 │   │   ├── dashboard.tsx       # Painel administrativo com abas e modais
 │   │   ├── history.tsx         # Aba de Histórico e Auditoria (filtros e diff)
 │   │   ├── login.tsx           # Tela de autenticação com tratamento de erros
+│   │   ├── portal.tsx          # Área do Cliente: login, painel e troca de senha
 │   │   ├── settings.tsx        # Configurações do locador, WhatsApp e senhas
 │   │   └── verify.tsx          # Portal público de validação de documentos
 │   ├── components/             # Componentes de interface compartilhados
@@ -350,6 +363,7 @@ aluxen/
 │   │   ├── auth.ts             # Lógica de login e alteração de senha (bcryptjs)
 │   │   ├── auth-token.ts       # Geração e checagem de tokens HMAC e QR Codes
 │   │   ├── session.ts          # Gerenciamento do cookie de sessão HTTP-only
+│   │   ├── tenant-auth.ts      # Credencial do locatário (login por CPF e troca de senha)
 │   │   ├── logger.ts           # Logger estruturado (níveis, JSON/pretty, redação)
 │   │   ├── audit.ts            # Trilha de auditoria: gravação, diffs e consultas
 │   │   ├── audit-meta.ts       # Rótulos e formatação de eventos (cliente/servidor)

@@ -15,6 +15,7 @@ Esta documentação cataloga todos os endpoints HTTP expostos pela aplicação B
 7. [Portal Público de Validação](#7-portal-público-de-validação)
 8. [Integração e Automação do WhatsApp](#8-integração-e-automação-do-whatsapp)
 9. [Histórico e Auditoria](#9-histórico-e-auditoria)
+10. [Área do Cliente (Portal do Locatário)](#10-área-do-cliente-portal-do-locatário)
 
 ---
 
@@ -178,20 +179,22 @@ Processa mutações de configuração conforme o campo `intent`:
 
 ### `GET /pdf`
 Emite o Recibo de Pagamento de Aluguel formatado em folha A4.
-- **Autenticação**: Requer sessão **ou** `token` válido.
+- **Autenticação**: Requer sessão administrativa **ou** `token` válido **ou** sessão do locatário titular do recibo (Área do Cliente).
 - **Query Params**:
   - `id` (string, obrigatório): ID do recibo.
   - `token` (string, opcional se logado): Token HMAC-SHA256 de autenticidade para acesso público.
   - `assinatura` (string, opcional): `'false'` para emitir sem assinatura digital.
 - **Resposta**: `200 OK` com `Content-Type: application/pdf`.
+- Sessão de locatário só acessa recibos do próprio cadastro e já quitados; documentos de outro titular respondem `403`.
 
 ### `GET /contract-pdf`
 Emite o Contrato de Locação Residencial com 25 cláusulas legais completas.
-- **Autenticação**: Requer sessão **ou** `token` válido.
+- **Autenticação**: Requer sessão administrativa **ou** `token` válido **ou** sessão do locatário titular do contrato.
 - **Query Params**:
   - `id` (string, obrigatório): ID do contrato.
   - `token` (string, opcional se logado): Token HMAC-SHA256 de autenticidade.
 - **Resposta**: `200 OK` com `Content-Type: application/pdf`.
+- Sessão de locatário só acessa contratos do próprio cadastro.
 
 ---
 
@@ -355,3 +358,45 @@ Renderiza a aba **Histórico e Auditoria** no servidor, já com a primeira pági
 - **Resposta**: `200 OK` com `Content-Type: text/csv; charset=utf-8` e `Content-Disposition: attachment; filename="aluxen-historico-YYYY-MM-DD.csv"`.
 - CSV com BOM UTF-8 e separador `;` (abre direto no Excel em português), com as colunas *Data/Hora, Usuário, Ação, Registro, Resumo, Alterações, Origem, IP, Request*. Limitado a 5.000 linhas por arquivo.
 - A própria exportação é registrada na trilha (`history.export`).
+
+---
+
+## 10. Área do Cliente (Portal do Locatário)
+
+Autenticação própria do locatário, independente do painel administrativo: cookie `__aluxen_client_session`, credencial por CPF e escrita inexistente (somente leitura de documentos próprios). Um mesmo navegador pode manter as duas sessões abertas sem interferência.
+
+### `GET /portal/login`
+Retorna a tela de login da Área do Cliente (SSR). Redireciona para `/portal` se já houver sessão de locatário.
+
+### `POST /portal/login`
+Autentica o locatário pelo CPF, com a mesma proteção de rate limit do painel (por IP).
+- **Corpo**: `application/x-www-form-urlencoded` ou `multipart/form-data`
+  - `cpf` (string, obrigatório): qualquer formatação (`529.982.247-25` ou `52998224725`).
+  - `password` (string, obrigatório): senha pessoal; no primeiro acesso, o próprio CPF sem pontuação.
+- **Respostas**:
+  - `302 Found`: Sucesso. Define `__aluxen_client_session` e redireciona para `/portal/password` (senha padrão ainda vigente) ou `/portal`.
+  - `400 Bad Request`: Campos ausentes.
+  - `401 Unauthorized`: CPF ou senha inválidos (mensagem única, sem revelar se o CPF existe).
+  - `429 Too Many Requests`: Limite de tentativas por minuto atingido.
+
+### `POST /portal/logout` ou `GET /portal/logout`
+Encerra a sessão do locatário e redireciona para `/portal/login`.
+
+### `GET /portal`
+Área do Cliente em modo leitura: contratos do titular (com vigência, vencimento, aluguel e links para PDF e autenticidade) e **apenas os recibos quitados** (integral ou parcial), com data e valor pago.
+- **Autenticação**: Requerida (sessão de locatário).
+- **Resposta**:
+  - `302 Found`: Sem sessão → `/portal/login`; senha padrão ainda vigente → `/portal/password`.
+  - `200 OK`: HTML renderizado com os dados do titular.
+
+### `GET /portal/password`
+Formulário de troca de senha. Indica quando a troca é obrigatória (primeiro acesso com a senha padrão).
+- **Autenticação**: Requerida (sessão de locatário).
+
+### `POST /portal/password`
+Troca a senha do locatário autenticado.
+- **Corpo**: `current_password`, `new_password`, `confirm_password` (todos obrigatórios).
+- **Regras**: senha atual deve conferir (o CPF vale como senha atual no primeiro acesso); nova senha com no mínimo 6 caracteres, diferente do CPF e igual à confirmação.
+- **Respostas**:
+  - `302 Found`: Sucesso → `/portal?ok=password`.
+  - `400 Bad Request`: Divergência de confirmação, senha atual incorreta ou nova senha inválida.
