@@ -34,9 +34,12 @@ Sistema completo de **gestão de locações imobiliárias**, escrito em **Go**: 
   - [14. Área do Cliente (Portal do Locatário)](#14-área-do-cliente-portal-do-locatário)
   - [15. Informações do Sistema & Build em Execução](#15-informações-do-sistema--build-em-execução)
   - [16. Interface, Componentes & Usabilidade](#16-interface-componentes--usabilidade)
+  - [17. Temporada: Caução, Vistoria & Calendário](#17-temporada-caução-vistoria--calendário)
+  - [18. Conversas, Cobrança & Atendimento no WhatsApp](#18-conversas-cobrança--atendimento-no-whatsapp)
+  - [19. Leitura Assistida por IA, Intake & Reajuste](#19-leitura-assistida-por-ia-intake--reajuste)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
-- [Scripts Disponíveis](#-scripts-disponíveis)
+- [Comandos Disponíveis](#-comandos-disponíveis)
 - [Banco de Dados & Migrações](#-banco-de-dados--migrações)
 - [Execução com Docker e Docker Compose](#-execução-com-docker-e-docker-compose)
 - [Testes e Qualidade de Código](#-testes-e-qualidade-de-código)
@@ -85,17 +88,17 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - Modais rápidos de cadastro e edição.
 - **E-mail validado** no formulário (padrão `usuario@dominio.tld`) e também no servidor, garantindo o endereço usado nos envios de WhatsApp/e-mail.
 - **Coluna "Área do Cliente"**: mostra quem já definiu senha própria (`Senha própria`), quem ainda usa a senha padrão (`Senha padrão`) e quem não tem CPF cadastrado (`Sem CPF`, portanto sem acesso ao portal).
-- **Exclusão Segura**: O sistema impede a exclusão acidental de locatários que possuam contratos ativos.
+- **Exclusão Segura**: a exclusão é bloqueada para locatário com **contrato ativo** — o botão fica desabilitado na tabela e o servidor recusa com *"Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro."*
 
 ### 3. Gestão de Imóveis
 - Controle de propriedades residenciais e comerciais (Nome, Endereço, Cidade, Estado/UF, CEP).
-- **CEP como primeiro campo**: com a máscara `00000-000`, a consulta ao ViaCEP preenche automaticamente endereço, cidade e estado — número e complemento ficam por conta do usuário. Se a consulta falhar, o cadastro manual continua disponível.
-- Listagem com filtros, ordenação e contadores de ocupação.
-- Proteção de integridade referencial ao excluir imóveis com contratos em vigência.
+- **CEP com máscara `00000-000`**: endereço, cidade e estado são digitados no próprio formulário — no port Go o cadastro **não** consulta serviço externo de CEP; número e complemento vão no campo Endereço.
+- Listagem com filtros, ordenação e paginação no navegador.
+- Exclusão pela tela: o contrato aponta para o imóvel por chave estrangeira com `ON DELETE CASCADE`, então excluir um imóvel remove os contratos vinculados — use a exclusão com o imóvel já desocupado.
 
 ### 4. Contratos de Locação & Emissão Formal
 - Vínculo direto entre Inquilino e Imóvel com definição de data inicial, data final, dia de vencimento mensal (`due_day`) e valor do aluguel.
-- Controle de ciclo de vida do contrato (**Ativo** ou **Encerrado**), com botões para Encerrar ou Reativar.
+- Controle de ciclo de vida do contrato com quatro situações — **Ativo**, **Suspenso**, **Temporada** e **Encerrado** — e botões para Encerrar, Suspender e Reativar conforme o estado atual. Só contratos ativos e de temporada bloqueiam sobreposição de período no mesmo imóvel.
 - **Emissão Formal do Contrato em PDF (`/contract-pdf?id=...`)**:
   - Minuta completa com **25 cláusulas legais** baseadas na **Lei do Inquilinato (Lei nº 8.245/1991)**.
   - Qualificação integral de locador e locatário, garantias, foro de eleição e campos para assinaturas das partes e testemunhas.
@@ -103,8 +106,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 5. Pagamentos, Recibos & Baixa em Lote
 - **Geração Mensal em Lote**: Botão que gera automaticamente os recibos de todos os contratos ativos do mês selecionado, com chave única (`generated_key`) que impede duplicidades.
-- **Recibos Avulsos / Extras**: Suporte a cobranças avulsas (IPTU, reparos, taxa de condomínio) desvinculadas de contrato obrigatório (`category = 'extra'`).
-- **Valor sugerido pelo contrato**: ao escolher o contrato em um lançamento de aluguel, o campo de valor já vem preenchido com o aluguel vigente (editável).
+- **Recibos Avulsos / Extras**: Suporte a cobranças avulsas (IPTU, reparos, taxa de condomínio) desvinculadas de contrato obrigatório (`category = 'extra'`). O modal de lançamento alterna entre os dois modos — *Aluguel / Contrato* (contrato obrigatório) e *Taxa Avulsa* (descrição obrigatória, locatário e imóvel opcionais) — e o valor é digitado com máscara de moeda.
 - **Suporte a Pagamento Parcial**: Registro de `amount` (valor total) e `paid_amount` (valor efetivamente pago), permitindo quitações parciais.
 - **Status Inteligentes**:
   - `Pago`: Quitado integralmente.
@@ -120,14 +122,18 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
   - Data por extenso e declaração formal de quitação.
   - **Código de Autenticação Alfanumérico** (ex.: `AUTH-4061-AE09-3241-A94F`).
   - **QR Code Dinâmico**: Permite ao locatário escanear a folha do recibo com a câmera do celular e conferir os dados originais no servidor.
+- **Auto de Vistoria (`/inspection-pdf?id=...`)**: entrada ou saída, com os itens conferidos (área, item, estado, observação) e as fotos anexadas.
+- **Recibo de Devolução de Caução (`/deposit-pdf?id=...`)**: valor retido, valor devolvido, datas e situação da caução do contrato.
 
 ### 7. Portal Público de Validação de Documentos
 - Acesso público e independente em:
   - **Recibos**: `/validar/recibo/:id?token=...`
   - **Contratos**: `/validar/contrato/:id?token=...`
+  - **Autos de vistoria**: `/validar/vistoria/:id?token=...`
+  - **Recibos de caução**: `/validar/caucao/:id?token=...`
 - **Validação Criptográfica HMAC-SHA256**: Garante que o documento foi genuinamente gerado pelo sistema e não foi adulterado.
 - **Visualização Segura**: Exibe o selo verde de autenticidade, valores, datas e um botão direto para **Visualizar / Baixar o PDF original**, dispensando a necessidade de o locatário criar login no sistema.
-- **Auto-Detecção de IP de Rede Local**: Em modo de desenvolvimento, se você escanear o QR Code pelo smartphone na mesma rede Wi-Fi, o sistema resolve o IP local (ex.: `http://192.168.10.109:3000`) para que a página abra instantaneamente no celular!
+- **Auto-Detecção de IP de Rede Local**: quando `app_url` não está configurada e o acesso é por `localhost`, os links e QR Codes usam o primeiro IP privado da máquina (ex.: `http://192.168.10.109:3000`), de modo que escanear o QR Code pelo celular na mesma rede Wi-Fi abra a página direto no aparelho.
 
 ### 8. Integração de WhatsApp
 - **Envio Direto (`wa.me`)**: gera link oficial para envio manual pelo aplicativo ou WhatsApp Web, sem depender de canal configurado.
@@ -137,6 +143,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
   - **Pareamento por QR Code** no painel (`/settings`) ou no modal de envio.
   - **Bidirecional**: as mensagens recebidas entram por webhook (`POST /api/whatsapp/webhook`, com assinatura HMAC) e ficam persistidas e vinculadas ao inquilino.
   - Mensagens pré-formatadas com emojis, resumo financeiro, link para download do PDF e link do portal de validação.
+  - **Atendimento e cobrança**: as mensagens recebidas alimentam a aba *Conversas*, o atendimento responde com dado do banco (ou escala para o locador) e a régua de cobrança avança pelos estágios definidos pelo atraso — ver as seções 17 e 18.
 - Detalhes em [`docs/WHATSAPP-GO.md`](docs/WHATSAPP-GO.md).
 
 ### 9. Configurações do Locador & URL Pública
@@ -146,8 +153,8 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - Alteração segura de senha do usuário autenticado.
 
 ### 10. Backup & Restauração JSON
-- **Exportação Completa (`/export`)**: Gera download imediato de arquivo `aluxen-backup-YYYY-MM-DD.json` contendo todas as tabelas (inquilinos, imóveis, contratos, recibos e configurações).
-- **Restauração / Importação (`/import`)**: Upload do arquivo JSON para restaurar ou migrar a base inteira em uma transação atômica.
+- **Exportação (`/export`)**: download imediato de `aluxen-backup-YYYY-MM-DD.json` com `exportedAt`, `tenants`, `properties`, `leases` e `receipts`. Hash de senha e credenciais da Área do Cliente ficam de fora — o backup não carrega credencial.
+- **Restauração / Importação (`/import`)**: upload do JSON no campo `file` (até 10 MiB). A importação gera **ids novos** e remapeia as chaves estrangeiras de locatário, imóvel e contrato, preservando os timestamps originais. Categoria, descrição, valor pago, `generated_key` e tokens de autenticidade **não** são importados: recomeçam do zero.
 
 ### 11. Histórico & Auditoria
 - **Trilha de auditoria completa (`audit_logs`)**: toda operação relevante é registrada com autor, data/hora, IP, protocolo da requisição e o **diff campo a campo** (valor antes → valor depois) já formatado em português.
@@ -158,15 +165,15 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 12. PWA, Responsividade & Sincronização Offline
 - Suporte a Progressive Web App com manifesto (`/manifest.webmanifest`) e ícones em alta resolução para instalação no celular (iOS e Android).
-- **Fila de Sincronização Offline**: Ações realizadas sem conexão à internet são retidas em `localStorage` e reenviadas ao servidor automaticamente assim que a conectividade for restabelecida.
+- **Fila de Sincronização Offline**: Ações realizadas sem conexão à internet são retidas em `localStorage` (`aluxen.offline.queue`) e reenviadas ao servidor assim que a conectividade é restabelecida; as abas já visitadas ficam em cache local. Formulários que enviam **arquivo** (vistoria com fotos, importação de backup, comprovante) não entram na fila — exigem conexão.
 - Sidebar retrátil com persistência no navegador e Drawer mobile para operação confortável em telas pequenas.
 - Seletor de tema **Claro / Escuro** integrado.
 
 ### 13. Observabilidade & Logs Estruturados
-- **Logger estruturado** (`internal/infrastructure/logging`): uma linha por evento com timestamp ISO, nível (`debug`, `info`, `warn`, `error`), escopo (`http`, `audit`, `db`, `whatsapp`, `app`) e campos tipados.
-- **Dois formatos**: legível com cores de leitura no terminal (`pretty`, padrão em TTY) e **JSON Lines** para containers/observabilidade (`LOG_FORMAT=json`, padrão fora de TTY).
-- **Log de requisições**: método, rota, status, duração em ms, IP, usuário autenticado e `requestId` — o mesmo protocolo aparece na resposta de erro e na trilha de auditoria. Estáticos vão para `debug`; 4xx para `warn`; 5xx e requisições acima de 1 s para `error`/`warn`.
-- **Tratamento de erros**: exceções não tratadas são logadas com rastreio de pilha e devolvem uma página/JSON amigável com o protocolo de correlação (em vez de "Internal Server Error" genérico).
+- **Logger estruturado** (`internal/infrastructure/logging`): uma linha por evento com timestamp ISO, nível (`debug`, `info`, `warn`, `error`) e escopo por área (`http`, `audit`, `whatsapp`, `payments`, `intake`, `agent`, `collection`, `adjustment`, `backup`, `db.migrate`, `db.seed`).
+- **Dois formatos**: texto legível em desenvolvimento (padrão fora de produção) e **JSON** em produção — ou quando `LOG_FORMAT=json` pede explicitamente.
+- **Log de requisições**: método, rota, status, duração em ms, IP, usuário autenticado e `requestId` — o mesmo protocolo aparece na resposta de erro e na trilha de auditoria. O nível segue o status: 5xx em `error`, 4xx em `warn` e o resto em `info`.
+- **Tratamento de erros**: requisições que entram em pânico são recuperadas pelo middleware, logadas com até 6 linhas de rastreio e devolvem uma página/JSON amigável com o protocolo de correlação (em vez de "Internal Server Error" genérico).
 - **Redação automática** de campos sensíveis (`password`, `token`, `secret`, `cookie`, `hash`, `session`) em qualquer log.
 
 ### 14. Área do Cliente (Portal do Locatário)
@@ -191,6 +198,28 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Filtros rotulados e alinhados em todas as seções**: busca, mês, ano, status, área, ação e usuário aparecem com rótulo acima do controle; rótulos e controles compartilham a mesma linha de base e a mesma altura (38px), com os campos empilhados na vertical em telas estreitas.
 - **Seleção sem opção duplicada**: os selects com busca exibem uma única opção de placeholder, fornecida pela tela.
 - **Formulários com validação nativa**: e-mail com `pattern` compartilhado entre cliente e servidor; a validação também roda no fluxo offline (`form.reportValidity()`).
+
+### 17. Temporada: Caução, Vistoria & Calendário
+- **Caução por contrato**: `deposit.set` registra o valor, a data de recebimento e a observação; `deposit.refund` devolve o valor (total ou parcial) e classifica a situação em `held`, `refunded`, `partially_refunded` ou `forfeited`. Contrato sem caução registrada não emite o recibo de devolução.
+- **Auto de vistoria**: entrada (`checkin`) e saída (`checkout`) com data da realização, estado geral (Ótima, Boa, Regular, Ruim), itens conferidos (área, item, estado e observação, em linhas paralelas) e até **10 fotos de 8 MiB** cada (JPG, PNG, WEBP, HEIC/HEIF). O PDF sai com os itens e as fotos anexadas.
+- **Documentos próprios da temporada**: `/inspection-pdf` e `/deposit-pdf`, validáveis publicamente em `/validar/vistoria/:id` e `/validar/caucao/:id`.
+- **Calendário de ocupação** (aba *Calendário*): grade por imóvel e dia do mês, com temporada, contrato ativo, contrato suspenso e dias livres; a tela é só leitura — nada é gravado por ela.
+- **Categorias de lançamento**: além de aluguel (`rent`) e avulsa (`extra`), existem taxa de limpeza (`cleaning`), consumíveis (`consumables`) e devolução de caução (`deposit-refund`).
+- **Contratos de temporada**: a situação `season` é um estado do contrato, aceita na criação e na edição, e bloqueia sobreposição no mesmo imóvel junto com os contratos ativos.
+
+### 18. Conversas, Cobrança & Atendimento no WhatsApp
+- **Aba Conversas**: cada locatário aparece com a última mensagem, a direção, o total de mensagens e o atraso em aberto. O locador responde pela própria tela (`conversation.reply`, que vira job de envio) e pode assumir a conversa (`conversation.escalate`).
+- **Régua de cobrança** (`POST /api/collection/run`): percorre os lançamentos vencidos e aplica o estágio definido pelo **atraso do lançamento** — Lembrete amigável (a partir de 1 dia), Cobrança firme (7 dias) e Proposta de parcelamento (15 dias). Com `dry_run`, a resposta é apenas a simulação do que sairia.
+- **Atendimento automático**: as mensagens recebidas são respondidas com dado do banco por ferramentas tipadas e de escopo fechado (consultar lançamento do próprio titular, consultar contrato, registrar pedido de manutenção, encaminhar ao locador). Dúvida jurídica, pedido sem descrição ou pergunta sem dado do banco são escalados ao locador com resposta determinística — o atendimento não interpreta contrato nem promete prazo.
+- **Trilha**: mensagens recebidas, escalonamentos, pedidos de manutenção e envios da régua ficam registrados na auditoria com o telefone mascarado.
+- Sem canal montado, as rotas de conversa respondem `503` e a cobrança fica registrada como pendente de envio.
+
+### 19. Leitura Assistida por IA, Intake & Reajuste
+- **Comprovante de pagamento**: o upload (`/api/payments/proof`) ou a mensagem recebida guarda o arquivo, cria o registro `pending` e enfileira a leitura por visão, que devolve JSON tipado (valor, data, pagador, beneficiário, identificador e confiança). A **validação é determinística**: confere o lançamento em aberto do titular e dá baixa quando tudo fecha; o que não fecha vai para a fila de revisão humana (aba *Revisão*), onde o aceite ou a recusa com motivo fica na trilha. A confiança mínima para a baixa automática é `AI_CONFIDENCE_THRESHOLD` (padrão `0.9`). **Nunca há baixa por saída de LLM** — o modelo lê, o código decide.
+- **Onboarding por documento** (aba *Intake*): contrato antigo, documento de identidade (RG/CNH) ou comprovante de residência vira uma **proposta** (`pending`); a conferência humana cria o locatário, o imóvel e/ou o contrato — ou descarta a proposta com o motivo. Nada é gravado como cadastro antes da confirmação.
+- **Reajuste assistido** (aba *Reajuste*): prévia do reajuste por **IGP-M** ou **IPCA** com percentual e data de vigência, aplicação somente com confirmação explícita, notificação formal pronta para envio e histórico do que já foi aplicado, lido da trilha.
+- **Relatório e consulta**: relatório mensal por competência (`/api/report/monthly`, com totais, contagem por situação e quebras por imóvel e por locatário) e perguntas em linguagem natural (`/api/report/ask`) respondidas por ferramentas tipadas; sem provedor de IA configurado, a consulta responde `503`.
+- Dados tratados, finalidade e o operador de IA estão em [`docs/PRIVACIDADE.md`](docs/PRIVACIDADE.md).
 
 ---
 
@@ -248,8 +277,8 @@ A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato d
 | `HOST` | `0.0.0.0` | Endereço de bind de rede. |
 | `PORT` | `3000` | Porta TCP do servidor HTTP. |
 | `DATABASE_URL` | *(vazio)* | Dialeto do banco: `file:/data/aluxen.db` → **SQLite**; `postgres://user:pass@host:5432/db` → **Postgres**. Vazio usa `DB_DIR`. |
-| `DB_DIR` | *(raiz)* | Diretório onde o arquivo `aluxen.db` é gravado quando `DATABASE_URL` está vazia (e base do `STORAGE_DIR`). |
-| `STORAGE_DIR` | `<DB_DIR>/storage` | Diretório dos anexos (fotos de vistoria e documentos enviados). |
+| `DB_DIR` | *(vazio)* | Diretório do arquivo `aluxen.db` quando `DATABASE_URL` está vazia (também a base do `STORAGE_DIR`); vazio usa `aluxen.db` no diretório de trabalho. |
+| `STORAGE_DIR` | `<DB_DIR>/storage` (ou `./storage`) | Diretório dos anexos (fotos de vistoria e documentos enviados). |
 | `SESSION_SECRET` | *(obrigatório em produção)* | Assina sessão, CSRF e os tokens HMAC de autenticidade dos documentos. Sem valor seguro, o boot falha em produção. |
 | `COOKIE_SECURE` | `false` | Força o atributo `Secure` dos cookies fora de produção (em produção é sempre `Secure`). |
 | `APP_URL` | *(auto-detectado)* | URL pública base dos links e QR Codes (ex.: `https://aluxen.evolucsia.com`). Vence `BASE_URL`. |
@@ -263,7 +292,7 @@ A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato d
 | `RATE_LIMIT_GLOBAL_MAX` | `60` | Teto global de tentativas de login na janela de 60 s. |
 | `LOGIN_LOCK_THRESHOLD` | `10` | Falhas que iniciam o bloqueio progressivo do IP (5 min, dobrando até 1 h). |
 | `LOG_LEVEL` | `info` | Nível mínimo dos logs: `debug`, `info`, `warn`, `error` ou `silent`. |
-| `LOG_FORMAT` | `json` em produção, `pretty` em TTY | Formato do logger. |
+| `LOG_FORMAT` | texto em desenvolvimento, `json` em produção | Formato do logger (`json` força JSON Lines fora de produção). |
 | `WHATSAPP_MODE` | `demo` | `demo` (WAHA, não-oficial, risco de banimento) ou `client` (Cloud API oficial). Ver `docs/WHATSAPP-GO.md`. |
 | `WAHA_API_URL` | *(vazio)* | Base da API do canal. Vazio desliga o canal (a instância sobe sem WhatsApp). |
 | `WAHA_API_KEY` | *(vazio)* | Autentica as chamadas ao canal. |
@@ -271,7 +300,7 @@ A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato d
 | `WAHA_WEBHOOK_SECRET` | *(vazio)* | Segredo HMAC que valida o webhook de mensagens recebidas. **Obrigatório** fora do modo demo. |
 | `AI_API_URL` | *(vazio)* | Base da API do provedor de IA (leitura de documentos). |
 | `AI_API_KEY` | *(vazio)* | Autentica as chamadas ao provedor de IA. |
-| `AI_MODEL` | `deepseek-v4.1-flash` | Modelo usado nas extrações por IA (o operador de IA no aviso de privacidade). |
+| `AI_MODEL` | *(vazio; `.env.example` sugere `deepseek-v4.1-flash`)* | Modelo usado nas extrações por IA (o operador de IA no aviso de privacidade). Sem base/modelo configurados, a leitura envia o comprovante para a fila de revisão. |
 | `AI_CONFIDENCE_THRESHOLD` | `0.9` | Confiança mínima para a baixa automática; abaixo disso vai para revisão humana. |
 | `EASYPANEL_URL` | *(vazio)* | Base da API de provisionamento por instância. |
 | `EASYPANEL_API_KEY` | *(vazio)* | Autentica as chamadas à API de provisionamento. |
@@ -384,15 +413,15 @@ aluxen/
 │   └── postgres/               # Migrações do dialeto Postgres (paridade de esquema)
 ├── queries/                    # Queries SQL usadas pelo sqlc
 ├── schema/                     # Esquema de referência (SQLite/Postgres)
+├── test/e2e/                   # Testes ponta a ponta (httptest) do app Go
 ├── docs/                       # Documentação técnica (ver seção abaixo)
 ├── Dockerfile                  # Imagem multi-stage → distroless
 ├── docker-compose.yml          # Orquestração com volume persistente em /data
 └── .env.example                # Contrato das variáveis de ambiente
 ```
 
-> O app **Bun legado** permanece no repositório apenas como referência histórica:
-> `src/`, `public/`, `drizzle/`, `test/`, `package.json` e `tsconfig.json`. Não é
-> o app vigente neste branch.
+> Não há app legado no repositório: `src/`, `public/`, `drizzle/`, `package.json`
+> e `tsconfig.json` foram removidos junto com o app Bun.
 
 ---
 
@@ -402,12 +431,11 @@ Para detalhes de engenharia de cada subsistema, consulte os manuais da pasta `do
 
 - **[Arquitetura do port Go (`docs/ARQUITETURA-GO.md`)](docs/ARQUITETURA-GO.md)**: contrato normativo do port — camadas, dependências, mapa de rotas e funcionalidades novas.
 - **[Deploy por instância (`ARQUITETURA-DEPLOY.md`)](ARQUITETURA-DEPLOY.md)**: uma instância por cliente no Easypanel, SQLite/Postgres e provisionamento.
+- **[Operação (`docs/OPERACAO-GO.md`)](docs/OPERACAO-GO.md)**: rotina de operação da instância Go.
 - **[WhatsApp (`docs/WHATSAPP-GO.md`)](docs/WHATSAPP-GO.md)**: modos demo/cliente, configuração do canal (WAHA / Cloud API), webhook e endpoints.
 - **[Validação pública (`docs/VALIDACAO-GO.md`)](docs/VALIDACAO-GO.md)**: protocolo HMAC, URL pública e a **dependência de hospedagem contínua** do QR Code.
 - **[Privacidade / LGPD (`docs/PRIVACIDADE.md`)](docs/PRIVACIDADE.md)**: dados tratados, finalidades, controlador/operador, retenção e direitos do titular.
-- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: rotas, query parameters, payloads e códigos de status HTTP.
-
-**Documentos legados (app Bun)** — mantidos como referência histórica: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/WHATSAPP.md`](docs/WHATSAPP.md) e [`docs/VALIDATION.md`](docs/VALIDATION.md).
+- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: rotas, autenticação, payloads, códigos de status e mensagens de erro literais.
 
 ---
 

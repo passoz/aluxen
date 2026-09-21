@@ -82,6 +82,7 @@ var (
 	_ application.ProofExtractor  = (*Client)(nil)
 	_ application.IntakeExtractor = (*Client)(nil)
 	_ application.ChatClient      = (*Client)(nil)
+	_ application.PhotoComparator = (*Client)(nil)
 )
 
 // Config configura o cliente do provedor de IA.
@@ -213,19 +214,32 @@ func (c *Client) complete(ctx context.Context, prompt, instruction string, doc D
 	if !c.Configured() {
 		return "", ErrNotConfigured
 	}
-	mime, err := c.validate(doc)
+	mime, err := c.validateFile(doc.Bytes, doc.Mime, doc.FileName)
 	if err != nil {
 		return "", err
 	}
+	return c.completeImages(ctx, prompt, instruction, []chatPart{
+		{Type: "image_url", ImageURL: &imageURL{URL: dataURL(mime, doc.Bytes)}},
+	})
+}
+
+// completeImages envia a instrução com um ou mais conteúdos (imagem como data
+// URL base64 do próprio mime, e o texto que amarra o nome do arquivo à foto) e
+// devolve o texto cru do provedor. É o caminho compartilhado pela leitura de um
+// documento e pela comparação de fotos.
+func (c *Client) completeImages(ctx context.Context, prompt, instruction string, content []chatPart) (string, error) {
+	if !c.Configured() {
+		return "", ErrNotConfigured
+	}
+	parts := make([]chatPart, 0, len(content)+1)
+	parts = append(parts, chatPart{Type: "text", Text: instruction})
+	parts = append(parts, content...)
 
 	raw, err := c.post(ctx, chatRequest{
 		Model: c.model,
 		Messages: []chatMessage{
 			{Role: "system", Content: prompt},
-			{Role: "user", Content: []chatPart{
-				{Type: "text", Text: instruction},
-				{Type: "image_url", ImageURL: &imageURL{URL: dataURL(mime, doc.Bytes)}},
-			}},
+			{Role: "user", Content: parts},
 		},
 		Temperature:    0,
 		ResponseFormat: responseMode{Type: "json_object"},
@@ -332,31 +346,36 @@ func parseContent(raw json.RawMessage, required bool) (string, error) {
 	return "", fmt.Errorf("%w: resposta do provedor não é texto", ErrInvalidResponse)
 }
 
-// validate recusa o documento que não pode ir ao provedor. As mensagens são de
-// validação, em português, e citam apenas nome, mime e tamanho — nunca o
-// conteúdo.
+// validate recusa o documento que não pode ir ao provedor.
 func (c *Client) validate(doc Document) (string, error) {
-	name := strings.TrimSpace(doc.FileName)
+	return c.validateFile(doc.Bytes, doc.Mime, doc.FileName)
+}
+
+// validateFile recusa o arquivo que não pode ir ao provedor. As mensagens são
+// de validação, em português, e citam apenas nome, mime e tamanho — nunca o
+// conteúdo.
+func (c *Client) validateFile(content []byte, mime, fileName string) (string, error) {
+	name := strings.TrimSpace(fileName)
 	if name == "" {
 		name = "documento sem nome"
 	}
-	if len(doc.Bytes) == 0 {
+	if len(content) == 0 {
 		return "", fmt.Errorf("%w: %s está vazio", ErrInvalidDocument, name)
 	}
-	if int64(len(doc.Bytes)) > c.maxBytes {
+	if int64(len(content)) > c.maxBytes {
 		return "", fmt.Errorf("%w: %s tem %s, acima do limite de %s",
-			ErrInvalidDocument, name, sizeLabel(int64(len(doc.Bytes))), sizeLabel(c.maxBytes))
+			ErrInvalidDocument, name, sizeLabel(int64(len(content))), sizeLabel(c.maxBytes))
 	}
-	mime := normalizeMime(doc.Mime)
-	if mime == "" {
-		if raw := strings.TrimSpace(doc.Mime); raw != "" {
+	normalized := normalizeMime(mime)
+	if normalized == "" {
+		if raw := strings.TrimSpace(mime); raw != "" {
 			return "", fmt.Errorf("%w: mime %q não suportado por %s (aceitos: %s)",
 				ErrInvalidDocument, raw, name, strings.Join(supportedMimes, ", "))
 		}
 		return "", fmt.Errorf("%w: %s sem tipo de arquivo (aceitos: %s)",
 			ErrInvalidDocument, name, strings.Join(supportedMimes, ", "))
 	}
-	return mime, nil
+	return normalized, nil
 }
 
 // normalizeMime reduz o mime ao formato aceito e devolve vazio quando não é

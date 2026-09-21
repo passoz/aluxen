@@ -276,10 +276,18 @@ handler é fino e devolve o erro de domínio.
 
 Validações: e-mail no formato `usuario@dominio.tld` → `400`
 `Informe um e-mail válido.`; cadastro incompleto → `400`
-`Preencha nome, endereço, cidade e estado.`; exclusão de locatário com contrato
-ativo ou de imóvel com contrato vinculado é recusada (o vínculo é verificado na
-tela, que não oferece a ação). Registro ausente na alteração/exclusão →
-`400` `Registro não informado.`
+`Preencha nome, endereço, cidade e estado.`; registro ausente na
+alteração/exclusão → `400` `Registro não informado.`
+
+Exclusões:
+
+- `tenant.delete` é recusado pelo servidor enquanto houver contrato **ativo** do
+  locatário: `400`
+  `Não é possível excluir inquilino com contrato ativo. Encerre o contrato primeiro.`
+  (a tela também desabilita o botão nesse caso);
+- `property.delete` **não** tem trava no servidor e a chave estrangeira dos
+  contratos é `ON DELETE CASCADE`: excluir o imóvel remove junto os contratos
+  vinculados.
 
 #### Intents de contrato (`lease.*`)
 
@@ -318,8 +326,10 @@ tela, que não oferece a ação). Registro ausente na alteração/exclusão →
 | `receipt.batch-delete` | `ids` (lista separada por vírgula) |
 | `receipt.generate-monthly` | gera os lançamentos dos contratos ativos sem recibo da competência |
 
-- `category` é `rent` (aluguel) ou `extra` (cobrança avulsa, com
-  `description`); `pay_amount` aceita o valor cru ou a máscara pt-BR.
+- `category` recebida do painel é `rent` (aluguel, com contrato obrigatório) ou
+  `extra` (cobrança avulsa, com `description`); o domínio também conhece
+  `cleaning`, `consumables` e `deposit-refund`. `pay_amount` aceita o valor cru ou
+  a máscara pt-BR.
 - Erros literais: `Preencha vencimento e valor.`,
   `Selecione um contrato para recebimento de aluguel.`,
   `Informe a descrição para cobrança avulsa.`, `Informe o valor pago.`,
@@ -721,8 +731,8 @@ contrato) ou descarta a proposta com o motivo.
 ### `GET /api/conversations`
 Conversas do WhatsApp por locatário, da mais recente para a mais antiga.
 - **Autenticação**: sessão do administrador.
-- **Query params**: `limit` (janela de mensagens lida por conversa; `0`/ausente
-  usa o padrão).
+- **Query params**: `limit` (janela de mensagens lida por conversa; `0`/ausente usa
+  50 e o valor é limitado a 200).
 - **Resposta**: `200 OK` `{"ok":true,"conversations":[...]}` — cada conversa traz
   `tenantId`, `tenantName`, `phone`, `lastMessage`, `lastDirection`/
   `lastDirectionLabel`, `lastAt`, `messageCount`, `awaitingReply`,
@@ -808,9 +818,13 @@ Aplica o reajuste e devolve a notificação formal. Exige a confirmação explí
 ## 11. WhatsApp (WAHA)
 
 O canal é o **WAHA**: pareamento, estado de sessão e envio são chamadas HTTP (não
-há Chromium nem robô headless na instância). Sem `WAHA_API_URL`, todas as rotas
-abaixo respondem `503` `Canal de WhatsApp indisponível.` Detalhes em
-`docs/WHATSAPP-GO.md`.
+há Chromium nem robô headless na instância). Sem `WAHA_API_URL` a instância sobe
+normalmente e o canal fica indisponível: as rotas que consultam ou usam o canal
+(`status`, `login/*`, `logout`, `send`, `send/status` e a resposta manual da aba
+*Conversas*) respondem `503` `Canal de WhatsApp indisponível.` — **`preview` e
+`webhook` continuam funcionando** (o preview só monta a mensagem e o link
+`wa.me`; o webhook persiste a mensagem e apenas não consegue entregar a resposta
+do atendimento). Detalhes em `docs/WHATSAPP-GO.md`.
 
 ### `GET /api/whatsapp/status`
 - **Autenticação**: sessão do administrador.
@@ -837,6 +851,7 @@ Inicia o pareamento (sessão/pareamento no WAHA) e devolve o estado inicial.
 
 ### `GET /api/whatsapp/login/status`
 Estado do pareamento em curso.
+- **Autenticação**: sessão do administrador.
 - **Resposta**: `200 OK` `{"ok":true,"state":{"status":"scan_qr","qrCode":"data:image/png;base64,...","message":"...","error":"..."}}`.
 - `status` é `idle`, `starting`, `scan_qr`, `syncing`, `connected`, `error` ou
   `timeout`; `qrCode` só vem quando o estado é `scan_qr` (imagem de 280 px).
@@ -847,15 +862,19 @@ Estado do pareamento em curso.
   `Não foi possível consultar a sessão do WhatsApp.`).
 
 ### `POST /api/whatsapp/login/cancel`
-Cancela o pareamento em curso. **Resposta**: `200 OK` `{"ok":true,"state":{...}}`.
+Cancela o pareamento em curso.
+- **Autenticação**: sessão do administrador + CSRF.
+- **Resposta**: `200 OK` `{"ok":true,"state":{...}}`.
 
 ### `POST /api/whatsapp/logout`
 Encerra a sessão pareada e registra `whatsapp.logout` na trilha.
+- **Autenticação**: sessão do administrador + CSRF.
 - **Resposta**: `200 OK` `{"ok":true,"message":"WhatsApp desconectado com sucesso."}`;
   falha ao desconectar → `400` `Não foi possível desconectar o WhatsApp agora. Tente novamente.`
 
 ### `POST /api/whatsapp/preview`
 Monta a mensagem e devolve o destinatário e o link direto.
+- **Autenticação**: sessão do administrador + CSRF.
 - **Corpo**: `type` (`receipt` ou `lease`) e `id`.
 - **Resposta**: `200 OK`
 
@@ -882,12 +901,14 @@ Monta a mensagem e devolve o destinatário e o link direto.
 ### `POST /api/whatsapp/send`
 Inicia o envio pelo canal em segundo plano e responde de imediato com o
 identificador do acompanhamento.
+- **Autenticação**: sessão do administrador + CSRF.
 - **Corpo**: `to` (telefone) e `message` (texto).
 - **Resposta**: `200 OK` `{"ok":true,"jobId":"..."}`; o envio registra
   `whatsapp.send` (e `whatsapp.send-failed` com o motivo, quando falha).
 
 ### `GET /api/whatsapp/send/status?jobId=...`
 Andamento do envio criado por quem consulta.
+- **Autenticação**: sessão do administrador (o job é do administrador que o criou).
 - **Resposta**: `200 OK`
 
 ```json
@@ -973,7 +994,7 @@ Formulário de troca de senha; marca o primeiro acesso quando a senha padrão ai
 
 ---
 
-## Apêndice: estações de erro por código
+## Apêndice: códigos de status
 
 | Código | Quando |
 |---|---|

@@ -1,7 +1,7 @@
 # WhatsApp no Aluxen (Go) — modos demo e cliente
 
 Este documento descreve o canal de WhatsApp do Aluxen no port Go. Ele substitui o
-robô headless com Puppeteer/Chromium do app Bun (`docs/WHATSAPP.md`, legado): no
+robô headless com Puppeteer/Chromium do app Bun (documento do app original, removido do repositório): no
 Go **não há navegador** — o pareamento, o estado da sessão e o envio são chamadas
 HTTP ao provedor do canal, e as mensagens recebidas entram por webhook.
 

@@ -545,6 +545,68 @@
     popover.style.top = Math.round(top) + 'px';
   }
 
+
+  /* ── Consulta de CEP (ViaCEP) ──────────────────────────────────────────
+   * O app original preenche endereço, cidade e estado a partir do CEP; o
+   * número/complemento continua por conta de quem digita. Falha da consulta não
+   * bloqueia o cadastro manual — só avisa.
+   */
+  var cepRequestId = 0;
+
+  function fillFromCep(field, data) {
+    var form = field.closest('form');
+    if (!form) return;
+    var values = { address: data.logradouro || '', city: data.localidade || '', state: data.uf || '' };
+    Object.keys(values).forEach(function (name) {
+      if (!values[name]) return;
+      var target = form.querySelector('[name="' + name + '"]');
+      if (target && target.value !== values[name]) {
+        target.value = values[name];
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+  }
+
+  function lookupCep(field) {
+    var digits = (field.value || '').replace(/\D/g, '');
+    if (digits.length !== 8) return;
+
+    var requestId = ++cepRequestId;
+    field.setAttribute('aria-busy', 'true');
+    fetch('https://viacep.com.br/ws/' + digits + '/json/', { signal: AbortSignal.timeout(8000) })
+      .then(function (response) {
+        if (!response.ok) throw new Error('falha na consulta do CEP');
+        return response.json();
+      })
+      .then(function (data) {
+        // Resposta de consulta antiga é descartada: o locador já digitou outro CEP.
+        if (requestId !== cepRequestId) return;
+        if (data && data.erro) {
+          toast('CEP não encontrado. Confira o número.', 'warning');
+          return;
+        }
+        fillFromCep(field, data || {});
+      })
+      .catch(function () {
+        if (requestId !== cepRequestId) return;
+        toast('Não foi possível consultar o CEP agora. Preencha o endereço à mão.', 'warning');
+      })
+      .then(function () {
+        if (requestId === cepRequestId) field.removeAttribute('aria-busy');
+      });
+  }
+
+  function initCepLookup() {
+    $$('input[data-mask="cep"]').forEach(function (field) {
+      if (field.hasAttribute('data-cep-bound')) return;
+      field.setAttribute('data-cep-bound', '1');
+      field.addEventListener('input', function () {
+        if ((field.value || '').replace(/\D/g, '').length === 8) lookupCep(field);
+      });
+      field.addEventListener('blur', function () { lookupCep(field); });
+    });
+  }
+
   function initDatepickers() {
     $$('input[data-datepicker], input[data-datetime]').forEach(function (field) {
       if (field.getAttribute('data-datepicker-ready') === 'true') return;
@@ -2398,6 +2460,7 @@
 
   function refresh() {
     initMasks();
+    initCepLookup();
     initDatepickers();
     initTables();
     applyBatch();

@@ -70,6 +70,7 @@ const (
 	ActionInspectionCreate        = "inspection.create"
 	ActionInspectionUpdate        = "inspection.update"
 	ActionInspectionDelete        = "inspection.delete"
+	ActionInspectionCompare       = "inspection.compare"
 	ActionPaymentProofAccepted    = "payment-proof.accepted"
 	ActionPaymentProofReview      = "payment-proof.review"
 	ActionPaymentProofRejected    = "payment-proof.rejected"
@@ -141,6 +142,7 @@ var auditActions = map[string]AuditActionMeta{
 	ActionInspectionCreate:        {ActionInspectionCreate, "Vistoria registrada", EntityInspection, ToneCreate},
 	ActionInspectionUpdate:        {ActionInspectionUpdate, "Vistoria alterada", EntityInspection, ToneUpdate},
 	ActionInspectionDelete:        {ActionInspectionDelete, "Vistoria excluída", EntityInspection, ToneDelete},
+	ActionInspectionCompare:       {ActionInspectionCompare, "Vistorias comparadas", EntityInspection, ToneCreate},
 	ActionPaymentProofAccepted:    {ActionPaymentProofAccepted, "Comprovante aceito", EntityPayment, ToneCreate},
 	ActionPaymentProofReview:      {ActionPaymentProofReview, "Comprovante em revisão", EntityPayment, ToneUpdate},
 	ActionPaymentProofRejected:    {ActionPaymentProofRejected, "Comprovante recusado", EntityPayment, ToneFailure},
@@ -236,6 +238,12 @@ func MetadataLabel(key string) string {
 		return "Valor"
 	case "stage":
 		return "Etapa"
+	case "photos":
+		return "Fotos comparadas"
+	case "findings":
+		return "Achados"
+	case "damaged":
+		return "Achados de dano"
 	default:
 		return key
 	}

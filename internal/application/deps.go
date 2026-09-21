@@ -104,6 +104,9 @@ type Deps struct {
 	// Channel é o canal de saída do WhatsApp (WAHA ou Cloud API). Nulo desliga o
 	// envio assíncrono enfileirado (o agente responde pelo canal do handler).
 	Channel WhatsAppChannel
-	Log     *slog.Logger
-	Opts    Options
+	// Photos compara as fotos das vistorias de entrada e saída (Tier 2). Nulo
+	// desliga a comparação por imagem.
+	Photos PhotoComparator
+	Log    *slog.Logger
+	Opts   Options
 }

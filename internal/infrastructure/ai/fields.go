@@ -168,6 +168,25 @@ func confidenceField(object map[string]json.RawMessage) (float64, error) {
 	return value, nil
 }
 
+// arrayField devolve o campo como lista de objetos. Lista vazia é válida
+// (nada a relatar); ausente, nula ou de outro tipo é falha de schema.
+func arrayField(object map[string]json.RawMessage, key string) ([]map[string]json.RawMessage, error) {
+	raw, ok := object[key]
+	if !ok {
+		return nil, fmt.Errorf("%w: campo %q ausente", ErrInvalidResponse, key)
+	}
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return nil, fmt.Errorf("%w: campo %q ausente", ErrInvalidResponse, key)
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		// Sem repetir o trecho devolvido: pode conter dado pessoal.
+		return nil, fmt.Errorf("%w: campo %q não é uma lista de objetos", ErrInvalidResponse, key)
+	}
+	return items, nil
+}
+
 // dayField devolve o dia de vencimento opcional, recusando dia inexistente.
 func dayField(object map[string]json.RawMessage, key string) (int, error) {
 	value, present, err := numberField(object, key)
