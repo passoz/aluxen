@@ -2,7 +2,14 @@
 
 Sistema completo de **gestão de locações imobiliárias**, escrito em **Go**: um **binário único** (imagem **distroless**, sem runtime de linguagem nem shell), com **SQLite** ou **Postgres** escolhidos por `DATABASE_URL`, **migrações automáticas no boot**, geração de **PDFs com autenticidade por QR Code** e canal de **WhatsApp** (WAHA / Cloud API) para envio e atendimento bidirecional.
 
-> **Nota de branch (`devgo`):** este branch **substitui o app Bun** (TypeScript, Hono, Drizzle, React SSR, robô headless) pelo **port Go**. O app vigente é o binário em `cmd/app` sobre `internal/`; os diretórios `src/`, `public/`, `drizzle/` e `test/` pertencem ao **app Bun legado** e são mantidos apenas como referência histórica. A arquitetura vigente está em [`docs/ARQUITETURA-GO.md`](docs/ARQUITETURA-GO.md).
+> **Nota de branch (`devgo`):** este branch é o **port Go**, e ele **substitui o
+> app Bun** (TypeScript, Hono, Drizzle, React SSR, robô headless), que foi
+> **removido do repositório**: não há mais `src/`, `public/`, `drizzle/`,
+> `package.json`, `bun test` nem `drizzle-kit`. O app vigente — e único — é o
+> binário em `cmd/app` sobre `internal/`, com as migrações em `migrations/`, o SQL
+> em `queries/` + `schema/` e os templates/estáticos embutidos em
+> `internal/infrastructure/web/`. A arquitetura vigente está em
+> [`docs/ARQUITETURA-GO.md`](docs/ARQUITETURA-GO.md).
 
 ---
 
@@ -63,10 +70,12 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 ## 🎯 Funcionalidades Principais
 
 ### 1. Autenticação & Segurança
-- **Sessões HTTP-only Seguras**: Armazenadas em cookie criptografado (`__aluxen_session`), com flags `HttpOnly`, `SameSite=Lax`, e validade de 30 dias.
+- **Sessões HTTP-only assinadas**: o cookie (`__aluxen_session`) guarda `base64url(id|expiração)` seguido da assinatura HMAC-SHA256 feita com `SESSION_SECRET` — o valor **não** é criptografado, é assinado e conferido em tempo constante (um id forjado é recusado). Flags `HttpOnly`, `SameSite=Lax`, `Path=/` e validade de 30 dias; `Secure` em produção ou com `COOKIE_SECURE=true`.
 - **Duas autenticações independentes**: o painel do locador (`__aluxen_session`) e a **Área do Cliente** do locatário (`__aluxen_client_session`) usam cookies distintos, sem privilégios cruzados — a sessão do locatário não abre nenhuma rota administrativa.
 - **Proteção contra Força Bruta**: três camadas em memória — limite por IP/minuto (`RATE_LIMIT_MAX`, padrão 5), teto global por minuto (`RATE_LIMIT_GLOBAL_MAX`, padrão 60, que barra varredura com IPs rotativos) e **bloqueio progressivo** do IP após falhas repetidas (`LOGIN_LOCK_THRESHOLD`, padrão 10 falhas → 5 min, dobrando até 1 h). Tentativas bloqueadas respondem `429` com `Retry-After` e ficam registradas na trilha com o usuário tentado.
-- **Hashes Criptográficos**: Senhas protegidas com `bcryptjs` (salt cost 10).
+- **Hashes Criptográficos**: senhas protegidas com **bcrypt do Go** (`golang.org/x/crypto/bcrypt`, custo 10 — compatível com os hashes já existentes).
+- **Proteção de CSRF**: todo método mutante exige o double-submit assinado — cookie `csrf_token` e campo (ou parâmetro de query, para clientes JSON) `csrf_token` com o mesmo valor. Só `POST /api/whatsapp/webhook` é isento, porque valida a assinatura HMAC do próprio provedor.
+- **Cabeçalhos de segurança**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` e `Referrer-Policy: same-origin` em toda resposta; em `production`, requisições sem TLS (e sem `X-Forwarded-Proto: https`) são redirecionadas para `https`.
 - **Usuário Administrador Automático**: Semeado no boot caso nenhum usuário exista (`passoz` / `senha-de-teste`, customizável por `SEED_USERNAME`/`SEED_PASSWORD`). Enquanto a senha semeada não for trocada, o painel inteiro fica bloqueado até a definição de uma senha pessoal (mesma regra da Área do Cliente).
 - **Troca obrigatória da senha padrão**: `POST /settings` grava a data da troca (`users.password_changed_at`); enquanto ela for nula, qualquer rota administrativa redireciona para a tela de troca (APIs respondem `403`). A Área do Cliente e os links públicos com token continuam acessíveis.
 

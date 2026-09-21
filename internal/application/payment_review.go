@@ -142,6 +142,14 @@ func approvePaymentProof(ctx context.Context, deps Deps, actx AuditContext, proo
 	if err := deps.Repos.PaymentProofs.UpdateDecision(ctx, proof); err != nil {
 		return fmt.Errorf("gravar o aceite do comprovante: %w", err)
 	}
+
+	// O aceite humano também confirma a quitação pelo WhatsApp, pela mesma fila.
+	if tenant, err := tenantByID(ctx, deps, domain.Str(receipt.TenantID)); err != nil {
+		deps.Log.Warn("titular do recibo não resolvido para a confirmação", "scope", "payments", "err", err)
+	} else if err := EnqueuePaymentConfirmation(ctx, deps, proof, receipt, tenant); err != nil {
+		deps.Log.Warn("confirmação de quitação não enfileirada", "scope", "payments", "err", err)
+	}
+
 	return Record(ctx, deps, actx, AuditEntry{
 		Action:      domain.ActionPaymentProofAccepted,
 		Entity:      domain.EntityPayment,

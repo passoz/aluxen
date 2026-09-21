@@ -152,12 +152,16 @@ func run() error {
 	worker := application.NewWorker(deps, application.WorkerOptions{})
 	worker.Register(domain.JobKindPaymentProof, application.ProcessPaymentProofJob)
 	worker.Register(domain.JobKindDocumentIntake, application.ProcessDocumentIntakeJob)
+	worker.Register(domain.JobKindWhatsAppSend, application.ProcessWhatsAppSendJob)
 
 	whatsappRuntime := whatsapp.NewRuntime(
 		whatsapp.ClientConfig{BaseURL: cfg.WahaAPIURL, APIKey: cfg.WahaAPIKey, Session: cfg.WahaSession},
 		deps.Clock, deps.IDs, logger, whatsapp.LoginConfig{},
 	)
 	deps.Messages = whatsapp.Messages{}
+	// O canal de saída também serve aos trabalhos enfileirados (confirmação de
+	// quitação), não só ao envio disparado pelo painel.
+	deps.Channel = whatsappRuntime
 
 	started := time.Now()
 	gate := application.NewLoginGate(deps.Clock, cfg.RateLimitMax, cfg.RateLimitGlobalMax, cfg.LoginLockThreshold)

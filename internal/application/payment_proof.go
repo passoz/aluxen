@@ -289,6 +289,14 @@ func acceptPaymentProof(ctx context.Context, deps Deps, actx AuditContext, proof
 		return nil, fmt.Errorf("gravar a decisão do comprovante: %w", err)
 	}
 
+	// Confirmação no WhatsApp: entra na fila depois da baixa gravada, para que o
+	// locatário saiba da quitação sem que o envio segure a decisão.
+	if tenant, err := tenantByID(ctx, deps, domain.Str(receipt.TenantID)); err != nil {
+		deps.Log.Warn("titular do recibo não resolvido para a confirmação", "scope", "payments", "err", err)
+	} else if err := EnqueuePaymentConfirmation(ctx, deps, proof, receipt, tenant); err != nil {
+		deps.Log.Warn("confirmação de quitação não enfileirada", "scope", "payments", "err", err)
+	}
+
 	label := DescribeReceipt(receipt)
 	if err := Record(ctx, deps, actx, AuditEntry{
 		Action:      domain.ActionPaymentProofAccepted,

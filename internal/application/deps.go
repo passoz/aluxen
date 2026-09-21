@@ -101,6 +101,9 @@ type Deps struct {
 	// Chat conversa com o provedor usando ferramentas tipadas (agente de
 	// atendimento e cobrança). Nulo desliga o agente.
 	Chat ChatClient
-	Log  *slog.Logger
-	Opts Options
+	// Channel é o canal de saída do WhatsApp (WAHA ou Cloud API). Nulo desliga o
+	// envio assíncrono enfileirado (o agente responde pelo canal do handler).
+	Channel WhatsAppChannel
+	Log     *slog.Logger
+	Opts    Options
 }
