@@ -41,19 +41,15 @@
         "test/*.tsx",
         "public/**",
         "Dockerfile.dev",
-        "Dockerfile.test"
+        "Dockerfile.test",
+        "test/**",
+        "internal/**",
+        "test/e2e/**"
       ],
       "implementation_files": [
         "src/**",
-        "package.json",
-        "bun.lock",
-        "tsconfig.json",
         "drizzle/**",
-        "drizzle.config.ts",
-        "test/**",
-        "public/**",
-        "Dockerfile.dev",
-        "Dockerfile.test"
+        "public/**"
       ],
       "test_files": [
         "internal/**",
@@ -97,7 +93,8 @@
       ],
       "files": [
         "README.md",
-        "docs/**"
+        "docs/**",
+        "internal/**"
       ],
       "implementation_files": [
         "README.md",

@@ -40,7 +40,9 @@
       ],
       "files": [
         "internal/infrastructure/easypanel/",
-        "cmd/provision/main.go"
+        "cmd/provision/main.go",
+        "internal/infrastructure/easypanel/**",
+        "cmd/provision/**"
       ],
       "implementation_files": [
         "internal/infrastructure/easypanel/**",
@@ -83,7 +85,9 @@
       ],
       "files": [
         "cmd/provision/main.go",
-        "internal/infrastructure/easypanel/"
+        "internal/infrastructure/easypanel/",
+        "cmd/**",
+        "internal/infrastructure/easypanel/**"
       ],
       "implementation_files": [
         "cmd/**",
@@ -126,7 +130,11 @@
       ],
       "files": [
         "cmd/migrate/main.go",
-        "internal/application/migrate.go"
+        "internal/application/migrate.go",
+        "cmd/migrate/**",
+        "internal/application/**",
+        "cmd/migrate/",
+        "internal/application/"
       ],
       "implementation_files": [
         "cmd/migrate/**",
@@ -169,7 +177,10 @@
       ],
       "files": [
         "internal/application/adjustment.go",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/**",
+        "internal/infrastructure/web/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**",
@@ -213,7 +224,9 @@
       ],
       "files": [
         "internal/application/report.go",
-        "internal/application/ask.go"
+        "internal/application/ask.go",
+        "internal/application/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**"
@@ -259,7 +272,9 @@
       ],
       "files": [
         "docs/",
-        "README.md"
+        "README.md",
+        "docs/**",
+        "internal/"
       ],
       "implementation_files": [
         "docs/**",

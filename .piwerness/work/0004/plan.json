@@ -46,7 +46,11 @@
       ],
       "files": [
         "internal/application/whatsapp_conversation.go",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/**",
+        "internal/infrastructure/**",
+        "internal/application/",
+        "internal/infrastructure/whatsapp/"
       ],
       "implementation_files": [
         "internal/application/**",
@@ -89,7 +93,9 @@
       ],
       "files": [
         "internal/application/agent.go",
-        "internal/application/agent_tools.go"
+        "internal/application/agent_tools.go",
+        "internal/application/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**"
@@ -129,7 +135,9 @@
         "messaging"
       ],
       "files": [
-        "internal/application/collection.go"
+        "internal/application/collection.go",
+        "internal/application/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**"
@@ -172,7 +180,9 @@
         "docs/",
         "README.md",
         "internal/infrastructure/pdf/",
-        "internal/infrastructure/web/templates/"
+        "internal/infrastructure/web/templates/",
+        "docs/**",
+        "internal/infrastructure/**"
       ],
       "implementation_files": [
         "docs/**",
@@ -188,8 +198,7 @@
       },
       "implementation_steps": [
         "Ajustar os textos de UI e do PDF do recibo",
-        "Escrever o aviso de privacidade e a documentação dos modos do canal",
-        "Cobrir por teste o texto do PDF"
+        "Escrever o aviso de privacidade e a documentação dos modos do canal, e cobrir por teste o texto do PDF"
       ],
       "acceptance_criteria": [
         {
@@ -220,7 +229,9 @@
       ],
       "files": [
         "internal/",
-        "docs/"
+        "docs/",
+        "internal/**",
+        "docs/**"
       ],
       "implementation_files": [
         "internal/**",
@@ -234,8 +245,7 @@
         "description": "a asserção do comportamento \"o canal bidirecional funciona de ponta a ponta com servidor falso e a documentação está coerente\" falha antes da implementação"
       },
       "implementation_steps": [
-        "Rodar os gates completos",
-        "Exercitar o fluxo de conversa e a régua com o canal falso",
+        "Rodar os gates completos e exercitar o fluxo de conversa e a régua com o canal falso",
         "Revisar a documentação"
       ],
       "acceptance_criteria": [

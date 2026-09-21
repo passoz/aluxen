@@ -55,6 +55,16 @@
         "Base SQLite de produção migra sem perda de dados (teste de migração)",
         "Paridade de schema entre SQLite e Postgres mantida"
       ]
+    },
+    {
+      "id": "SC-105",
+      "title": "Aditividade comprovada no CI",
+      "user_story": "Como locador atual, quero prova automatizada de que o porte não quebrou nada, para aceitar a troca de stack com segurança.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "A suíte completa passa com cobertura >= 90% no CI",
+        "A migração da base de produção é ensaiada e verificada"
+      ]
     }
   ]
 }

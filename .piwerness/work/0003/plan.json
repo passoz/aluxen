@@ -56,18 +56,28 @@
         "migrations/",
         "queries/",
         "internal/domain/",
-        "internal/infrastructure/db/"
-      ],
-      "implementation_files": [
+        "internal/infrastructure/db/",
+        "internal/domain/payments.go",
+        "migrations/postgres/00004_ai_intake.sql",
+        "migrations/sqlite/00004_ai_intake.sql",
+        "internal/domain/payments_test.go",
+        "internal/infrastructure/db/migrate_test.go",
+        "internal/infrastructure/db/parity/parity_test.go",
         "schema/**",
         "migrations/**",
         "queries/**",
         "internal/domain/**",
         "internal/infrastructure/db/**"
       ],
+      "implementation_files": [
+        "internal/domain/payments.go",
+        "migrations/postgres/00004_ai_intake.sql",
+        "migrations/sqlite/00004_ai_intake.sql"
+      ],
       "test_files": [
-        "internal/domain/",
-        "internal/infrastructure/db/"
+        "internal/domain/payments_test.go",
+        "internal/infrastructure/db/migrate_test.go",
+        "internal/infrastructure/db/parity/parity_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -75,9 +85,7 @@
       },
       "implementation_steps": [
         "Escrever os testes das regras de decisão e do ciclo de vida do job",
-        "Criar as tabelas nos dois schemas com migração e paridade enforced",
-        "Adicionar as queries e regenerar o sqlc",
-        "Implementar os adapters"
+        "Criar as tabelas nos dois schemas com migração e paridade enforced, adicionar as queries com o sqlc regenerado e implementar os adapters"
       ],
       "acceptance_criteria": [
         {
@@ -104,7 +112,8 @@
         "ai"
       ],
       "files": [
-        "internal/infrastructure/ai/"
+        "internal/infrastructure/ai/",
+        "internal/infrastructure/ai/**"
       ],
       "implementation_files": [
         "internal/infrastructure/ai/**"
@@ -146,7 +155,9 @@
         "application"
       ],
       "files": [
-        "internal/application/payment_proof.go"
+        "internal/application/payment_proof.go",
+        "internal/application/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**"
@@ -191,7 +202,11 @@
       "files": [
         "internal/application/payment_review.go",
         "internal/infrastructure/web/handlers_payments.go",
-        "internal/infrastructure/web/templates/"
+        "internal/infrastructure/web/templates/",
+        "internal/application/**",
+        "internal/infrastructure/**",
+        "internal/application/",
+        "internal/infrastructure/web/"
       ],
       "implementation_files": [
         "internal/application/**",
@@ -238,7 +253,11 @@
       "files": [
         "internal/application/document_intake.go",
         "internal/infrastructure/web/handlers_payments.go",
-        "internal/infrastructure/web/templates/"
+        "internal/infrastructure/web/templates/",
+        "internal/application/**",
+        "internal/infrastructure/**",
+        "internal/application/",
+        "internal/infrastructure/web/"
       ],
       "implementation_files": [
         "internal/application/**",
@@ -283,7 +302,10 @@
       ],
       "files": [
         "internal/application/jobs.go",
-        "cmd/app/main.go"
+        "cmd/app/main.go",
+        "internal/application/**",
+        "cmd/**",
+        "internal/application/"
       ],
       "implementation_files": [
         "internal/application/**",
