@@ -309,11 +309,9 @@ type verifyView struct {
 
 	// Recibo de devolução de caução: valor devolvido e valor retido (o valor da
 	// caução usa Amount).
-	RefundedAmount    string
-	RefundedAmountRaw float64
-	RetainedAmount    string
-	RetainedAmountRaw float64
-	RefundedAt        string
+	RefundedAmount string
+	RetainedAmount string
+	RefundedAt     string
 
 	VerifiedAt  string
 	DownloadURL string

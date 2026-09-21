@@ -60,7 +60,9 @@ type metricRowState struct {
 
 // signatureRowState é a linha de assinatura já aberta pela metade esquerda.
 type signatureRowState struct {
-	top    float64
+	top float64
+	// height é o avanço vertical da linha quando ela fecha (a folga que mantém a
+	// assinatura com o rótulo do papel já foi pedida ao abrir a linha).
 	height float64
 }
 
@@ -572,10 +574,16 @@ func (r *renderer) signature(block Block) error {
 	size := defaultFloat(block.Size, 11)
 	if r.signatureRow == nil {
 		rowHeight := signatureRowHeight(size)
+		reserved := rowHeight + noteRowHeight
 		if block.Kind == BlockSignatureNote {
+			// Um rótulo sem linha de assinatura ocupa uma linha própria.
 			rowHeight = noteRowHeight
+			reserved = noteRowHeight
 		}
-		if err := r.ensure(rowHeight + 8); err != nil {
+		// A linha de assinatura quase sempre vem seguida do rótulo do papel
+		// (`RG:`, `Locador`) e o par precisa sair junto: o espaço pedido cobre os
+		// dois, para que a quebra de página não separe a assinatura do rótulo.
+		if err := r.ensure(reserved + 8); err != nil {
 			return err
 		}
 		r.signatureRow = &signatureRowState{top: r.cursorY, height: rowHeight}

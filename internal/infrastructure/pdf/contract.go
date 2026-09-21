@@ -53,6 +53,11 @@ const contractAuthCaption = "Este contrato possui registro eletrônico oficial. 
 // contractSignatureLineWidthMM é a largura da linha de assinatura do contrato.
 const contractSignatureLineWidthMM = 67
 
+// contractSignatureNote acompanha o bloco de assinatura e explica o que as
+// assinaturas impressas significam: são manuscritas no documento impresso, não
+// assinaturas eletrônicas com validade jurídica nos termos da ICP-Brasil.
+const contractSignatureNote = "Assinatura visualizada: as assinaturas acima são manuscritas no documento impresso; não são assinaturas eletrônicas com validade jurídica nos termos da ICP-Brasil."
+
 // BuildContract monta o modelo do contrato de locação.
 func BuildContract(input ContractInput) (Document, error) {
 	isSeason := input.Status == string(domain.LeaseStatusSeason)
@@ -302,6 +307,7 @@ func BuildContract(input ContractInput) (Document, error) {
 		Block{Kind: BlockSignatureNote, Text: "RG:", Align: AlignLeft, Size: 10, Tone: ToneMuted},
 		Block{Kind: BlockSignatureNote, Text: "RG:", Align: AlignRight, Size: 10, Tone: ToneMuted},
 	)
+	blocks = append(blocks, Block{Kind: BlockText, Text: contractSignatureNote, Size: 8, Tone: ToneMuted})
 
 	blocks = append(blocks, Block{Kind: BlockGap, Size: 22})
 	blocks = append(blocks, authBlock(input.ValidationURL, input.AuthCode, contractAuthCaption, contractQRSize))

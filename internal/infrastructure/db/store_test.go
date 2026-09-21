@@ -573,6 +573,22 @@ func TestAuditRepository(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, list, 1)
 
+			// recorte por registro: só as entradas daquele cadastro
+			list, err = store.Audit.List(ctx, domain.AuditFilter{EntityID: "receipt-1", Limit: 10})
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			assert.Equal(t, "audit-2", list[0].ID)
+			list, err = store.Audit.List(ctx, domain.AuditFilter{EntityID: "tenant-1", Limit: 10})
+			require.NoError(t, err)
+			require.Len(t, list, 1)
+			assert.Equal(t, "audit-1", list[0].ID)
+			list, err = store.Audit.List(ctx, domain.AuditFilter{EntityID: "inexistente", Limit: 10})
+			require.NoError(t, err)
+			assert.Empty(t, list)
+			list, err = store.Audit.List(ctx, domain.AuditFilter{EntityID: "receipt-1", Search: "receipt-1", Limit: 10})
+			require.NoError(t, err)
+			assert.Len(t, list, 1, "o recorte por registro combina com os outros filtros")
+
 			list, err = store.Audit.List(ctx, domain.AuditFilter{Actor: "Maria", Limit: 10})
 			require.NoError(t, err)
 			require.Len(t, list, 1)
@@ -620,6 +636,12 @@ func TestAuditRepository(t *testing.T) {
 			total, err = store.Audit.Count(ctx, domain.AuditFilter{To: "2026-03-05"})
 			require.NoError(t, err)
 			assert.Equal(t, 2, total)
+			total, err = store.Audit.Count(ctx, domain.AuditFilter{EntityID: "receipt-1"})
+			require.NoError(t, err)
+			assert.Equal(t, 1, total)
+			total, err = store.Audit.Count(ctx, domain.AuditFilter{})
+			require.NoError(t, err)
+			assert.Equal(t, 3, total, "filtro vazio não recorta nada")
 
 			actors, err := store.Audit.Actors(ctx)
 			require.NoError(t, err)
@@ -952,6 +974,352 @@ func TestLeaseDeposit(t *testing.T) {
 	}
 }
 
+// ── Fila de trabalho, comprovantes e cadastros por documento ───────
+
+func TestJobsRepository(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+
+			jobs := []*domain.Job{
+				{
+					ID: "job-1", CreatedAt: "2026-03-01 09:00:00", UpdatedAt: "2026-03-01 09:00:00",
+					Kind: domain.JobKindPaymentProof, Status: domain.JobStatusQueued,
+					MaxAttempts: 3, Payload: domain.StrPtr(`{"proofId":"proof-1"}`),
+					ScheduledAt: "2026-03-02 09:00:00",
+				},
+				{
+					ID: "job-2", CreatedAt: "2026-03-01 08:00:00", UpdatedAt: "2026-03-01 08:00:00",
+					Kind: domain.JobKindWhatsAppSend, Status: domain.JobStatusQueued,
+					MaxAttempts: 1, ScheduledAt: "2026-03-01 12:00:00",
+				},
+				{
+					ID: "job-3", CreatedAt: "2026-03-02 09:00:00", UpdatedAt: "2026-03-02 09:00:00",
+					Kind: domain.JobKindCollection, Status: domain.JobStatusDone,
+					Attempts: 2, MaxAttempts: 2, Result: domain.StrPtr(`{"sent":2}`),
+					ScheduledAt: "2026-03-02 10:00:00", StartedAt: domain.StrPtr("2026-03-02 10:00:05"),
+					FinishedAt: domain.StrPtr("2026-03-02 10:00:09"),
+				},
+			}
+			for _, job := range jobs {
+				require.NoError(t, store.Jobs.Create(ctx, job))
+			}
+
+			read, err := store.Jobs.ByID(ctx, "job-1")
+			require.NoError(t, err)
+			assert.Equal(t, *jobs[0], *read)
+			assert.Nil(t, read.Result)
+			assert.Nil(t, read.Error)
+			assert.Nil(t, read.StartedAt)
+			assert.Nil(t, read.FinishedAt)
+			assert.Equal(t, 0, read.Attempts)
+			assert.True(t, read.CanRetry())
+
+			read, err = store.Jobs.ByID(ctx, "job-3")
+			require.NoError(t, err)
+			assert.Equal(t, `{"sent":2}`, domain.Str(read.Result))
+			assert.Equal(t, "2026-03-02 10:00:05", domain.Str(read.StartedAt))
+			assert.Equal(t, 2, read.Attempts)
+			assert.False(t, read.CanRetry(), "2 tentativas de 2 não repetem mais")
+
+			_, err = store.Jobs.ByID(ctx, "inexistente")
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+
+			// a fila de um estado sai na ordem de agendamento
+			queued, err := store.Jobs.ListByStatus(ctx, domain.JobStatusQueued, 10)
+			require.NoError(t, err)
+			require.Len(t, queued, 2)
+			assert.Equal(t, []string{"job-2", "job-1"}, []string{queued[0].ID, queued[1].ID})
+			queued, err = store.Jobs.ListByStatus(ctx, domain.JobStatusQueued, 1)
+			require.NoError(t, err)
+			require.Len(t, queued, 1)
+			assert.Equal(t, "job-2", queued[0].ID)
+
+			// a listagem geral vem do mais recente para o mais antigo
+			all, err := store.Jobs.List(ctx, 10)
+			require.NoError(t, err)
+			require.Len(t, all, 3)
+			assert.Equal(t, []string{"job-3", "job-1", "job-2"}, []string{all[0].ID, all[1].ID, all[2].ID})
+			all, err = store.Jobs.List(ctx, 2)
+			require.NoError(t, err)
+			assert.Len(t, all, 2)
+
+			// o andamento do trabalho é gravado pelo Update
+			jobs[0].Status = domain.JobStatusRunning
+			jobs[0].Attempts = 1
+			jobs[0].StartedAt = domain.StrPtr("2026-03-02 09:00:03")
+			jobs[0].UpdatedAt = "2026-03-02 09:00:03"
+			require.NoError(t, store.Jobs.Update(ctx, jobs[0]))
+
+			running, err := store.Jobs.ByID(ctx, "job-1")
+			require.NoError(t, err)
+			assert.Equal(t, domain.JobStatusRunning, running.Status)
+			assert.Equal(t, 1, running.Attempts)
+			assert.Equal(t, "2026-03-02 09:00:03", domain.Str(running.StartedAt))
+			assert.Nil(t, running.Error)
+			assert.True(t, running.CanRetry(), "1 tentativa de 3 ainda pode repetir")
+
+			jobs[0].Status = domain.JobStatusFailed
+			jobs[0].Attempts = 3
+			jobs[0].Error = domain.StrPtr("tempo esgotado ao ler o comprovante")
+			jobs[0].Result = nil
+			jobs[0].FinishedAt = domain.StrPtr("2026-03-02 09:05:00")
+			jobs[0].UpdatedAt = "2026-03-02 09:05:00"
+			require.NoError(t, store.Jobs.Update(ctx, jobs[0]))
+
+			failed, err := store.Jobs.ByID(ctx, "job-1")
+			require.NoError(t, err)
+			assert.Equal(t, domain.JobStatusFailed, failed.Status)
+			assert.Equal(t, 3, failed.Attempts)
+			assert.Equal(t, 3, failed.MaxAttempts)
+			assert.Equal(t, "tempo esgotado ao ler o comprovante", domain.Str(failed.Error))
+			assert.Nil(t, failed.Result)
+			assert.Equal(t, "2026-03-02 09:05:00", domain.Str(failed.FinishedAt))
+			assert.False(t, failed.CanRetry(), "3 tentativas de 3 não repetem mais")
+
+			// o Update preserva o que não é de andamento
+			assert.Equal(t, `{"proofId":"proof-1"}`, domain.Str(failed.Payload))
+			assert.Equal(t, domain.JobKindPaymentProof, failed.Kind)
+			assert.Equal(t, "2026-03-02 09:00:00", failed.ScheduledAt)
+
+			// reexecução pelo painel (application.RetryJob usa ByID + Update): o
+			// trabalho volta para a fila com as tentativas zeradas e o erro limpo
+			retry, err := store.Jobs.ByID(ctx, "job-1")
+			require.NoError(t, err)
+			require.Equal(t, domain.JobStatusFailed, retry.Status)
+			retry.Status = domain.JobStatusQueued
+			retry.Attempts = 0
+			retry.Error = nil
+			retry.Result = nil
+			retry.StartedAt = nil
+			retry.FinishedAt = nil
+			retry.ScheduledAt = "2026-03-02 10:00:00"
+			retry.UpdatedAt = "2026-03-02 10:00:00"
+			require.NoError(t, store.Jobs.Update(ctx, retry))
+
+			requeued, err := store.Jobs.ByID(ctx, "job-1")
+			require.NoError(t, err)
+			assert.Equal(t, domain.JobStatusQueued, requeued.Status)
+			assert.Equal(t, 0, requeued.Attempts)
+			assert.Nil(t, requeued.Error)
+			assert.Nil(t, requeued.Result)
+			assert.Nil(t, requeued.StartedAt)
+			assert.Nil(t, requeued.FinishedAt)
+			assert.Equal(t, "2026-03-02 10:00:00", requeued.ScheduledAt)
+			assert.True(t, requeued.CanRetry(), "trabalho reenfileirado pode ser tentado de novo")
+			assert.Equal(t, 3, requeued.MaxAttempts, "a reexecução não mexe no limite de tentativas")
+			assert.Equal(t, `{"proofId":"proof-1"}`, domain.Str(requeued.Payload), "o payload do trabalho continua o mesmo")
+
+			// e sai na fila de pendentes, ordenado pelo agendamento
+			queued, err = store.Jobs.ListByStatus(ctx, domain.JobStatusQueued, 10)
+			require.NoError(t, err)
+			require.Len(t, queued, 2)
+			assert.Equal(t, []string{"job-2", "job-1"}, []string{queued[0].ID, queued[1].ID})
+		})
+	}
+}
+
+func TestPaymentProofsRepository(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+			fixtures := seedPeople(t, store)
+			receipt := seedReceipt(t, store, "receipt-1", fixtures.tenantA, fixtures.propertyA)
+
+			proof := &domain.PaymentProof{
+				ID: "proof-1", CreatedAt: "2026-03-01 08:00:00", UpdatedAt: "2026-03-01 08:00:00",
+				Source: domain.PaymentProofSourceWhatsApp, Phone: domain.StrPtr("5522998881122"),
+				TenantID: domain.StrPtr(fixtures.tenantA),
+				FileName: domain.StrPtr("comprovante.jpg"), FilePath: domain.StrPtr("/tmp/comprovante.jpg"),
+				Mime:     domain.StrPtr("image/jpeg"),
+				Status:   domain.PaymentProofStatusPending,
+				Decision: domain.PaymentDecisionPending,
+			}
+			require.NoError(t, store.PaymentProofs.Create(ctx, proof))
+
+			// o comprovante nasce sem leitura: quem preenche é o worker
+			read, err := store.PaymentProofs.ByID(ctx, proof.ID)
+			require.NoError(t, err)
+			assert.Equal(t, *proof, *read)
+			assert.Nil(t, read.ExtractedAmount)
+			assert.Nil(t, read.ExtractedDate)
+			assert.Nil(t, read.Confidence)
+			assert.Nil(t, read.RawResponse)
+			assert.Nil(t, read.ReceiptID)
+			assert.Nil(t, read.DecidedBy)
+			assert.Nil(t, read.DecidedAt)
+			assert.Nil(t, read.DecisionReason)
+			assert.Equal(t, domain.PaymentExtraction{}, read.Extraction())
+
+			_, err = store.PaymentProofs.ByID(ctx, "inexistente")
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+
+			// segundo comprovante, mais recente e ainda sem leitura
+			pending := &domain.PaymentProof{
+				ID: "proof-2", CreatedAt: "2026-03-02 08:00:00", UpdatedAt: "2026-03-02 08:00:00",
+				Source: domain.PaymentProofSourcePortal, Status: domain.PaymentProofStatusPending,
+				Decision: domain.PaymentDecisionPending,
+			}
+			require.NoError(t, store.PaymentProofs.Create(ctx, pending))
+
+			byStatus, err := store.PaymentProofs.ListByStatus(ctx, domain.PaymentProofStatusPending, 10)
+			require.NoError(t, err)
+			require.Len(t, byStatus, 2)
+			assert.Equal(t, []string{"proof-2", "proof-1"}, []string{byStatus[0].ID, byStatus[1].ID})
+			byStatus, err = store.PaymentProofs.ListByStatus(ctx, domain.PaymentProofStatusPending, 1)
+			require.NoError(t, err)
+			require.Len(t, byStatus, 1)
+			assert.Equal(t, "proof-2", byStatus[0].ID)
+
+			all, err := store.PaymentProofs.List(ctx, 10)
+			require.NoError(t, err)
+			require.Len(t, all, 2)
+			assert.Equal(t, []string{"proof-2", "proof-1"}, []string{all[0].ID, all[1].ID})
+
+			// a mesma escrita grava a leitura do documento e o veredito
+			proof.Status = domain.PaymentProofStatusAccepted
+			proof.Decision = domain.PaymentDecisionAuto
+			proof.DecisionReason = domain.StrPtr("valor, data e pagador conferem")
+			proof.DecidedBy = domain.StrPtr("sistema")
+			proof.DecidedAt = domain.StrPtr("2026-03-01T08:00:30")
+			proof.ReceiptID = domain.StrPtr(receipt.ID)
+			proof.ExtractedAmount = domain.FloatPtr(2500)
+			proof.ExtractedDate = domain.StrPtr("2026-03-01")
+			proof.ExtractedPayer = domain.StrPtr("Carlos Drummond")
+			proof.ExtractedPayee = domain.StrPtr("Maria Locadora")
+			proof.ExtractedIdentifier = domain.StrPtr("E123456789")
+			proof.Confidence = domain.FloatPtr(0.92)
+			proof.RawResponse = domain.StrPtr(`{"amount":2500,"model":"visao"}`)
+			proof.UpdatedAt = "2026-03-01 08:00:30"
+			require.NoError(t, store.PaymentProofs.UpdateDecision(ctx, proof))
+
+			decided, err := store.PaymentProofs.ByID(ctx, proof.ID)
+			require.NoError(t, err)
+			assert.Equal(t, domain.PaymentProofStatusAccepted, decided.Status)
+			assert.Equal(t, 2500.0, domain.Float(decided.ExtractedAmount))
+			assert.Equal(t, "2026-03-01", domain.Str(decided.ExtractedDate))
+			assert.Equal(t, "E123456789", domain.Str(decided.ExtractedIdentifier))
+			assert.Equal(t, `{"amount":2500,"model":"visao"}`, domain.Str(decided.RawResponse))
+			extraction := decided.Extraction()
+			assert.Equal(t, 2500.0, extraction.Amount)
+			assert.Equal(t, "Carlos Drummond", extraction.Payer)
+			assert.Equal(t, "Maria Locadora", extraction.Payee)
+			assert.Equal(t, 0.92, extraction.Confidence, "confiança volta exata nos dois dialetos")
+			assert.Equal(t, domain.PaymentDecisionAuto, decided.Decision)
+			assert.Equal(t, "valor, data e pagador conferem", domain.Str(decided.DecisionReason))
+			assert.Equal(t, "sistema", domain.Str(decided.DecidedBy))
+			assert.Equal(t, "2026-03-01T08:00:30", domain.Str(decided.DecidedAt))
+			require.NotNil(t, decided.ReceiptID)
+			assert.Equal(t, receipt.ID, *decided.ReceiptID)
+
+			byReceipt, err := store.PaymentProofs.ByReceipt(ctx, receipt.ID)
+			require.NoError(t, err)
+			require.Len(t, byReceipt, 1)
+			assert.Equal(t, proof.ID, byReceipt[0].ID)
+
+			// excluir o recibo desfaz o vínculo, sem apagar o comprovante
+			require.NoError(t, store.Receipts.Delete(ctx, receipt.ID))
+			detached, err := store.PaymentProofs.ByID(ctx, proof.ID)
+			require.NoError(t, err)
+			assert.Nil(t, detached.ReceiptID)
+			byReceipt, err = store.PaymentProofs.ByReceipt(ctx, receipt.ID)
+			require.NoError(t, err)
+			assert.Empty(t, byReceipt)
+
+			// excluir o locatário também desfaz o vínculo
+			require.NoError(t, store.Tenants.Delete(ctx, fixtures.tenantA))
+			detached, err = store.PaymentProofs.ByID(ctx, proof.ID)
+			require.NoError(t, err)
+			assert.Nil(t, detached.TenantID)
+			assert.Equal(t, "5522998881122", domain.Str(detached.Phone))
+		})
+	}
+}
+
+func TestDocumentIntakesRepository(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+
+			intakes := []*domain.DocumentIntake{
+				{
+					ID: "intake-1", CreatedAt: "2026-03-01 08:00:00", UpdatedAt: "2026-03-01 08:00:00",
+					Kind: domain.IntakeKindLease, FileName: domain.StrPtr("contrato.pdf"),
+					FilePath: domain.StrPtr("/tmp/contrato.pdf"), Mime: domain.StrPtr("application/pdf"),
+					Status:      domain.IntakeStatusPending,
+					Extracted:   domain.StrPtr(`{"tenantName":"Carlos Drummond","rentAmount":2500}`),
+					Confidence:  domain.FloatPtr(0.81),
+					RawResponse: domain.StrPtr(`{"model":"visao"}`),
+				},
+				{
+					ID: "intake-2", CreatedAt: "2026-03-02 08:00:00", UpdatedAt: "2026-03-02 08:00:00",
+					Kind: domain.IntakeKindIDDocument, Status: domain.IntakeStatusPending,
+				},
+			}
+			for _, intake := range intakes {
+				require.NoError(t, store.Intakes.Create(ctx, intake))
+			}
+
+			read, err := store.Intakes.ByID(ctx, "intake-1")
+			require.NoError(t, err)
+			assert.Equal(t, *intakes[0], *read)
+			assert.Equal(t, 0.81, domain.Float(read.Confidence))
+			assert.Nil(t, read.CreatedEntity)
+			assert.Nil(t, read.CreatedEntityID)
+
+			read, err = store.Intakes.ByID(ctx, "intake-2")
+			require.NoError(t, err)
+			assert.Nil(t, read.FileName)
+			assert.Nil(t, read.Extracted)
+			assert.Nil(t, read.Confidence)
+			assert.Nil(t, read.Notes)
+
+			_, err = store.Intakes.ByID(ctx, "inexistente")
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+
+			byStatus, err := store.Intakes.ListByStatus(ctx, domain.IntakeStatusPending, 10)
+			require.NoError(t, err)
+			require.Len(t, byStatus, 2)
+			assert.Equal(t, []string{"intake-2", "intake-1"}, []string{byStatus[0].ID, byStatus[1].ID})
+			byStatus, err = store.Intakes.ListByStatus(ctx, domain.IntakeStatusPending, 1)
+			require.NoError(t, err)
+			require.Len(t, byStatus, 1)
+			assert.Equal(t, "intake-2", byStatus[0].ID)
+
+			all, err := store.Intakes.List(ctx, 10)
+			require.NoError(t, err)
+			require.Len(t, all, 2)
+			assert.Equal(t, []string{"intake-2", "intake-1"}, []string{all[0].ID, all[1].ID})
+
+			// a conferência humana confirma e aponta o registro criado
+			intakes[0].Status = domain.IntakeStatusConfirmed
+			intakes[0].CreatedEntity = domain.StrPtr("lease")
+			intakes[0].CreatedEntityID = domain.StrPtr("lease-9")
+			intakes[0].Notes = domain.StrPtr("Confirmado com o contrato em papel")
+			intakes[0].Confidence = domain.FloatPtr(0.95)
+			intakes[0].UpdatedAt = "2026-03-03 10:00:00"
+			require.NoError(t, store.Intakes.Update(ctx, intakes[0]))
+
+			confirmed, err := store.Intakes.ByID(ctx, "intake-1")
+			require.NoError(t, err)
+			assert.Equal(t, domain.IntakeStatusConfirmed, confirmed.Status)
+			assert.Equal(t, "lease", domain.Str(confirmed.CreatedEntity))
+			assert.Equal(t, "lease-9", domain.Str(confirmed.CreatedEntityID))
+			assert.Equal(t, "Confirmado com o contrato em papel", domain.Str(confirmed.Notes))
+			assert.Equal(t, 0.95, domain.Float(confirmed.Confidence))
+			assert.Equal(t, `{"tenantName":"Carlos Drummond","rentAmount":2500}`, domain.Str(confirmed.Extracted))
+
+			byStatus, err = store.Intakes.ListByStatus(ctx, domain.IntakeStatusPending, 10)
+			require.NoError(t, err)
+			require.Len(t, byStatus, 1)
+			assert.Equal(t, "intake-2", byStatus[0].ID)
+		})
+	}
+}
+
 // ── Apoio ──────────────────────────────────────────────────────────
 
 type people struct {
@@ -1069,4 +1437,16 @@ func rawLeaseDepositNulls(t *testing.T, ctx context.Context, store *db.Store) ma
 	}
 	require.NoError(t, rows.Err())
 	return nulls
+}
+
+// seedReceipt cria um lançamento avulso para os testes de comprovante.
+func seedReceipt(t *testing.T, store *db.Store, id, tenantID, propertyID string) *domain.Receipt {
+	t.Helper()
+	receipt := &domain.Receipt{
+		ID: id, TenantID: domain.StrPtr(tenantID), PropertyID: domain.StrPtr(propertyID),
+		Category: domain.ReceiptCategoryRent, DueDate: "2026-03-10", Amount: 2500,
+		CreatedAt: "2026-03-01 07:00:00",
+	}
+	require.NoError(t, store.Receipts.Create(context.Background(), receipt))
+	return receipt
 }

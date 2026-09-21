@@ -17,7 +17,7 @@ import (
 
 	"github.com/passoz/aluxen/internal/domain"
 	"github.com/passoz/aluxen/internal/infrastructure/db"
-	"github.com/passoz/aluxen/internal/infrastructure/db/parity"
+	"github.com/passoz/aluxen/internal/infrastructure/db/schema"
 )
 
 // As migrações do SQLite são adotivas: a base de produção já existe e não pode
@@ -145,16 +145,258 @@ func TestMigrateTwiceIsIdempotent(t *testing.T) {
 	assert.Equal(t, append([]int64{0}, embeddedVersions(t)...), appliedVersions(t, ctx, store))
 }
 
+// TestMigratePartialDatabase cobre a base que já reflete as primeiras migrações
+// e perdeu a tabela de controle do goose (dump restaurado de uma versão
+// anterior): o que falta roda, o que já estava lá é apenas registrado — sem
+// reaplicar o ADD COLUMN da temporada.
+func TestMigratePartialDatabase(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "parcial.db")
+	writeCanonicalDatabase(t, path)
+
+	execStatements(t, path, []string{
+		"DROP TABLE IF EXISTS document_intakes",
+		"DROP TABLE IF EXISTS payment_proofs",
+		"DROP TABLE IF EXISTS jobs",
+		"DROP TABLE IF EXISTS goose_db_version",
+	})
+
+	store, err := db.Open(ctx, "file:"+path, "")
+	require.NoError(t, err, "a migração que falta precisa rodar sem reaplicar o que já estava lá")
+	defer func() { require.NoError(t, store.Close()) }()
+
+	for _, table := range []string{"jobs", "payment_proofs", "document_intakes", "inspections"} {
+		assert.Contains(t, sqliteTables(t, ctx, store), table)
+	}
+	assert.Equal(t, embeddedVersions(t), appliedVersions(t, ctx, store))
+	assert.Equal(t, 1, countTable(t, ctx, store, "tenants"), "os dados que já existiam continuam lá")
+	assertNoSchemaDiff(t, ctx, store, "base parcial adotada")
+
+	// a fila e os comprovantes voltam a funcionar na base adotada
+	require.NoError(t, store.Jobs.Create(ctx, &domain.Job{
+		ID: "job-1", CreatedAt: "2026-03-01 10:00:00", UpdatedAt: "2026-03-01 10:00:00",
+		Kind: domain.JobKindPaymentProof, Status: domain.JobStatusQueued, MaxAttempts: 3,
+		ScheduledAt: "2026-03-01 10:00:00",
+	}))
+}
+
+// ── Adoção no Postgres ─────────────────────────────────────────────
+
+// TestPostgresAdoption cobre os três estados de uma instância Postgres: schema
+// final sem a tabela de controle do goose (o caso do pg_dump restaurado noutra
+// base), base vazia e base parcial (dump de antes da última migração). Sem a
+// adoção, o boot reaplicaria o ADD COLUMN e morreria.
+func TestPostgresAdoption(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL não definida: sem servidor Postgres para o teste de adoção")
+	}
+	ctx := context.Background()
+
+	t.Run("base já no schema final sem tabela do goose", func(t *testing.T) {
+		resetPostgres(t, dsn)
+
+		first, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err)
+		require.NoError(t, first.Tenants.Create(ctx, &domain.Tenant{
+			ID: "tenant-1", Name: "Carlos Drummond", Email: "carlos@exemplo.com",
+			CreatedAt: "2026-01-01 10:00:00", UpdatedAt: "2026-01-01 10:00:00",
+		}))
+		require.NoError(t, first.Close())
+
+		// o dump trouxe o schema final, mas não a tabela de controle do goose
+		execPostgres(t, dsn, `DROP TABLE goose_db_version`)
+
+		second, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err, "o boot não pode reaplicar o ADD COLUMN numa base já final")
+		defer func() { require.NoError(t, second.Close()) }()
+
+		// nenhuma migração rodou: todas foram apenas registradas (sem a linha 0,
+		// que só existe quando o goose cria a tabela de controle)
+		assert.Equal(t, postgresVersions(t), appliedVersions(t, ctx, second))
+		count, err := second.Tenants.Count(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "os dados do dump continuam lá")
+		assert.Equal(t, 1, countTable(t, ctx, second, "tenants"))
+	})
+
+	t.Run("base vazia aplica todas as migrações", func(t *testing.T) {
+		resetPostgres(t, dsn)
+
+		store, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, store.Close()) }()
+
+		for _, table := range []string{
+			"users", "tenants", "properties", "leases", "receipts", "settings", "audit_logs",
+			"whatsapp_messages", "inspections", "jobs", "payment_proofs", "document_intakes",
+		} {
+			assert.Contains(t, postgresTables(t, dsn), table)
+		}
+		versions := appliedVersions(t, ctx, store)
+		for _, version := range postgresVersions(t) {
+			assert.Contains(t, versions, version)
+		}
+		// as portas respondem: a base vazia é utilizável
+		count, err := store.Leases.Count(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("base parcial aplica só o que falta", func(t *testing.T) {
+		resetPostgres(t, dsn)
+
+		first, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err)
+		require.NoError(t, first.Tenants.Create(ctx, &domain.Tenant{
+			ID: "tenant-1", Name: "Carlos Drummond", Email: "carlos@exemplo.com",
+			CreatedAt: "2026-01-01 10:00:00", UpdatedAt: "2026-01-01 10:00:00",
+		}))
+		require.NoError(t, first.Close())
+
+		// dump de uma instância anterior à temporada: sem as tabelas da IA, sem a
+		// vistoria, sem as colunas de caução e sem a tabela de controle
+		execPostgres(t, dsn,
+			`DROP TABLE IF EXISTS document_intakes`,
+			`DROP TABLE IF EXISTS payment_proofs`,
+			`DROP TABLE IF EXISTS jobs`,
+			`DROP TABLE IF EXISTS inspections`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_amount`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_status`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_received_at`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_refunded_at`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_refunded_amount`,
+			`ALTER TABLE leases DROP COLUMN IF EXISTS deposit_notes`,
+			`DROP TABLE goose_db_version`,
+		)
+
+		store, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err, "a migração que falta precisa rodar sem reaplicar o que já estava lá")
+		defer func() { require.NoError(t, store.Close()) }()
+
+		tables := postgresTables(t, dsn)
+		for _, table := range []string{"jobs", "payment_proofs", "document_intakes", "inspections"} {
+			assert.Contains(t, tables, table)
+		}
+		assert.Equal(t, postgresVersions(t), appliedVersions(t, ctx, store))
+
+		count, err := store.Tenants.Count(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "o locatário que já existia continua lá")
+
+		// a caução volta a funcionar na base adotada
+		require.NoError(t, store.Properties.Create(ctx, &domain.Property{
+			ID: "property-1", Name: "Casa de Búzios", Address: "Rua das Conchas, 45",
+			City: "Búzios", State: "RJ", CreatedAt: "2026-12-01 10:00:00", UpdatedAt: "2026-12-01 10:00:00",
+		}))
+		require.NoError(t, store.Leases.Create(ctx, &domain.Lease{
+			ID: "lease-1", TenantID: "tenant-1", PropertyID: "property-1",
+			StartDate: "2026-12-20", EndDate: "2027-01-05", DueDay: 20, RentAmount: 4800,
+			Status: domain.LeaseStatusSeason, DepositAmount: domain.FloatPtr(4800),
+			DepositStatus: domain.DepositStatusHeld, CreatedAt: "2026-12-01 10:00:00", UpdatedAt: "2026-12-01 10:00:00",
+		}))
+	})
+
+	t.Run("segunda abertura não faz nada", func(t *testing.T) {
+		resetPostgres(t, dsn)
+
+		first, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err)
+		require.NoError(t, first.Close())
+
+		second, err := db.Open(ctx, dsn, "")
+		require.NoError(t, err)
+		defer func() { require.NoError(t, second.Close()) }()
+		require.NoError(t, second.Migrate(ctx))
+
+		// aqui o goose criou a tabela de controle (linha 0) e aplicou tudo
+		assert.Equal(t, append([]int64{0}, postgresVersions(t)...), appliedVersions(t, ctx, second))
+	})
+}
+
+// sqliteTables lista as tabelas de um banco SQLite aberto.
+func sqliteTables(t *testing.T, ctx context.Context, store *db.Store) []string {
+	t.Helper()
+	rows, err := store.DB().QueryContext(ctx,
+		"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, rows.Err())
+	return tables
+}
+
+// execPostgres roda instruções diretas no banco de teste (preparação de estado).
+func execPostgres(t *testing.T, dsn string, statements ...string) {
+	t.Helper()
+	handle, err := sql.Open("pgx", dsn)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+
+	for _, statement := range statements {
+		_, err := handle.ExecContext(context.Background(), statement)
+		require.NoError(t, err, "executar: %s", statement)
+	}
+}
+
+// postgresTables lista as tabelas do schema corrente.
+func postgresTables(t *testing.T, dsn string) []string {
+	t.Helper()
+	handle, err := sql.Open("pgx", dsn)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+
+	rows, err := handle.QueryContext(context.Background(),
+		`SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name`)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	var tables []string
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, rows.Err())
+	return tables
+}
+
+// postgresVersions são as migrações embutidas do dialeto Postgres.
+func postgresVersions(t *testing.T) []int64 {
+	t.Helper()
+	entries, err := migrations.FS.ReadDir("postgres")
+	require.NoError(t, err)
+
+	versions := make([]int64, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		version, err := strconv.ParseInt(strings.SplitN(name, "_", 2)[0], 10, 64)
+		require.NoError(t, err)
+		versions = append(versions, version)
+	}
+	sort.Slice(versions, func(a, b int) bool { return versions[a] < versions[b] })
+	return versions
+}
+
 // ── Apoio ──────────────────────────────────────────────────────────
 
 // assertNoSchemaDiff compara o schema do banco aberto com o DDL canônico.
 func assertNoSchemaDiff(t *testing.T, ctx context.Context, store *db.Store, label string) {
 	t.Helper()
-	actual, err := parity.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
+	actual, err := schema.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
 	require.NoError(t, err)
 	expected := canonicalSchema(t)
 
-	diffs := parity.Diff(expected, actual, "schema/sqlite.sql", label)
+	diffs := schema.Diff(expected, actual, "schema/sqlite.sql", label)
 	if len(diffs) > 0 {
 		t.Fatalf("schema de %s difere do canônico:\n  %s", label, joinLines(diffs))
 	}
@@ -165,11 +407,11 @@ func assertNoSchemaDiff(t *testing.T, ctx context.Context, store *db.Store, labe
 // ganha as colunas novas no fim da tabela).
 func assertSchemaCovers(t *testing.T, ctx context.Context, store *db.Store, label string) {
 	t.Helper()
-	actual, err := parity.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
+	actual, err := schema.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
 	require.NoError(t, err)
 	expected := canonicalSchema(t)
 
-	actualTables := map[string]parity.Table{}
+	actualTables := map[string]schema.Table{}
 	for _, table := range actual.Tables {
 		actualTables[table.Name] = table
 	}
@@ -178,7 +420,7 @@ func assertSchemaCovers(t *testing.T, ctx context.Context, store *db.Store, labe
 		if !assert.True(t, ok, "%s: falta a tabela %q", label, table.Name) {
 			continue
 		}
-		columns := map[string]parity.Column{}
+		columns := map[string]schema.Column{}
 		for _, column := range got.Columns {
 			columns[column.Name] = column
 		}
@@ -201,7 +443,7 @@ func assertSchemaCovers(t *testing.T, ctx context.Context, store *db.Store, labe
 		}
 	}
 
-	actualIndexes := map[string]parity.Index{}
+	actualIndexes := map[string]schema.Index{}
 	for _, index := range actual.Indexes {
 		actualIndexes[index.Name] = index
 	}
@@ -215,11 +457,11 @@ func assertSchemaCovers(t *testing.T, ctx context.Context, store *db.Store, labe
 	}
 }
 
-func canonicalSchema(t *testing.T) parity.Schema {
+func canonicalSchema(t *testing.T) schema.Schema {
 	t.Helper()
 	content, err := os.ReadFile(filepath.Join(repoRoot(t), "schema", "sqlite.sql"))
 	require.NoError(t, err)
-	schema, err := parity.ParseSQL(string(content))
+	schema, err := schema.ParseSQL(string(content), schema.SQLite)
 	require.NoError(t, err)
 	return schema
 }

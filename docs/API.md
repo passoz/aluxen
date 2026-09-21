@@ -227,7 +227,7 @@ Emite o Recibo de Pagamento de Aluguel formatado em folha A4.
 - **Query Params**:
   - `id` (string, obrigatório): ID do recibo.
   - `token` (string, opcional se logado): Token HMAC-SHA256 de autenticidade para acesso público.
-  - `assinatura` (string, opcional): `'false'` para emitir sem assinatura digital.
+  - `assinatura` (string, opcional): `'false'` para emitir sem a imagem da assinatura do locador (a assinatura impressa é visualizada; não é assinatura eletrônica com validade jurídica nos termos da ICP-Brasil).
 - **Resposta**: `200 OK` com `Content-Type: application/pdf`.
 - Sessão de locatário só acessa recibos do próprio cadastro e já quitados; documentos de outro titular respondem `403`.
 

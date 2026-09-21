@@ -542,7 +542,7 @@
   }
 
   function initDatepickers() {
-    $$('input[data-datepicker]').forEach(function (field) {
+    $$('input[data-datepicker], input[data-datetime]').forEach(function (field) {
       if (field.getAttribute('data-datepicker-ready') === 'true') return;
       field.setAttribute('data-datepicker-ready', 'true');
       field.setAttribute('type', 'hidden');
@@ -937,8 +937,14 @@
     }).then(function (response) {
       var contentType = response.headers.get('content-type') || '';
       if (contentType.indexOf('json') === -1) {
-        // Resposta HTML/redirect (ex.: /logout, portal): devolve ao browser.
+        // Resposta HTML/redirect (ex.: /login, /logout, portal): o POST já foi
+        // consumido pelo servidor, então seguimos o destino com uma navegação
+        // normal em vez de repetir a mutação.
         setBusy(form, false);
+        if (response.redirected && response.url) {
+          window.location.assign(response.url);
+          return { ok: true, native: true };
+        }
         form.submit();
         return { ok: true, native: true };
       }
@@ -1488,7 +1494,7 @@
       field.value = moneyFromDecimal(field.value);
       return;
     }
-    if (field.hasAttribute('data-datepicker') && field.__aluxenDisplay) {
+    if (field.__aluxenDisplay) {
       syncDateDisplay(field);
     }
   }

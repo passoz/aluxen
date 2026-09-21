@@ -1,5 +1,10 @@
 # Protocolo de Autenticidade e Validação Pública de Documentos
 
+> **Documento legado (app Bun).** Descreve o protocolo como implementado no app
+> Bun, **substituído no branch `devgo`** pelo port Go. Para a versão vigente —
+> QR, URL pública e a dependência de hospedagem contínua — consulte
+> [`VALIDACAO-GO.md`](VALIDACAO-GO.md). Mantido como referência histórica.
+
 Este documento detalha o funcionamento técnico do sistema de **Validação Pública e Autenticidade Digital** implementado no Aluxen para **Recibos de Aluguel** e **Contratos de Locação**.
 
 ---

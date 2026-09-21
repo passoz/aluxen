@@ -219,11 +219,9 @@ func (h *Handlers) VerifyDeposit(w http.ResponseWriter, r *http.Request) {
 	}
 	if data.Refunded > 0 {
 		view.RefundedAmount = format.FormatCurrency(data.Refunded)
-		view.RefundedAmountRaw = data.Refunded
 	}
 	if data.Retained > 0 {
 		view.RetainedAmount = format.FormatCurrency(data.Retained)
-		view.RetainedAmountRaw = data.Retained
 	}
 	if data.RefundedAt != "" {
 		view.RefundedAt = format.FormatDateTimeBR(data.RefundedAt)

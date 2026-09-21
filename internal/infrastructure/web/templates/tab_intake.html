@@ -1,0 +1,191 @@
+{{define "intake-field"}}
+<div class="form-group">
+  <label for="intake-field-{{.Name}}-{{.Label}}">{{.Label}}{{if .Missing}} <span class="pending-badge">vazio</span>{{end}}</label>
+  <input
+    id="intake-field-{{.Name}}-{{.Label}}"
+    name="{{.Name}}"
+    value="{{.Value}}"
+    {{if .Type}}type="{{.Type}}"{{end}}
+    {{if .Mask}}data-mask="{{.Mask}}"{{end}}
+    {{if eq .Mask "money"}}data-money-input inputmode="numeric"{{end}}
+    {{if .Date}}data-datepicker{{end}}
+  >
+</div>
+{{end}}
+
+{{define "tab_intake"}}
+{{$context := .Intake}}
+{{$csrf := .CSRFToken}}
+{{$snapshot := .Snapshot}}
+<section class="card stack-lg" data-table-group>
+  <div class="section-header">
+    <div>
+      <h2>Cadastro por documento</h2>
+      <p class="cell-muted">
+        Envie o contrato antigo, o RG/CNH ou o comprovante de residência: a leitura é assistida e
+        vira uma proposta. Nada é cadastrado antes da sua conferência.
+      </p>
+    </div>
+    <div class="auth-actions">
+      <span class="cell-muted">{{len $context.Intakes}} proposta(s) aguardando conferência</span>
+      <button type="button" class="btn btn-primary" data-modal-open="intake-upload">Enviar documento</button>
+    </div>
+  </div>
+
+  <div class="error" id="intake-error" hidden></div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th data-sort="kind">Tipo</th>
+          <th data-sort="file">Arquivo</th>
+          <th data-sort="status">Situação</th>
+          <th data-sort="confidence">Confiança</th>
+          <th>Falta preencher</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $context.Intakes}}
+        <tr data-search="{{.KindLabel}} {{.FileName}} {{.StatusLabel}}">
+          <td data-label="Tipo">{{.KindLabel}}</td>
+          <td data-label="Arquivo">{{if .FileName}}{{.FileName}}{{else}}<span class="cell-muted">sem arquivo</span>{{end}}</td>
+          <td data-label="Situação"><span class="status-badge {{.StatusTone}}">{{.StatusLabel}}</span></td>
+          <td data-label="Confiança">{{.ConfidenceLabel}}{{if .LowConfidence}} <span class="pending-badge">baixa</span>{{end}}</td>
+          <td data-label="Falta preencher">
+            {{if .Missing}}{{range $index, $label := .Missing}}{{if $index}}, {{end}}{{$label}}{{end}}{{else}}<span class="cell-muted">—</span>{{end}}
+          </td>
+          <td data-label="Ações">
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-primary" data-modal-open="intake-review-{{.Intake.ID}}">Conferir</button>
+              <button type="button" class="btn btn-sm btn-secondary" data-modal-open="intake-discard-{{.Intake.ID}}">Descartar</button>
+            </div>
+          </td>
+        </tr>
+        {{else}}
+        <tr data-table-empty>
+          <td class="empty-state" colspan="6">Nenhum documento aguardando conferência.</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div data-pagination></div>
+</section>
+
+<div class="modal-backdrop" id="intake-upload" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Enviar documento">
+    <div class="modal-header">
+      <h3>Enviar documento</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/api/intake/document" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      <div class="form-group">
+        <label for="intake-upload-kind">Tipo de documento</label>
+        <select id="intake-upload-kind" name="kind" required>
+          <option value="lease">Contrato antigo</option>
+          <option value="id-document">Documento de identidade (RG/CNH)</option>
+          <option value="address-proof">Comprovante de residência</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="intake-upload-file">Arquivo (PDF ou foto)</label>
+        <input id="intake-upload-file" name="file" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Enviar para leitura</button>
+    </form>
+  </div>
+</div>
+
+{{range $context.Intakes}}
+<div class="modal-backdrop" id="intake-review-{{.Intake.ID}}" hidden>
+  <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-label="Conferência de cadastro">
+    <div class="modal-header">
+      <h3>Conferir {{.KindLabel}}</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+
+    {{if .Notes}}<p class="error">{{.Notes}}</p>{{end}}
+    {{if .LowConfidence}}<p class="error">A leitura ficou com confiança baixa ({{.ConfidenceLabel}}): confira cada campo antes de confirmar.</p>{{end}}
+    {{if .Missing}}<p class="error">Campos vazios que precisam de atenção: {{range $index, $label := .Missing}}{{if $index}}, {{end}}{{$label}}{{end}}.</p>{{end}}
+
+    <p class="cell-muted">Arquivo: {{if .FileName}}{{.FileName}}{{else}}sem arquivo{{end}} · confiança {{.ConfidenceLabel}}</p>
+
+    <form method="post" action="/api/intake/confirm" class="stack">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      <input type="hidden" name="intakeId" value="{{.Intake.ID}}">
+      <input type="hidden" name="kind" value="{{.Kind}}">
+      <input type="hidden" name="action" value="confirm">
+
+      {{range .Lease}}{{template "intake-field" .}}{{end}}
+      {{range .Person}}{{template "intake-field" .}}{{end}}
+
+      <div class="form-group">
+        <label for="intake-review-{{.Intake.ID}}-tenant-create">
+          <input id="intake-review-{{.Intake.ID}}-tenant-create" type="checkbox" name="createTenant" value="1" checked>
+          Criar locatário com os dados acima
+        </label>
+        {{if $snapshot}}
+        <label for="intake-review-{{.Intake.ID}}-tenant">ou usar locatário existente</label>
+        <select id="intake-review-{{.Intake.ID}}-tenant" name="tenantId">
+          <option value="">— criar novo —</option>
+          {{range $snapshot.Tenants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+        {{end}}
+      </div>
+
+      <div class="form-group">
+        <label for="intake-review-{{.Intake.ID}}-property-create">
+          <input id="intake-review-{{.Intake.ID}}-property-create" type="checkbox" name="createProperty" value="1" {{if or (eq .Kind "lease") (eq .Kind "address-proof")}}checked{{end}}>
+          Criar imóvel com os dados acima
+        </label>
+        {{if $snapshot}}
+        <label for="intake-review-{{.Intake.ID}}-property">ou usar imóvel existente</label>
+        <select id="intake-review-{{.Intake.ID}}-property" name="propertyId">
+          <option value="">— criar novo —</option>
+          {{range $snapshot.Properties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+        {{end}}
+      </div>
+
+      <div class="form-group">
+        <label for="intake-review-{{.Intake.ID}}-lease">
+          <input id="intake-review-{{.Intake.ID}}-lease" type="checkbox" name="createLease" value="1" {{if eq .Kind "lease"}}checked{{end}}>
+          Criar o contrato com os dados acima
+        </label>
+        <span class="cell-muted">O contrato precisa de locatário e imóvel — criados aqui ou escolhidos acima.</span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary" data-confirm="Criar o cadastro a partir deste documento?">Confirmar cadastro</button>
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="intake-discard-{{.Intake.ID}}" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Descartar proposta">
+    <div class="modal-header">
+      <h3>Descartar proposta</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/api/intake/confirm" class="stack">
+      <input type="hidden" name="csrf_token" value="{{$csrf}}">
+      <input type="hidden" name="intakeId" value="{{.Intake.ID}}">
+      <input type="hidden" name="action" value="discard">
+      <div class="form-group">
+        <label for="intake-discard-{{.Intake.ID}}-reason">Motivo do descarte</label>
+        <input id="intake-discard-{{.Intake.ID}}-reason" name="reason" required>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-danger" data-confirm="Descartar esta proposta? Nada será cadastrado.">Descartar</button>
+        <button type="button" class="btn btn-secondary" data-modal-close>Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

@@ -95,7 +95,10 @@ type SettingRepository interface {
 
 // AuditFilter são os filtros aceitos na consulta da trilha.
 type AuditFilter struct {
-	Entity     string
+	Entity string
+	// EntityID recorta a trilha de um registro específico (usado pela régua de
+	// cobrança para saber o último estágio enviado de um lançamento).
+	EntityID   string
 	Action     string
 	Actor      string
 	From       string

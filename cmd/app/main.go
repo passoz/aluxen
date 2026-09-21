@@ -28,10 +28,38 @@ import (
 )
 
 func main() {
+	// Modo de verificação de saúde: a imagem é distroless (sem shell nem curl),
+	// então o próprio binário consulta /healthz quando chamado com --healthcheck.
+	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {
+		if err := healthcheck(); err != nil {
+			os.Stderr.WriteString("healthcheck: " + err.Error() + "\n")
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(); err != nil {
 		os.Stderr.WriteString("falha ao iniciar: " + err.Error() + "\n")
 		os.Exit(1)
 	}
+}
+
+// healthcheck consulta a própria instância e devolve erro quando não responde.
+func healthcheck() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)) + "/healthz")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("status %d", response.StatusCode)
+	}
+	return nil
 }
 
 func run() error {
@@ -66,15 +94,18 @@ func run() error {
 
 	deps := application.Deps{
 		Repos: application.Repositories{
-			Users:       store.Users,
-			Tenants:     store.Tenants,
-			Properties:  store.Properties,
-			Leases:      store.Leases,
-			Receipts:    store.Receipts,
-			Settings:    store.Settings,
-			Audit:       store.Audit,
-			WhatsApp:    store.WhatsApp,
-			Inspections: store.Inspections,
+			Users:         store.Users,
+			Tenants:       store.Tenants,
+			Properties:    store.Properties,
+			Leases:        store.Leases,
+			Receipts:      store.Receipts,
+			Settings:      store.Settings,
+			Audit:         store.Audit,
+			WhatsApp:      store.WhatsApp,
+			Inspections:   store.Inspections,
+			Jobs:          store.Jobs,
+			PaymentProofs: store.PaymentProofs,
+			Intakes:       store.Intakes,
 		},
 		Clock:  platform.SystemClock{},
 		IDs:    platform.UUIDv7{},

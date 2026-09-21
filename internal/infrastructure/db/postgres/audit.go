@@ -60,6 +60,7 @@ func (r *Audit) List(ctx context.Context, filter domain.AuditFilter) ([]domain.A
 func (r *Audit) Count(ctx context.Context, filter domain.AuditFilter) (int, error) {
 	total, err := r.queries.CountAuditLogs(ctx, sqlcgen.CountAuditLogsParams{
 		Entity:     filter.Entity,
+		EntityID:   auditEntityID(filter),
 		Action:     filter.Action,
 		Actor:      sql.NullString{String: filter.Actor, Valid: true},
 		FromDate:   filter.From,
@@ -95,6 +96,7 @@ func (r *Audit) Actors(ctx context.Context) ([]string, error) {
 func auditListParams(filter domain.AuditFilter) sqlcgen.ListAuditLogsDescParams {
 	return sqlcgen.ListAuditLogsDescParams{
 		Entity:     filter.Entity,
+		EntityID:   auditEntityID(filter),
 		Action:     filter.Action,
 		Actor:      sql.NullString{String: filter.Actor, Valid: true},
 		FromDate:   filter.From,
@@ -103,6 +105,14 @@ func auditListParams(filter domain.AuditFilter) sqlcgen.ListAuditLogsDescParams 
 		PageOffset: int32(filter.Offset),
 		PageLimit:  int32(filter.Limit),
 	}
+}
+
+// auditEntityID traduz o recorte por registro da trilha. Vai sempre como texto —
+// o vazio é o valor que desliga a condição —, porque o parâmetro é anulável no
+// SQL e NULL derrubaria o WHERE inteiro (`coalesce(entity_id,”) = NULL` e
+// `NULL = ”` não são verdadeiros, e o AND inteiro vira NULL).
+func auditEntityID(filter domain.AuditFilter) sql.NullString {
+	return sql.NullString{String: filter.EntityID, Valid: true}
 }
 
 // searchLike monta o termo de busca do LIKE em minúsculas, porque as consultas

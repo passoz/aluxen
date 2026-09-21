@@ -281,6 +281,7 @@ VALUES (sqlc.arg(id), sqlc.arg(created_at), sqlc.arg(actor_id), sqlc.arg(actor_n
 -- name: ListAuditLogsDesc :many
 SELECT * FROM audit_logs
 WHERE (entity = sqlc.arg(entity) OR sqlc.arg(entity) = '')
+  AND (coalesce(entity_id, '') = sqlc.arg(entity_id) OR sqlc.arg(entity_id) = '')
   AND (action = sqlc.arg(action) OR sqlc.arg(action) = '')
   AND (coalesce(actor_name, '') = sqlc.arg(actor) OR sqlc.arg(actor) = '')
   AND (created_at >= sqlc.arg(from_date) OR sqlc.arg(from_date) = '')
@@ -298,6 +299,7 @@ LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 -- name: ListAuditLogsAsc :many
 SELECT * FROM audit_logs
 WHERE (entity = sqlc.arg(entity) OR sqlc.arg(entity) = '')
+  AND (coalesce(entity_id, '') = sqlc.arg(entity_id) OR sqlc.arg(entity_id) = '')
   AND (action = sqlc.arg(action) OR sqlc.arg(action) = '')
   AND (coalesce(actor_name, '') = sqlc.arg(actor) OR sqlc.arg(actor) = '')
   AND (created_at >= sqlc.arg(from_date) OR sqlc.arg(from_date) = '')
@@ -315,6 +317,7 @@ LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 -- name: CountAuditLogs :one
 SELECT COUNT(*) AS total FROM audit_logs
 WHERE (entity = sqlc.arg(entity) OR sqlc.arg(entity) = '')
+  AND (coalesce(entity_id, '') = sqlc.arg(entity_id) OR sqlc.arg(entity_id) = '')
   AND (action = sqlc.arg(action) OR sqlc.arg(action) = '')
   AND (coalesce(actor_name, '') = sqlc.arg(actor) OR sqlc.arg(actor) = '')
   AND (created_at >= sqlc.arg(from_date) OR sqlc.arg(from_date) = '')
@@ -447,7 +450,10 @@ SELECT * FROM payment_proofs WHERE receipt_id = sqlc.arg(receipt_id) ORDER BY cr
 UPDATE payment_proofs
 SET updated_at = sqlc.arg(updated_at), status = sqlc.arg(status), decision = sqlc.arg(decision),
     decision_reason = sqlc.arg(decision_reason), decided_by = sqlc.arg(decided_by), decided_at = sqlc.arg(decided_at),
-    receipt_id = sqlc.arg(receipt_id)
+    receipt_id = sqlc.arg(receipt_id), extracted_amount = sqlc.arg(extracted_amount),
+    extracted_date = sqlc.arg(extracted_date), extracted_payer = sqlc.arg(extracted_payer),
+    extracted_payee = sqlc.arg(extracted_payee), extracted_identifier = sqlc.arg(extracted_identifier),
+    confidence = sqlc.arg(confidence), raw_response = sqlc.arg(raw_response)
 WHERE id = sqlc.arg(id);
 
 -- document_intakes -------------------------------------------------

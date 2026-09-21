@@ -31,8 +31,8 @@ func SeedDemo(ctx context.Context, s *Store) error {
 
 	stamp := format.FormatUTCStamp(time.Now())
 	t1, t2, t3, t4, t5 := newID(), newID(), newID(), newID(), newID()
-	p1, p2, p3, p4 := newID(), newID(), newID(), newID()
-	l1, l2, l3, l4 := newID(), newID(), newID(), newID()
+	p1, p2, p3, p4, p5 := newID(), newID(), newID(), newID(), newID()
+	l1, l2, l3, l4, l5 := newID(), newID(), newID(), newID(), newID()
 
 	tenants := []domain.Tenant{
 		{ID: t1, Name: "Carlos Drummond de Andrade", Email: "carlos.drummond@exemplo.com.br", Phone: domain.StrPtr("(22) 99888-1122"), CPF: domain.StrPtr("111.222.333-44"), CreatedAt: stamp, UpdatedAt: stamp},
@@ -52,6 +52,7 @@ func SeedDemo(ctx context.Context, s *Store) error {
 		{ID: p2, Name: "Casa das Dunas", Address: "Rua dos Diamantes, 14, Braga", City: "Cabo Frio", State: "RJ", Zip: domain.StrPtr("28908-120"), CreatedAt: stamp, UpdatedAt: stamp},
 		{ID: p3, Name: "Cobertura Caiçara", Address: "Rua das Palmeiras, 300, Cobertura 01, Jardim Caiçara", City: "Cabo Frio", State: "RJ", Zip: domain.StrPtr("28910-370"), CreatedAt: stamp, UpdatedAt: stamp},
 		{ID: p4, Name: "Flat Passagem Histórica", Address: "Largo de São Benedito, 88, Passagem", City: "Cabo Frio", State: "RJ", Zip: domain.StrPtr("28906-030"), CreatedAt: stamp, UpdatedAt: stamp},
+		{ID: p5, Name: "Casa de Búzios", Address: "Rua das Conchas, 45, Geribá", City: "Búzios", State: "RJ", Zip: domain.StrPtr("28950-000"), CreatedAt: stamp, UpdatedAt: stamp},
 	}
 	for i := range properties {
 		if err := s.Properties.Create(ctx, &properties[i]); err != nil {
@@ -64,6 +65,16 @@ func SeedDemo(ctx context.Context, s *Store) error {
 		{ID: l2, TenantID: t2, PropertyID: p2, StartDate: "2026-02-01", EndDate: "2027-01-31", DueDay: 5, RentAmount: 3200, Status: domain.LeaseStatusActive, CreatedAt: stamp, UpdatedAt: stamp},
 		{ID: l3, TenantID: t3, PropertyID: p3, StartDate: "2026-03-01", EndDate: "2027-02-28", DueDay: 15, RentAmount: 4500, Status: domain.LeaseStatusActive, CreatedAt: stamp, UpdatedAt: stamp},
 		{ID: l4, TenantID: t4, PropertyID: p4, StartDate: "2025-01-01", EndDate: "2025-12-31", DueDay: 1, RentAmount: 1800, Status: domain.LeaseStatusTerminated, CreatedAt: stamp, UpdatedAt: stamp},
+		// Temporada: a demonstração mostra a caução retida e a vistoria de entrada
+		// da estadia de fim de ano (o único contrato com caução, de propósito).
+		{
+			ID: l5, TenantID: t5, PropertyID: p5, StartDate: "2026-12-20", EndDate: "2027-01-05",
+			DueDay: 20, RentAmount: 4800, Status: domain.LeaseStatusSeason,
+			DepositAmount: domain.FloatPtr(4800), DepositStatus: domain.DepositStatusHeld,
+			DepositReceivedAt: domain.StrPtr("2026-12-20T14:00"),
+			DepositNotes:      domain.StrPtr("Caução recebida por PIX"),
+			CreatedAt:         stamp, UpdatedAt: stamp,
+		},
 	}
 	for i := range leases {
 		if err := s.Leases.Create(ctx, &leases[i]); err != nil {
@@ -88,9 +99,24 @@ func SeedDemo(ctx context.Context, s *Store) error {
 		}
 	}
 
+	inspection := &domain.Inspection{
+		ID: newID(), LeaseID: l5, Kind: domain.InspectionKindCheckIn,
+		PerformedAt: "2026-12-20", Condition: domain.InspectionConditionGood,
+		Notes: domain.StrPtr("Imóvel entregue limpo e com enxoval novo"),
+		Items: []domain.InspectionItem{
+			{Area: "Sala", Item: "Sofá", State: "bom"},
+			{Area: "Quarto", Item: "Ar-condicionado", State: "bom", Notes: "filtro limpo"},
+			{Area: "Cozinha", Item: "Geladeira", State: "ótimo"},
+		},
+		CreatedAt: stamp, UpdatedAt: stamp,
+	}
+	if err := s.Inspections.Create(ctx, inspection); err != nil {
+		return fmt.Errorf("semear vistoria de entrada: %w", err)
+	}
+
 	slog.Info("banco de demonstração populado", "scope", "db.seed",
 		"tenants", len(tenants), "properties", len(properties),
-		"leases", len(leases), "receipts", len(receipts))
+		"leases", len(leases), "receipts", len(receipts), "inspections", 1)
 	return nil
 }
 

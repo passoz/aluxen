@@ -117,12 +117,13 @@ func TestSeedDemo(t *testing.T) {
 			properties, err := store.Properties.List(ctx)
 			require.NoError(t, err)
 			assert.Equal(t, []string{
-				"Apto 101 - Praia do Forte", "Casa das Dunas", "Cobertura Caiçara", "Flat Passagem Histórica",
+				"Apto 101 - Praia do Forte", "Casa das Dunas", "Casa de Búzios",
+				"Cobertura Caiçara", "Flat Passagem Histórica",
 			}, propertyNames(properties))
 
 			leases, err := store.Leases.List(ctx)
 			require.NoError(t, err)
-			require.Len(t, leases, 4)
+			require.Len(t, leases, 5)
 			byTenant := map[string]domain.Lease{}
 			for _, lease := range leases {
 				byTenant[lease.TenantName] = lease
@@ -135,6 +136,46 @@ func TestSeedDemo(t *testing.T) {
 			assert.Equal(t, domain.LeaseStatusActive, carlos.Status)
 			assert.Equal(t, "Apto 101 - Praia do Forte", carlos.PropertyName)
 			assert.Equal(t, domain.LeaseStatusTerminated, byTenant["Cecília Meireles"].Status)
+
+			// a temporada de fim de ano aparece com a caução retida
+			season := byTenant["Vinicius de Moraes"]
+			assert.Equal(t, domain.LeaseStatusSeason, season.Status)
+			assert.Equal(t, "2026-12-20", season.StartDate)
+			assert.Equal(t, "2027-01-05", season.EndDate)
+			assert.Equal(t, 4800.0, season.RentAmount)
+			assert.Equal(t, "Casa de Búzios", season.PropertyName)
+			require.NotNil(t, season.DepositAmount)
+			assert.Equal(t, 4800.0, *season.DepositAmount)
+			assert.Equal(t, domain.DepositStatusHeld, season.DepositStatus)
+			assert.Equal(t, "2026-12-20T14:00", domain.Str(season.DepositReceivedAt))
+			assert.Equal(t, "Caução recebida por PIX", domain.Str(season.DepositNotes))
+			assert.True(t, domain.HasDeposit(season.DepositAmount, season.DepositStatus))
+			assert.Nil(t, season.DepositRefundedAt)
+			assert.Nil(t, season.DepositRefundedAmt)
+
+			// e a vistoria de entrada dessa estadia
+			inspections, err := store.Inspections.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, inspections, 1)
+			checkIn := inspections[0]
+			assert.Equal(t, season.ID, checkIn.LeaseID)
+			assert.Equal(t, domain.InspectionKindCheckIn, checkIn.Kind)
+			assert.Equal(t, domain.InspectionConditionGood, checkIn.Condition)
+			assert.Equal(t, "2026-12-20", checkIn.PerformedAt)
+			assert.Equal(t, "Vinicius de Moraes", checkIn.TenantName)
+			assert.Equal(t, "Casa de Búzios", checkIn.PropertyName)
+			assert.Len(t, checkIn.Items, 3)
+			assert.Equal(t, []domain.InspectionItem{
+				{Area: "Sala", Item: "Sofá", State: "bom"},
+				{Area: "Quarto", Item: "Ar-condicionado", State: "bom", Notes: "filtro limpo"},
+				{Area: "Cozinha", Item: "Geladeira", State: "ótimo"},
+			}, checkIn.Items)
+			assert.Empty(t, checkIn.Photos)
+
+			byLease, err := store.Inspections.ByLease(ctx, season.ID)
+			require.NoError(t, err)
+			require.Len(t, byLease, 1)
+			assert.Equal(t, checkIn.ID, byLease[0].ID)
 
 			receipts, err := store.Receipts.List(ctx)
 			require.NoError(t, err)
@@ -189,6 +230,15 @@ func TestSeedDemo(t *testing.T) {
 			count, err = store.Tenants.Count(ctx)
 			require.NoError(t, err)
 			assert.Equal(t, 5, count)
+			count, err = store.Leases.Count(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, 5, count)
+			count, err = store.Properties.Count(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, 5, count)
+			inspections, err = store.Inspections.List(ctx)
+			require.NoError(t, err)
+			assert.Len(t, inspections, 1, "a vistoria antiga sai junto com o contrato excluído")
 		})
 	}
 }

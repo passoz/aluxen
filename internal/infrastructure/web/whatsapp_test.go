@@ -375,7 +375,7 @@ func whatsAppMessageBody(id, phone, text string) []byte {
 	}`, id, phone, text))
 }
 
-func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
+func decodeWhatsAppJSON(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
 	t.Helper()
 	var payload map[string]any
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -407,7 +407,7 @@ func TestWhatsAppRoutesRequireAdminSession(t *testing.T) {
 		if recorder.Code != http.StatusUnauthorized {
 			t.Fatalf("%s %s: status = %d, esperado 401", route.method, route.path, recorder.Code)
 		}
-		if payload := decodeJSON(t, recorder); payload["error"] != "Não autorizado." {
+		if payload := decodeWhatsAppJSON(t, recorder); payload["error"] != "Não autorizado." {
 			t.Fatalf("%s %s: corpo = %v, esperado o erro de não autorizado", route.method, route.path, payload)
 		}
 	}
@@ -420,7 +420,7 @@ func TestWhatsAppStatusReportsChannelState(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200", recorder.Code)
 	}
-	payload := decodeJSON(t, recorder)
+	payload := decodeWhatsAppJSON(t, recorder)
 	if payload["isLoggedIn"] != true || payload["hasQRCode"] != false {
 		t.Fatalf("payload = %v, esperado sessão conectada", payload)
 	}
@@ -432,7 +432,7 @@ func TestWhatsAppStatusReportsChannelState(t *testing.T) {
 	}
 
 	server.waha.setState("SCAN_QR_CODE")
-	payload = decodeJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/status", nil, true))
+	payload = decodeWhatsAppJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/status", nil, true))
 	if payload["isLoggedIn"] != false || payload["hasQRCode"] != true {
 		t.Fatalf("payload = %v, esperado pareamento em leitura de QR Code", payload)
 	}
@@ -445,7 +445,7 @@ func TestWhatsAppStatusWithoutChannelIsUnavailable(t *testing.T) {
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, esperado 503", recorder.Code)
 	}
-	if payload := decodeJSON(t, recorder); payload["error"] != "Canal de WhatsApp indisponível." {
+	if payload := decodeWhatsAppJSON(t, recorder); payload["error"] != "Canal de WhatsApp indisponível." {
 		t.Fatalf("corpo = %v", payload)
 	}
 }
@@ -453,7 +453,7 @@ func TestWhatsAppStatusWithoutChannelIsUnavailable(t *testing.T) {
 func TestWhatsAppStatusWithoutWAHAConfigured(t *testing.T) {
 	server := newWATestServer(t, func(cfg *config.Config) { cfg.WahaAPIURL = "" }, true)
 
-	payload := decodeJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/status", nil, true))
+	payload := decodeWhatsAppJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/status", nil, true))
 	if payload["chromiumAvailable"] != false || payload["isLoggedIn"] != false {
 		t.Fatalf("payload = %v, esperado canal indisponível sem WAHA_API_URL", payload)
 	}
@@ -467,7 +467,7 @@ func TestWhatsAppLoginFlowPublishesQRCodeAndCancels(t *testing.T) {
 	if started.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200", started.Code)
 	}
-	payload := decodeJSON(t, started)
+	payload := decodeWhatsAppJSON(t, started)
 	state, _ := payload["state"].(map[string]any)
 	if payload["ok"] != true || state["status"] != "starting" {
 		t.Fatalf("payload = %v, esperado ok com estado starting", payload)
@@ -480,7 +480,7 @@ func TestWhatsAppLoginFlowPublishesQRCodeAndCancels(t *testing.T) {
 	var scan map[string]any
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		payload = decodeJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/login/status", nil, true))
+		payload = decodeWhatsAppJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/login/status", nil, true))
 		scan, _ = payload["state"].(map[string]any)
 		if scan["status"] == "scan_qr" {
 			break
@@ -497,7 +497,7 @@ func TestWhatsAppLoginFlowPublishesQRCodeAndCancels(t *testing.T) {
 		t.Fatalf("message = %q, esperado o texto do app atual", scan["message"])
 	}
 
-	cancelled := decodeJSON(t, server.do(t, http.MethodPost, "/api/whatsapp/login/cancel", server.form(nil), true))
+	cancelled := decodeWhatsAppJSON(t, server.do(t, http.MethodPost, "/api/whatsapp/login/cancel", server.form(nil), true))
 	cancelledState, _ := cancelled["state"].(map[string]any)
 	if cancelledState["status"] != "idle" {
 		t.Fatalf("estado após cancelar = %v, esperado idle", cancelledState)
@@ -514,7 +514,7 @@ func TestWhatsAppLogoutAuditsAndAnswersTheAppContract(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200", recorder.Code)
 	}
-	payload := decodeJSON(t, recorder)
+	payload := decodeWhatsAppJSON(t, recorder)
 	if payload["ok"] != true || payload["message"] != "WhatsApp desconectado com sucesso." {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -537,7 +537,7 @@ func TestWhatsAppPreviewReturnsTheAppPayload(t *testing.T) {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
 
-	payload := decodeJSON(t, recorder)
+	payload := decodeWhatsAppJSON(t, recorder)
 	if payload["ok"] != true || payload["type"] != "receipt" || payload["id"] != "r1" {
 		t.Fatalf("payload = %v", payload)
 	}
@@ -580,7 +580,7 @@ func TestWhatsAppPreviewLease(t *testing.T) {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
 
-	payload := decodeJSON(t, recorder)
+	payload := decodeWhatsAppJSON(t, recorder)
 	message, _ := payload["message"].(string)
 	if payload["type"] != "lease" || !strings.Contains(message, "🗓️ *Vigência*: 01/01/2026 a 31/12/2026") {
 		t.Fatalf("payload = %v", payload)
@@ -635,7 +635,7 @@ func TestWhatsAppPreviewErrors(t *testing.T) {
 		if recorder.Code != testCase.status {
 			t.Fatalf("%s: status = %d, esperado %d (%s)", testCase.name, recorder.Code, testCase.status, recorder.Body.String())
 		}
-		if payload := decodeJSON(t, recorder); payload["error"] != testCase.error {
+		if payload := decodeWhatsAppJSON(t, recorder); payload["error"] != testCase.error {
 			t.Fatalf("%s: erro = %v, esperado %q", testCase.name, payload["error"], testCase.error)
 		}
 	}
@@ -651,7 +651,7 @@ func TestWhatsAppSendCreatesJobAndReportsStatus(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
-	jobID, _ := decodeJSON(t, recorder)["jobId"].(string)
+	jobID, _ := decodeWhatsAppJSON(t, recorder)["jobId"].(string)
 	if jobID == "" {
 		t.Fatal("resposta do envio sem jobId")
 	}
@@ -659,7 +659,7 @@ func TestWhatsAppSendCreatesJobAndReportsStatus(t *testing.T) {
 	var job map[string]any
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		payload := decodeJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/send/status?jobId="+jobID, nil, true))
+		payload := decodeWhatsAppJSON(t, server.do(t, http.MethodGet, "/api/whatsapp/send/status?jobId="+jobID, nil, true))
 		job, _ = payload["job"].(map[string]any)
 		if job["status"] == "done" {
 			break
@@ -710,7 +710,7 @@ func TestWhatsAppSendValidatesRequest(t *testing.T) {
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, esperado 400", testCase.name, recorder.Code)
 		}
-		if payload := decodeJSON(t, recorder); payload["error"] != testCase.want {
+		if payload := decodeWhatsAppJSON(t, recorder); payload["error"] != testCase.want {
 			t.Fatalf("%s: erro = %v, esperado %q", testCase.name, payload["error"], testCase.want)
 		}
 	}
@@ -783,7 +783,7 @@ func TestWhatsAppWebhookIgnoresOtherEvents(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200", recorder.Code)
 	}
-	if payload := decodeJSON(t, recorder); payload["ignored"] != true {
+	if payload := decodeWhatsAppJSON(t, recorder); payload["ignored"] != true {
 		t.Fatalf("corpo = %v, esperado ignored", payload)
 	}
 	if stored := server.messages.stored(); len(stored) != 0 {

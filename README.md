@@ -1,6 +1,8 @@
 # Aluxen
 
-Sistema completo e moderno de **gestão de locações imobiliárias**, executando com altíssima performance no runtime **Bun**, com o driver nativo **`bun:sqlite`**, **Hono**, **Drizzle ORM**, renderização híbrida **React SSR com hidratação**, geração dinâmica de **PDFs com autenticidade digital (QR Code)** e **Robô Headless de WhatsApp** integrado.
+Sistema completo de **gestão de locações imobiliárias**, escrito em **Go**: um **binário único** (imagem **distroless**, sem runtime de linguagem nem shell), com **SQLite** ou **Postgres** escolhidos por `DATABASE_URL`, **migrações automáticas no boot**, geração de **PDFs com autenticidade por QR Code** e canal de **WhatsApp** (WAHA / Cloud API) para envio e atendimento bidirecional.
+
+> **Nota de branch (`devgo`):** este branch **substitui o app Bun** (TypeScript, Hono, Drizzle, React SSR, robô headless) pelo **port Go**. O app vigente é o binário em `cmd/app` sobre `internal/`; os diretórios `src/`, `public/`, `drizzle/` e `test/` pertencem ao **app Bun legado** e são mantidos apenas como referência histórica. A arquitetura vigente está em [`docs/ARQUITETURA-GO.md`](docs/ARQUITETURA-GO.md).
 
 ---
 
@@ -16,7 +18,7 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
   - [5. Pagamentos, Recibos & Baixa em Lote](#5-pagamentos-recibos--baixa-em-lote)
   - [6. Documentos em PDF com Autenticidade Digital](#6-documentos-em-pdf-com-autenticidade-digital)
   - [7. Portal Público de Validação de Documentos](#7-portal-público-de-validação-de-documentos)
-  - [8. Integração e Robô do WhatsApp Web](#8-integração-e-robô-do-whatsapp-web)
+  - [8. Integração de WhatsApp](#8-integração-de-whatsapp)
   - [9. Configurações do Locador & URL Pública](#9-configurações-do-locador--url-pública)
   - [10. Backup & Restauração JSON](#10-backup--restauração-json)
   - [11. Histórico & Auditoria](#11-histórico--auditoria)
@@ -38,7 +40,7 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
 
 ## 🌟 Visão Geral
 
-O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que buscam autonomia, agilidade e segurança jurídica. O sistema elimina dependências pesadas de servidores tradicionais ou bancos de dados externos: com apenas um binário do Bun e um arquivo SQLite, você tem em mãos uma aplicação completa para cadastrar inquilinos, controlar contratos, emitir cobranças, gerar recibos em PDF com validação criptográfica e notificar locatários automaticamente via WhatsApp.
+O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que buscam autonomia, agilidade e segurança jurídica. O sistema elimina dependências pesadas: com um **binário único** (sem runtime de linguagem) e um arquivo **SQLite** — ou um **Postgres** já existente —, você tem em mãos uma aplicação completa para cadastrar inquilinos, controlar contratos, emitir cobranças, gerar recibos em PDF com validação criptográfica e notificar locatários pelo WhatsApp.
 
 ---
 
@@ -46,16 +48,15 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 | Componente | Tecnologia | Finalidade |
 |---|---|---|
-| **Runtime** | [Bun](https://bun.sh/) (v1.4+) | Execução nativa ultrarrápida de TypeScript e empacotamento (`Bun.build`). |
-| **Framework Web** | [Hono](https://hono.dev/) (v4+) | Roteamento leve, middlewares de sessão, rate limit e serving estático. |
-| **Banco de Dados** | `bun:sqlite` | Driver SQLite nativo integrado ao runtime, com suporte a modo WAL. |
-| **ORM & Migrações** | [Drizzle ORM](https://orm.drizzle.team/) | Consultas tipadas ponta a ponta e histórico versionado de migrações. |
-| **Frontend & SSR** | [React 19](https://react.dev/) + React DOM Server | SSR instantâneo no servidor e hidratação interativa no cliente. |
-| **Estilização** | CSS puro (`globals.css`) | Design glassmorphism moderno, responsivo, com temas Claro e Escuro. |
-| **Geração de PDF** | [`pdf-lib`](https://pdf-lib.js.org/) | Geração em memória de recibos de aluguel e contratos completos de 25 cláusulas. |
-| **QR Code** | `qrcode` / `qrcode-terminal` | Geração de QR Codes dinâmicos para PDFs, portal web e terminal CLI. |
-| **Robô WhatsApp** | [`puppeteer-core`](https://pptr.dev/) + Chromium | Disparo automatizado de mensagens e comprovantes em segundo plano (Headless). |
-| **Criptografia** | `node:crypto` + `bcryptjs` | Hash de senhas (bcrypt), tokens de autenticidade HMAC-SHA256 e `timingSafeEqual`. |
+| **Runtime** | [Go](https://go.dev/) 1.27 | **Binário único** e estático (`CGO_ENABLED=0`); imagem final **distroless** (`gcr.io/distroless/static-debian12`), sem runtime de linguagem nem shell. |
+| **HTTP** | `net/http` (ServeMux do Go 1.22+) | Roteamento por método+path, middlewares de sessão, CSRF e rate limit, e serving estático embutido (`embed`). |
+| **Templates** | `html/template` | Renderização server-side das telas do painel, portal e validação, com escape automático. |
+| **Banco de Dados** | `modernc.org/sqlite` **ou** `jackc/pgx/v5` | Um dialeto por instância, escolhido por `DATABASE_URL` (`file:...` → SQLite; `postgres://...` → Postgres). |
+| **Migrações** | [`pressly/goose`](https://github.com/pressly/goose) | Migrações versionadas aplicadas **automaticamente no boot**, por dialeto. |
+| **Geração de PDF** | [`go-pdf/fpdf`](https://github.com/go-pdf/fpdf) | Recibos, contratos, autos de vistoria e recibos de caução montados como modelo tipado e desenhados em A4. |
+| **QR Code** | [`skip2/go-qrcode`](https://github.com/skip2/go-qrcode) | QR Codes de validação dos documentos e do pareamento do WhatsApp. |
+| **Criptografia** | `crypto/hmac`, `crypto/sha256`, `golang.org/x/crypto/bcrypt` | Hash de senhas (bcrypt), tokens de autenticidade HMAC-SHA256 e comparação em tempo constante. |
+| **Canal WhatsApp** | WAHA (demo) ou Cloud API oficial (cliente) | Envio de recibos/contratos/cobranças e **recebimento** de mensagens por webhook. |
 
 ---
 
@@ -106,7 +107,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 ### 6. Documentos em PDF com Autenticidade Digital
 - **Recibo de Pagamento (`/pdf?id=...`)**:
   - Valores monetários formatados e expressos por extenso em português (ex.: *"dois mil e quinhentos reais"*).
-  - Assinatura digital do locador (configurável via `&assinatura=false` para recibo em branco).
+  - **Assinatura visualizada do locador**: a imagem da assinatura é impressa no documento; **não** é assinatura eletrônica com validade jurídica nos termos da ICP-Brasil (configurável via `&assinatura=false` para recibo em branco).
   - Data por extenso e declaração formal de quitação.
   - **Código de Autenticação Alfanumérico** (ex.: `AUTH-4061-AE09-3241-A94F`).
   - **QR Code Dinâmico**: Permite ao locatário escanear a folha do recibo com a câmera do celular e conferir os dados originais no servidor.
@@ -119,18 +120,20 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Visualização Segura**: Exibe o selo verde de autenticidade, valores, datas e um botão direto para **Visualizar / Baixar o PDF original**, dispensando a necessidade de o locatário criar login no sistema.
 - **Auto-Detecção de IP de Rede Local**: Em modo de desenvolvimento, se você escanear o QR Code pelo smartphone na mesma rede Wi-Fi, o sistema resolve o IP local (ex.: `http://192.168.10.109:3000`) para que a página abra instantaneamente no celular!
 
-### 8. Integração e Robô do WhatsApp Web
-- **Envio Direto (`wa.me`)**: Gera link oficial para envio manual pelo aplicativo ou WhatsApp Web.
-- **Robô Headless Automatizado**:
-  - Controla o WhatsApp Web em segundo plano via **Puppeteer Core + Chromium**.
-  - **Pareamento Simples via QR Code**: Pode ser realizado diretamente pelo modal no painel web (`/settings` ou tela de envio) ou pelo terminal com `bun run whatsapp:login`.
-  - **Persistência de Sessão**: Armazena o perfil autenticado em `.whatsapp-profile/`, mantendo o robô conectado mesmo após reiniciar a máquina ou o container Docker.
+### 8. Integração de WhatsApp
+- **Envio Direto (`wa.me`)**: gera link oficial para envio manual pelo aplicativo ou WhatsApp Web, sem depender de canal configurado.
+- **Canal HTTP (sem navegador)**: o pareamento, o estado da sessão e o envio são chamadas HTTP ao provedor do canal — **não há Chromium nem robô headless** no port Go.
+  - **Modo demo** (`WHATSAPP_MODE=demo`): canal **não-oficial** (WAHA). Viola os termos da Meta e **pode banir o número** — só para demonstração.
+  - **Modo cliente** (`WHATSAPP_MODE=client`): **Cloud API oficial da Meta**, com `WAHA_WEBHOOK_SECRET` **obrigatório**. Recomendado para cliente pagante.
+  - **Pareamento por QR Code** no painel (`/settings`) ou no modal de envio.
+  - **Bidirecional**: as mensagens recebidas entram por webhook (`POST /api/whatsapp/webhook`, com assinatura HMAC) e ficam persistidas e vinculadas ao inquilino.
   - Mensagens pré-formatadas com emojis, resumo financeiro, link para download do PDF e link do portal de validação.
+- Detalhes em [`docs/WHATSAPP-GO.md`](docs/WHATSAPP-GO.md).
 
 ### 9. Configurações do Locador & URL Pública
 - Cadastro de Nome, CPF e Email do Locador para emissão automática nos cabeçalhos de contratos e recibos.
 - Configuração do Domínio / URL Pública do Sistema (`app_url`), permitindo apontar para o domínio de produção oficial (`https://aluxen.evolucsia.com`) ou domínio próprio.
-- Painel de status e reconexão do Robô do WhatsApp em tempo real.
+- Painel de status e reconexão do canal de WhatsApp em tempo real.
 - Alteração segura de senha do usuário autenticado.
 
 ### 10. Backup & Restauração JSON
@@ -151,7 +154,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - Seletor de tema **Claro / Escuro** integrado.
 
 ### 13. Observabilidade & Logs Estruturados
-- **Logger estruturado** (`src/utils/logger.ts`): uma linha por evento com timestamp ISO, nível (`debug`, `info`, `warn`, `error`), escopo (`http`, `audit`, `db`, `whatsapp`, `app`) e campos tipados.
+- **Logger estruturado** (`internal/infrastructure/logging`): uma linha por evento com timestamp ISO, nível (`debug`, `info`, `warn`, `error`), escopo (`http`, `audit`, `db`, `whatsapp`, `app`) e campos tipados.
 - **Dois formatos**: legível com cores de leitura no terminal (`pretty`, padrão em TTY) e **JSON Lines** para containers/observabilidade (`LOG_FORMAT=json`, padrão fora de TTY).
 - **Log de requisições**: método, rota, status, duração em ms, IP, usuário autenticado e `requestId` — o mesmo protocolo aparece na resposta de erro e na trilha de auditoria. Estáticos vão para `debug`; 4xx para `warn`; 5xx e requisições acima de 1 s para `error`/`warn`.
 - **Tratamento de erros**: exceções não tratadas são logadas com rastreio de pilha e devolvem uma página/JSON amigável com o protocolo de correlação (em vez de "Internal Server Error" genérico).
@@ -167,10 +170,10 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 15. Informações do Sistema & Build em Execução
 - **Botão "Informações"** no rodapé da barra lateral (abaixo de *Configurações*), abrindo um modal com a identificação exata do que está rodando.
-- **Versão que sempre avança**: a versão exibida é `MAJOR.MINOR` do `package.json` com o **número do build** como subversão (ex.: `1.0.61`) — o número vem da contagem de commits no pipeline (`git rev-list --count HEAD`) e é gravado na imagem, então cada build publicado tem uma versão diferente da anterior.
+- **Versão que sempre avança**: a versão exibida é `MAJOR.MINOR` declarada em `internal/infrastructure/buildinfo` com o **número do build** como subversão (ex.: `1.0.61`) — o número vem da contagem de commits no pipeline (`git rev-list --count HEAD`) e é gravado na imagem, então cada build publicado tem uma versão diferente da anterior.
 - **Identificação do build**: origem (`Imagem publicada (GHCR)` ou `Execução local`), versão, número do build, commit, branch/tag, **tag da imagem** (`ghcr.io/passoz/aluxen:sha-<commit>`), data de construção (UTC) e link direto para a execução do GitHub Actions que gerou a imagem.
-- **Estado do sistema**: runtime do Bun, ambiente, fuso horário, hora de início e tempo no ar, caminho e tamanho do banco SQLite, URL pública configurada e contagem de inquilinos, imóveis, contratos e recibos.
-- Os metadados são injetados na imagem pelo workflow de publicação (`build-args` → `ENV` no `Dockerfile`) e lidos em runtime por `src/utils/build-info.ts`; fora da imagem, o sistema cai para o repositório git local. Sem metadados, o modal avisa que a execução não é identificável.
+- **Estado do sistema**: runtime do Go, ambiente, fuso horário, hora de início e tempo no ar, caminho e tamanho do banco, URL pública configurada e contagem de inquilinos, imóveis, contratos e recibos.
+- Os metadados são injetados na imagem pelo workflow de publicação (`build-args` → `ENV` no `Dockerfile`) e lidos em runtime por `internal/infrastructure/buildinfo`; fora da imagem, o sistema cai para o repositório git local. Sem metadados, o modal avisa que a execução não é identificável.
 
 ### 16. Interface, Componentes & Usabilidade
 - **Seletores e calendários com abertura inteligente**: os popovers abrem abaixo do campo; sem espaço, abrem acima e, quando não há altura suficiente em nenhuma direção, ao lado — sempre limitados pela janela e sem empurrar a página. São renderizados em portal, então não ficam recortados dentro de modais com rolagem.
@@ -185,8 +188,8 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 ## 🚀 Guia Rápido de Instalação e Execução
 
 ### Pré-requisitos
-- [Bun](https://bun.sh/) (v1.1 ou superior).
-- Google Chrome ou Chromium instalado (necessário apenas caso deseje utilizar o **Robô Headless** do WhatsApp).
+- [Go](https://go.dev/) 1.27 ou superior.
+- **Nada mais**: não há Chromium, Bun nem runtime de linguagem na imagem de produção.
 
 ### 1. Clonar o repositório
 ```bash
@@ -194,29 +197,31 @@ git clone https://github.com/passoz/aluxen.git
 cd aluxen
 ```
 
-### 2. Instalar dependências
+### 2. Baixar as dependências
 ```bash
-bun install
+go mod download
 ```
 
-### 3. Compilar o bundle de cliente
+### 3. Executar em modo desenvolvimento
 ```bash
-bun run build
-```
-
-### 4. Executar em modo desenvolvimento
-```bash
-bun run dev
+go run ./cmd/app
 ```
 O servidor estará acessível em:
 - **Navegador local**: `http://localhost:3000`
-- **Pelo smartphone no mesmo Wi-Fi**: `http://<SEU-IP-LOCAL>:3000` (exibido no terminal ao iniciar)
+- **Pelo smartphone no mesmo Wi-Fi**: `http://<SEU-IP-LOCAL>:3000` (o sistema resolve o IP local para os QR Codes de validação)
 
-### 5. Executar em modo produção
+As variáveis de ambiente são lidas do **próprio ambiente** (12-factor); o app Go **não** lê um arquivo `.env` automaticamente. Use `.env.example` como referência e exporte as chaves (ou use o container, que já recebe as variáveis prontas).
+
+### 4. Compilar o binário
 ```bash
-bun run build
-bun run start
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aluxen ./cmd/app
 ```
+
+### 5. Executar em produção
+```bash
+./aluxen
+```
+No boot, o app **abre o banco e aplica as migrações automaticamente**, semeia o administrador (se a base estiver vazia) e só então começa a servir. A prontidão é observável por `GET /healthz` (processo vivo) e `GET /readyz` (banco pronto).
 
 ### Credenciais Padrão no Primeiro Acesso
 - **Painel administrativo**: usuário `passoz` / senha `senha-de-teste` — a troca é exigida no primeiro login (as variáveis `SEED_USERNAME`/`SEED_PASSWORD` valem apenas até essa troca).
@@ -226,120 +231,114 @@ bun run start
 
 ## ⚙️ Variáveis de Ambiente
 
-O Aluxen funciona perfeitamente com valores padrão pré-configurados, mas você pode customizá-lo através de um arquivo `.env` na raiz do projeto:
+A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato das chaves exigidas. O app Go **não** lê um `.env` automaticamente — exporte as variáveis ou deixe o container provê-las.
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `PORT` | `3000` | Porta TCP na qual o servidor HTTP do Hono irá escutar. |
+| `APP_ENV` | `development` | Ambiente de execução (`development`, `test` ou `production`). Em `production`, `SESSION_SECRET` é obrigatório (≥ 16 caracteres). |
 | `HOST` | `0.0.0.0` | Endereço de bind de rede. |
-| `NODE_ENV` | `development` | Ambiente de execução (`development` ou `production`). |
-| `DATABASE_URL` | *(vazio)* | Caminho customizado para o banco (ex.: `file:/caminho/banco.db`). |
-| `DB_DIR` | *(raiz)* | Diretório onde o arquivo `aluxen.db` e `.whatsapp-profile` serão gravados. |
-| `SESSION_SECRET` | `aluxen-session-secret...` | Chave secreta usada para assinar cookies e gerar tokens HMAC de validação de documentos. |
-| `APP_URL` | *(auto-detectado)* | URL pública base do sistema para links e QR Codes (ex.: `https://aluxen.evolucsia.com`). |
-| `WHATSAPP_PROFILE_DIR` | `.whatsapp-profile` | Diretório onde os dados da sessão do WhatsApp Web são gravados. |
-| `CHROMIUM_PATH` | *(auto-detectado)* | Caminho explícito para o executável do Chromium ou Google Chrome. |
-| `RATE_LIMIT_MAX` | `5` | Número máximo de tentativas de login permitidas por IP por minuto. |
-| `RATE_LIMIT_GLOBAL_MAX` | `60` | Teto global de tentativas de login por minuto, somando todos os IPs (barra varredura distribuída). |
-| `LOGIN_LOCK_THRESHOLD` | `10` | Falhas de login que bloqueiam o IP; o tempo dobra a cada novo bloqueio (5 min até 1 h). |
-| `TZ` | `America/Sao_Paulo` (imagem) | Fuso do processo; define os horários da trilha de auditoria e dos logs. |
-| `SEED_USERNAME` | `passoz` | Nome de usuário criado automaticamente no primeiro boot do banco. |
-| `SEED_PASSWORD` | `senha-de-teste` | Senha inicial do usuário administrador. |
-| `DEFAULT_LANDLORD_NAME`| `Locador` | Nome padrão do locador inserido nas configurações iniciais. |
+| `PORT` | `3000` | Porta TCP do servidor HTTP. |
+| `DATABASE_URL` | *(vazio)* | Dialeto do banco: `file:/data/aluxen.db` → **SQLite**; `postgres://user:pass@host:5432/db` → **Postgres**. Vazio usa `DB_DIR`. |
+| `DB_DIR` | *(raiz)* | Diretório onde o arquivo `aluxen.db` é gravado quando `DATABASE_URL` está vazia (e base do `STORAGE_DIR`). |
+| `STORAGE_DIR` | `<DB_DIR>/storage` | Diretório dos anexos (fotos de vistoria e documentos enviados). |
+| `SESSION_SECRET` | *(obrigatório em produção)* | Assina sessão, CSRF e os tokens HMAC de autenticidade dos documentos. Sem valor seguro, o boot falha em produção. |
+| `COOKIE_SECURE` | `false` | Força o atributo `Secure` dos cookies fora de produção (em produção é sempre `Secure`). |
+| `APP_URL` | *(auto-detectado)* | URL pública base dos links e QR Codes (ex.: `https://aluxen.evolucsia.com`). Vence `BASE_URL`. |
+| `BASE_URL` | *(vazio)* | URL pública usada quando `APP_URL` não é informado. |
+| `SEED_USERNAME` | `passoz` | Usuário administrador criado no primeiro boot. |
+| `SEED_PASSWORD` | `senha-de-teste` | Senha inicial do administrador. |
+| `SEED_DEMO` | `false` | Popula a base com os dados de demonstração no boot (apenas para demo). |
+| `DEFAULT_LANDLORD_NAME` | `Locador` | Nome padrão do locador nas configurações iniciais. |
 | `DEFAULT_LANDLORD_CPF` | `""` | CPF inicial do locador. |
+| `RATE_LIMIT_MAX` | `5` | Tentativas de login por IP na janela de 60 s. |
+| `RATE_LIMIT_GLOBAL_MAX` | `60` | Teto global de tentativas de login na janela de 60 s. |
+| `LOGIN_LOCK_THRESHOLD` | `10` | Falhas que iniciam o bloqueio progressivo do IP (5 min, dobrando até 1 h). |
 | `LOG_LEVEL` | `info` | Nível mínimo dos logs: `debug`, `info`, `warn`, `error` ou `silent`. |
-| `LOG_FORMAT` | `json` fora de TTY, `pretty` em terminal | Formato de saída do logger (`json` para JSON Lines ou `pretty` para leitura humana). |
+| `LOG_FORMAT` | `json` em produção, `pretty` em TTY | Formato do logger. |
+| `WHATSAPP_MODE` | `demo` | `demo` (WAHA, não-oficial, risco de banimento) ou `client` (Cloud API oficial). Ver `docs/WHATSAPP-GO.md`. |
+| `WAHA_API_URL` | *(vazio)* | Base da API do canal. Vazio desliga o canal (a instância sobe sem WhatsApp). |
+| `WAHA_API_KEY` | *(vazio)* | Autentica as chamadas ao canal. |
+| `WAHA_SESSION` | `default` | Sessão do canal usada pela instância. |
+| `WAHA_WEBHOOK_SECRET` | *(vazio)* | Segredo HMAC que valida o webhook de mensagens recebidas. **Obrigatório** fora do modo demo. |
+| `AI_API_URL` | *(vazio)* | Base da API do provedor de IA (leitura de documentos). |
+| `AI_API_KEY` | *(vazio)* | Autentica as chamadas ao provedor de IA. |
+| `AI_MODEL` | `deepseek-v4.1-flash` | Modelo usado nas extrações por IA (o operador de IA no aviso de privacidade). |
+| `AI_CONFIDENCE_THRESHOLD` | `0.9` | Confiança mínima para a baixa automática; abaixo disso vai para revisão humana. |
+| `EASYPANEL_URL` | *(vazio)* | Base da API de provisionamento por instância. |
+| `EASYPANEL_API_KEY` | *(vazio)* | Autentica as chamadas à API de provisionamento. |
+| `TZ` | `America/Sao_Paulo` (imagem) | Fuso do processo; define os horários da trilha de auditoria e dos logs. |
 | `ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL`, `ALUXEN_BUILD_NUMBER` | *(injetados na imagem)* | Metadados do build exibidos no modal **Informações**. `ALUXEN_BUILD_NUMBER` é a subversão da versão (`1.0.<número>`). Preenchidos pelo workflow de publicação via `build-args`; podem ser definidos manualmente para identificar uma execução local. |
 
 ---
 
-## 📜 Scripts Disponíveis
+## 📜 Comandos Disponíveis
 
-Todos os comandos podem ser executados através do `bun run <script>`:
+O app Go se constrói e roda com a toolchain padrão (não há scripts de runtime):
 
 ```bash
-# Desenvolvimento com recarga automática ao alterar arquivos
-bun run dev
+# Executar em desenvolvimento
+go run ./cmd/app
 
-# Compilar o bundle JavaScript do cliente React para public/dist/client.js
-bun run build
+# Compilar o binário estático de produção
+CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aluxen ./cmd/app
 
-# Iniciar o servidor em produção
-bun run start
+# Executar a suíte de testes
+go test ./...
 
-# Executar a suíte completa de testes automatizados
-bun test
+# Verificação estática (vet)
+go vet ./...
 
-# Validação estática de tipos TypeScript (sem emitir arquivos)
-bun run typecheck
-
-# Iniciar login no WhatsApp Web pelo terminal via QR Code ASCII
-bun run whatsapp:login
-
-# Aplicar migrações pendentes no banco SQLite
-bun run db:migrate
-
-# Gerar novas migrações a partir de alterações em src/db/schema.ts
-bun run db:generate
-
-# Sincronizar o schema diretamente com o banco de dados
-bun run db:push
-
-# Abrir o Drizzle Studio (painel web interativo para inspecionar o banco)
-bun run db:studio
-
-# Popular o banco com dados demonstrativos para testes
-bun run db:seed
+# Provisionar uma instância no Easypanel (uma instância por cliente/demo)
+go run ./cmd/provision
 ```
 
 ---
 
 ## 🗄 Banco de Dados & Migrações
 
-O Aluxen utiliza o **Drizzle ORM** configurado para o driver nativo **`bun:sqlite`**. O banco opera em modo **WAL (Write-Ahead Logging)** com chaves estrangeiras ativadas.
+O dialeto é escolhido no boot por `DATABASE_URL`: `file:...` usa **SQLite** (`modernc.org/sqlite`, modo WAL, chaves estrangeiras ativadas) e `postgres://...` usa **Postgres** (`jackc/pgx/v5`).
 
-- As definições de tabelas e tipos residem em `src/db/schema.ts`.
-- Os arquivos SQL de migração residem em `drizzle/`.
-- No boot da aplicação, a função `initializeDatabase()` em `src/db/index.ts` executa automaticamente todas as migrações necessárias e realiza checagens idempotentes, garantindo compatibilidade retroativa automática caso venha de versões anteriores do banco.
+- Os arquivos de migração residem em `migrations/sqlite/` e `migrations/postgres/` — **os dois dialetos, com paridade de esquema**.
+- As migrações são aplicadas por [`pressly/goose`](https://github.com/pressly/goose) **automaticamente no boot** (`db.Open`), no dialeto resolvido. Não há passo manual de migração.
 
 ---
 
 ## 🐳 Execução com Docker e Docker Compose
 
-O Aluxen possui suporte nativo a Docker com **Chromium e fontes brasileiras pré-instalados**, permitindo que o Robô do WhatsApp funcione perfeitamente dentro do container sem nenhuma configuração extra.
+A imagem de produção é **multi-stage** e termina em **distroless** (`gcr.io/distroless/static-debian12`): só o binário Go, **sem Chromium, sem runtime de linguagem e sem shell**. O canal de WhatsApp é HTTP (WAHA/Cloud API), então não há navegador no container.
 
 ### Subir com Docker Compose:
 ```bash
 docker compose up -d --build
 ```
-O serviço estará acessível em `http://localhost:3000`, e os dados do SQLite e a sessão do WhatsApp serão persistidos no volume nomeado `aluxen-data`.
+O serviço estará acessível em `http://localhost:3000`, e os dados (banco e anexos) são persistidos no volume montado em `/data` (`DB_DIR=/data`).
 
-### Imagem Docker Oficial
-A imagem de produção oficial é publicada automaticamente via GitHub Actions no Docker Hub:
+### Imagem Oficial
+A imagem de produção é publicada automaticamente via GitHub Actions no **GHCR**:
 ```bash
-docker pull passoz/aluxen:latest
-docker run -d -p 3000:3000 -v /minha-pasta/data:/data passoz/aluxen:latest
+docker pull ghcr.io/passoz/aluxen:latest
+docker run -d -p 3000:3000 -v /minha-pasta/data:/data ghcr.io/passoz/aluxen:latest
 ```
 
-Cada build é publicado com duas tags: `latest` e `sha-<commit>`. O commit, a branch, a data de construção, a **versão (`1.0.<nº do build>`)** e a tag exata da imagem ficam gravados dentro da própria imagem (`build-args` → `ENV`) e aparecem no painel em **Informações** — dá para confirmar qual build está rodando sem consultar o GitHub.
+Cada build é publicado com duas tags: `latest` e `sha-<commit>`. O commit, a branch, a data de construção, a **versão (`1.0.<nº do build>`)** e a tag exata da imagem ficam gravados dentro da própria imagem (`build-args` → `ENV`) e aparecem no painel em **Informações** — dá para confirmar qual build está rodando sem consultar o GitHub. O deploy por instância está descrito em [`ARQUITETURA-DEPLOY.md`](ARQUITETURA-DEPLOY.md).
 
 ---
 
 ## 🧪 Testes e Qualidade de Código
 
-A aplicação possui testes unitários e de integração de ponta a ponta construídos sobre o test runner nativo do Bun (`bun:test`), cobrindo rotas, autenticação, mutações de negócio, exportação/importação e geração de PDFs com validação.
+A aplicação tem testes unitários e de integração em Go, cobrindo rotas, autenticação, mutações de negócio, exportação/importação, geração de PDFs, paridade de esquema entre SQLite e Postgres e o canal de WhatsApp.
 
 Executar os testes:
 ```bash
-bun run test
+go test ./...
 ```
 
-O script recria o banco de testes em `data-test/` (`DB_DIR=data-test`) a cada execução, de modo que a suíte nunca toca no banco de desenvolvimento/produção (`aluxen.db`).
-
-Verificar a integridade dos tipos TypeScript:
+Verificação estática:
 ```bash
-bun run typecheck
+go vet ./...
 ```
+
+Os testes de banco rodam contra os dois dialetos (SQLite em memória/arquivo temporário e Postgres quando disponível), sem tocar no banco de desenvolvimento/produção.
 
 ---
 
@@ -347,90 +346,59 @@ bun run typecheck
 
 ```
 aluxen/
-├── Dockerfile                  # Imagem multi-stage de produção com Chromium
-├── Dockerfile.dev              # Container para desenvolvimento com hot-reload
-├── Dockerfile.test             # Container para execução de testes em CI
-├── docker-compose.yml          # Orquestração do serviço com volume persistente
-├── package.json                # Dependências, metadados e scripts de execução
-├── tsconfig.json               # Configurações do compilador TypeScript
-├── drizzle.config.ts           # Configuração do Drizzle Kit
-├── drizzle/                    # Arquivos SQL de migração de banco versionados
-├── docs/                       # Documentações técnicas detalhadas
-│   ├── ARCHITECTURE.md         # Arquitetura interna, fluxo de dados e SSR
-│   ├── WHATSAPP.md             # Manual completo do Robô WhatsApp Web e Headless
-│   ├── VALIDATION.md           # Especificação do protocolo de autenticidade e QR Code
-│   └── API.md                  # Catálogo completo de endpoints e mutations HTTP
-├── public/                     # Arquivos estáticos servidos pelo Hono
-│   ├── dist/client.js          # Bundle hidratado do React compilado via Bun.build
-│   ├── styles/globals.css      # Folha de estilo global com glassmorphism e temas
-│   ├── manifest.webmanifest    # Manifesto para instalação como PWA
-│   ├── favicon.svg             # Ícone vetorial da marca
-│   └── assets/assinatura01.png # Imagem modelo para carimbo de assinatura digital
-├── src/                        # Código-fonte da aplicação
-│   ├── index.tsx               # Ponto de entrada, rotas do Hono e handlers de SSR
-│   ├── build-client.ts         # Script de bundling do cliente React via Bun.build
-│   ├── client/                 # Componentes React de página hidratados no navegador
-│   │   ├── index.tsx           # Entry point da hidratação com hydrateRoot
-│   │   ├── dashboard.tsx       # Painel administrativo com abas e modais
-│   │   ├── history.tsx         # Aba de Histórico e Auditoria (filtros e diff)
-│   │   ├── login.tsx           # Tela de autenticação com tratamento de erros
-│   │   ├── portal.tsx          # Área do Cliente: login, painel e troca de senha
-│   │   ├── settings.tsx        # Configurações do locador, WhatsApp e senhas
-│   │   └── verify.tsx          # Portal público de validação de documentos
-│   ├── components/             # Componentes de interface compartilhados
-│   │   ├── ui.tsx              # Modais, DatePicker, Select com busca, MoneyInput
-│   │   └── icons.tsx           # Ícones SVG reutilizáveis
-│   ├── db/                     # Camada de banco de dados
-│   │   ├── index.ts            # Conexão SQLite, inicialização e seed
-│   │   ├── schema.ts           # Definição das tabelas Drizzle ORM
-│   │   ├── migrate.ts          # Executor de migrações automáticas
-│   │   └── seed-demo.ts        # Dados demonstrativos para testes
-│   ├── types/                  # Tipagens TypeScript compartilhadas
-│   │   ├── dashboard.ts        # Tipos de entidades (Tenant, Property, Lease, Receipt)
-│   │   ├── system.ts           # Payload do modal de Informações (build + estado)
-│   │   └── http.ts             # Variáveis tipadas de request do Hono (requestId)
-│   ├── utils/                  # Utilitários de sistema
-│   │   ├── auth.ts             # Lógica de login e alteração de senha (bcryptjs)
-│   │   ├── auth-token.ts       # Geração e checagem de tokens HMAC e QR Codes
-│   │   ├── session.ts          # Gerenciamento do cookie de sessão HTTP-only
-│   │   ├── build-info.ts       # Identificação do build em execução (imagem/git)
-│   │   ├── tenant-auth.ts      # Credencial do locatário (login por CPF e troca de senha)
-│   │   ├── logger.ts           # Logger estruturado (níveis, JSON/pretty, redação)
-│   │   ├── audit.ts            # Trilha de auditoria: gravação, diffs e consultas
-│   │   ├── audit-meta.ts       # Rótulos e formatação de eventos (cliente/servidor)
-│   │   ├── format.ts           # Formatadores de moeda, datas BR, CPF, CEP e telefone
-│   │   ├── validation.ts       # Validações compartilhadas (formato de e-mail)
-│   │   ├── id.ts               # Gerador de identificadores únicos UUIDv7
-│   │   ├── pdf.ts              # Gerador do Recibo de Pagamento em PDF
-│   │   ├── contract-pdf.ts     # Gerador do Contrato de Locação em PDF
-│   │   └── offline.ts          # Utilitários para sincronização e fila offline
-│   └── whatsapp/               # Módulo do Robô WhatsApp Web
-│       ├── browser.ts          # Lançador e gerenciador do Puppeteer/Chromium
-│       ├── login-manager.ts    # Máquina de estados do login com QR Code
-│       ├── service.ts          # Templates de mensagens e disparos headless
-│       ├── login.ts            # Script CLI para pareamento via terminal
-│       └── types.ts            # Interfaces e estados de conexão
-└── test/                       # Suíte de testes automatizados
-    ├── app.test.ts             # Testes de integração de rotas, PDFs, APIs e auditoria
-    ├── build-info.test.ts      # Identificação do build (Dockerfile, workflow e git)
-    ├── login-gate.test.ts      # Rate limit, teto global e bloqueio progressivo do login
-    ├── format.test.ts          # Formatadores de data (SQLite e aplicação)
-    ├── validation.test.ts      # Validação de formato de e-mail
-    ├── logger.test.ts          # Testes do logger (níveis, formatos e redação)
-    ├── datepicker.test.tsx     # Testes unitários do seletor de datas
-    └── migration.test.ts       # Testes de integridade do esquema e migrações
+├── cmd/                        # Pontos de entrada (binários)
+│   ├── app/                    # Composition root do servidor (binário de produção)
+│   ├── provision/              # CLI de provisionamento de instância no Easypanel
+│   └── migrate/                # CLI de migração SQLite → Postgres
+├── internal/
+│   ├── domain/                 # Entidades, regras e catálogo de auditoria (sem I/O)
+│   │   └── format/             # Formatação de moeda, datas BR, CPF, CEP e telefone
+│   ├── application/            # Casos de uso (chat, WhatsApp, recibos, contratos, IA, jobs)
+│   └── infrastructure/
+│       ├── web/                # Rotas, handlers, middlewares, templates e estáticos
+│       │   ├── templates/      # Telas do painel, portal e validação (html/template)
+│       │   └── static/         # CSS e assets embutidos via embed
+│       ├── db/                 # Adaptadores SQLite e Postgres + sqlc + paridade
+│       │   ├── sqlite/         # Driver e queries SQLite
+│       │   ├── postgres/       # Driver e queries Postgres
+│       │   └── parity/         # Teste de paridade de esquema entre os dialetos
+│       ├── pdf/                # Montagem e desenho dos documentos (fpdf)
+│       ├── whatsapp/           # Cliente WAHA, pareamento, webhook e fila
+│       ├── ai/                 # Cliente do provedor de IA (leitura de documento)
+│       ├── authz/              # Tokens HMAC de autenticidade dos documentos
+│       ├── config/             # Configuração por ambiente (12-factor)
+│       ├── logging/            # Logger estruturado
+│       ├── storage/            # Armazenamento de anexos
+│       └── easypanel/          # Cliente da API de provisionamento
+├── migrations/
+│   ├── sqlite/                 # Migrações do dialeto SQLite
+│   └── postgres/               # Migrações do dialeto Postgres (paridade de esquema)
+├── queries/                    # Queries SQL usadas pelo sqlc
+├── schema/                     # Esquema de referência (SQLite/Postgres)
+├── docs/                       # Documentação técnica (ver seção abaixo)
+├── Dockerfile                  # Imagem multi-stage → distroless
+├── docker-compose.yml          # Orquestração com volume persistente em /data
+└── .env.example                # Contrato das variáveis de ambiente
 ```
+
+> O app **Bun legado** permanece no repositório apenas como referência histórica:
+> `src/`, `public/`, `drizzle/`, `test/`, `package.json` e `tsconfig.json`. Não é
+> o app vigente neste branch.
 
 ---
 
 ## 📚 Documentação Técnica Aprofundada
 
-Para detalhes de engenharia de cada subsistema específico, consulte os manuais disponíveis na pasta `docs/`:
+Para detalhes de engenharia de cada subsistema, consulte os manuais da pasta `docs/`:
 
-- **[Arquitetura do Sistema (`docs/ARCHITECTURE.md`)](docs/ARCHITECTURE.md)**: Fluxo detalhado de requisições, SSR e hidratação React 19, SQLite WAL e modelo de entidades.
-- **[Manual do Robô do WhatsApp (`docs/WHATSAPP.md`)](docs/WHATSAPP.md)**: Configuração do Chromium, máquina de estados do login, templates de mensagens e troubleshooting no Docker.
-- **[Protocolo de Autenticidade & Validação (`docs/VALIDATION.md`)](docs/VALIDATION.md)**: Algoritmo de geração HMAC-SHA256, formatação de códigos de autenticidade e resolução de IP na rede local.
-- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: Especificação completa de todas as rotas, query parameters, payloads de mutations e códigos de status HTTP.
+- **[Arquitetura do port Go (`docs/ARQUITETURA-GO.md`)](docs/ARQUITETURA-GO.md)**: contrato normativo do port — camadas, dependências, mapa de rotas e funcionalidades novas.
+- **[Deploy por instância (`ARQUITETURA-DEPLOY.md`)](ARQUITETURA-DEPLOY.md)**: uma instância por cliente no Easypanel, SQLite/Postgres e provisionamento.
+- **[WhatsApp (`docs/WHATSAPP-GO.md`)](docs/WHATSAPP-GO.md)**: modos demo/cliente, configuração do canal (WAHA / Cloud API), webhook e endpoints.
+- **[Validação pública (`docs/VALIDACAO-GO.md`)](docs/VALIDACAO-GO.md)**: protocolo HMAC, URL pública e a **dependência de hospedagem contínua** do QR Code.
+- **[Privacidade / LGPD (`docs/PRIVACIDADE.md`)](docs/PRIVACIDADE.md)**: dados tratados, finalidades, controlador/operador, retenção e direitos do titular.
+- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: rotas, query parameters, payloads e códigos de status HTTP.
+
+**Documentos legados (app Bun)** — mantidos como referência histórica: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/WHATSAPP.md`](docs/WHATSAPP.md) e [`docs/VALIDATION.md`](docs/VALIDATION.md).
 
 ---
 

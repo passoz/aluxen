@@ -1,0 +1,117 @@
+{{define "tab_review"}}
+{{$review := .Review}}
+<section class="card stack-lg">
+  <div class="section-header">
+    <h2>Revisão de comprovantes</h2>
+    <div class="auth-actions">
+      <span class="cell-muted">{{len $review}} comprovante(s) aguardando decisão</span>
+    </div>
+  </div>
+
+  <p class="cell-muted">
+    A leitura automática só dá baixa quando valor, destinatário e data fecham. O que ficou em dúvida
+    aparece aqui com o documento à vista: aceitar dá baixa no lançamento em aberto do titular;
+    recusar guarda o motivo.
+  </p>
+
+  <div class="filter-bar">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="review-search">Buscar</label>
+      <input id="review-search" type="search" data-filter="revisao" placeholder="Buscar por titular, arquivo, valor ou motivo">
+    </div>
+    <div class="filter-field">
+      <label class="filter-label" for="review-source">Origem</label>
+      <select id="review-source" data-filter-select="source">
+        <option value="">Todas</option>
+        <option value="panel">Painel</option>
+        <option value="portal">Área do cliente</option>
+        <option value="whatsapp">WhatsApp</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th data-sort="created">Quando</th>
+          <th data-sort="tenant">Titular</th>
+          <th data-sort="extracted_amount">Valor lido</th>
+          <th data-sort="receipt_amount">Valor do lançamento</th>
+          <th data-sort="confidence">Confiança</th>
+          <th>Motivo da revisão</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $review}}
+          <tr data-status="{{.Status}}" data-source="{{.Source}}" data-search="{{.TenantName}} {{.FileName}} {{.ExtractedPayee}} {{.ExtractedIdentifier}} {{.Reason}} {{moneyValue .ExtractedAmount}} {{.SourceLabel}}">
+            <td data-sort-value="{{.CreatedAt}}">{{datetime .CreatedAt}}</td>
+            <td>
+              {{if .TenantName}}{{.TenantName}}{{else}}<span class="cell-muted">Sem titular</span>{{end}}
+              <span class="cell-muted">{{.SourceLabel}}{{if .Phone}} · {{.Phone}}{{end}}</span>
+            </td>
+            <td data-sort-value="{{moneyValue .ExtractedAmount}}">
+              {{if .ExtractedAmount}}{{money .ExtractedAmount}}{{else}}<span class="cell-muted">—</span>{{end}}
+              <span class="cell-muted">
+                {{if .ExtractedDate}}{{date .ExtractedDate}}{{end}}{{if .ExtractedPayee}} · {{.ExtractedPayee}}{{end}}
+              </span>
+            </td>
+            <td data-sort-value="{{moneyValue .ReceiptAmount}}">
+              {{if .ReceiptAmount}}{{money .ReceiptAmount}}{{else}}<span class="cell-muted">—</span>{{end}}
+              {{if .ReceiptLabel}}<span class="cell-muted">{{.ReceiptLabel}}</span>{{end}}
+              {{if .ReceiptPaid}}<span class="cell-muted">Lançamento já quitado</span>{{end}}
+            </td>
+            <td data-sort-value="{{.Confidence}}">{{.ConfidenceLabel}}</td>
+            <td>
+              {{if .Reason}}{{.Reason}}{{else}}<span class="cell-muted">—</span>{{end}}
+            </td>
+            <td class="row-actions">
+              {{if .FileURL}}
+                <a class="btn btn-sm btn-secondary" href="{{.FileURL}}" target="_blank" rel="noreferrer">Ver comprovante</a>
+              {{end}}
+              <form method="post" action="/api/payments/review">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="proof_id" value="{{.ID}}">
+                <input type="hidden" name="approve" value="1">
+                <button type="submit" class="btn btn-sm btn-primary" data-confirm="Dar baixa no lançamento em aberto deste titular?">Aceitar</button>
+              </form>
+              <button type="button" class="btn btn-sm btn-danger"
+                      data-modal-open="review-reject"
+                      data-modal-fill='{{json (dict "proof_id" .ID "proof_label" .DocumentLabel)}}'>Recusar</button>
+            </td>
+          </tr>
+        {{else}}
+          <tr>
+            <td colspan="7"><span class="cell-muted">Nenhum comprovante aguardando decisão.</span></td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div data-pagination></div>
+
+  <div class="modal-backdrop" id="review-reject" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Recusar comprovante">
+      <div class="modal-header">
+        <h3>Recusar comprovante</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+      </div>
+      <form method="post" action="/api/payments/review" class="stack">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="proof_id" value="">
+        <input type="hidden" name="approve" value="0">
+        <div class="form-group">
+          <label for="review-reject-document">Comprovante</label>
+          <input id="review-reject-document" name="proof_label" type="text" readonly>
+        </div>
+        <div class="form-group">
+          <label for="review-reject-reason">Motivo da recusa</label>
+          <textarea id="review-reject-reason" name="reason" rows="3" placeholder="Ex: valor não confere com o lançamento" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-danger">Recusar comprovante</button>
+      </form>
+    </div>
+  </div>
+</section>
+{{end}}

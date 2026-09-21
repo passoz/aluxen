@@ -1,5 +1,11 @@
 # Arquitetura do Sistema — Aluxen
 
+> **Documento legado (app Bun).** Este texto descreve o app **Bun** original
+> (TypeScript, Hono, Drizzle, React SSR, robô headless). No branch `devgo` esse
+> app foi **substituído pelo port Go** — binário único em `cmd/app` + `internal/`,
+> SQLite/Postgres por `DATABASE_URL`. A arquitetura vigente está em
+> [`ARQUITETURA-GO.md`](ARQUITETURA-GO.md). Mantido como referência histórica.
+
 Este documento descreve detalhadamente a arquitetura de software, fluxo de dados, modelo de persistência e padrões de design adotados no **Aluxen**.
 
 ---
@@ -278,6 +284,6 @@ A geração de documentos é processada em memória com a biblioteca `pdf-lib`:
   - Dados do locatário (nome e CPF) e do imóvel.
   - Quadro resumo financeiro (valor, vencimento, data de liquidação).
   - Declaração de quitação com valores monetários por extenso em português.
-  - Assinatura digital ou campo em branco.
+  - Assinatura visualizada (imagem da assinatura do locador) ou campo em branco — não é assinatura eletrônica com validade jurídica nos termos da ICP-Brasil.
   - **QR Code de Validação** e **Código de Autenticidade** no rodapé.
 - **`src/utils/contract-pdf.ts`**: Cria o Contrato de Locação Residencial completo em múltiplas páginas com 25 cláusulas jurídicas padrão, campos para assinatura das partes, testemunhas e QR Code de validação.

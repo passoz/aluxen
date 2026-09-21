@@ -16,6 +16,7 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/pressly/goose/v3/database"
 
+	"github.com/passoz/aluxen/internal/infrastructure/db/schema"
 	"github.com/passoz/aluxen/migrations"
 )
 
@@ -23,12 +24,37 @@ import (
 // compartilhado por todas as conexões do processo.
 var gooseMu sync.Mutex
 
-// runMigrations leva o banco ao schema final. No SQLite a base viva é adotada
-// antes do goose: o app atual mantém dados de produção no mesmo arquivo, então
-// nada é recriado e nenhuma linha é perdida.
+// runMigrations leva o banco ao schema final, adotando a base que já existe:
+//
+//  1. no SQLite, uma base viva ganha primeiro os remendos do app atual (colunas
+//     que faltam e o rebuild de `receipts`) — nada é recriado e nenhuma linha se
+//     perde;
+//  2. o schema atual é comparado com o que cada migração embutida deve produzir:
+//     as migrações que já estão refletidas na base são apenas registradas como
+//     aplicadas (o SQLite não tem `ADD COLUMN IF NOT EXISTS`, e reaplicar um
+//     `ADD COLUMN` derruba o boot);
+//  3. o goose aplica o que falta.
+//
+// O passo 2 existe porque o produto roda por instância: restaurar um dump numa
+// base vazia deixa o schema final presente e a tabela de controle do goose
+// ausente.
 func runMigrations(ctx context.Context, sqlDB *sql.DB, dialect Dialect) error {
+	reference, err := migrationSnapshots(dialect)
+	if err != nil {
+		return err
+	}
 	if dialect == DialectSQLite {
-		if err := adoptSQLiteLegacy(ctx, sqlDB); err != nil {
+		if err := repairSQLiteLegacy(ctx, sqlDB, reference); err != nil {
+			return err
+		}
+	}
+
+	actual, err := readSchema(ctx, sqlDB, dialect)
+	if err != nil {
+		return err
+	}
+	if covered := coveredVersions(reference, actual); len(covered) > 0 {
+		if err := markAppliedVersions(ctx, sqlDB, dialect, covered); err != nil {
 			return err
 		}
 	}
@@ -97,23 +123,22 @@ var legacyColumns = []legacyColumn{
 	{"users", "password_changed_at", "text"},
 }
 
-// adoptSQLiteLegacy prepara uma base já existente para receber a migração
-// consolidada:
+// repairSQLiteLegacy deixa uma base SQLite viva o mais perto possível do schema
+// atual antes de o goose entrar em cena:
 //
 //  1. acrescenta as colunas que faltam (tolerando coluna já existente);
 //  2. recria `receipts` quando ela ainda vem do schema antigo (lease_id NOT
-//     NULL), preservando as linhas — equivalente à migração Drizzle 0002;
-//  3. se o schema já está completo, apenas registra a migração inicial como
-//     aplicada, sem tocar em nada.
+//     NULL), preservando as linhas — equivalente à migração Drizzle 0002.
 //
-// Banco novo (sem tabelas) não passa por aqui: o goose cria o schema final.
-func adoptSQLiteLegacy(ctx context.Context, sqlDB *sql.DB) error {
+// Nada é recriado e nenhuma linha se perde: a base de produção é o mesmo
+// arquivo. O que ainda faltar depois daqui o goose aplica.
+func repairSQLiteLegacy(ctx context.Context, sqlDB *sql.DB, reference []migrationSnapshot) error {
 	existing, err := readSQLiteSchema(ctx, sqlDB)
 	if err != nil {
 		return err
 	}
 	if len(existing.columns) == 0 {
-		return nil
+		return nil // banco novo: o goose cria o schema final
 	}
 
 	for _, column := range legacyColumns {
@@ -126,61 +151,91 @@ func adoptSQLiteLegacy(ctx context.Context, sqlDB *sql.DB) error {
 		}
 	}
 
-	// O schema final é lido da própria migração embutida, num banco descartável:
-	// assim a expectativa nunca diverge do SQL que o goose aplicaria.
-	reference, err := readSQLiteSchemaFromMigration(ctx)
-	if err != nil {
-		return err
-	}
-
 	if existing.columns["receipts"]["lease_id"] {
 		required, err := sqliteColumnRequired(ctx, sqlDB, "receipts", "lease_id")
 		if err != nil {
 			return err
 		}
 		if required {
-			if err := rebuildReceipts(ctx, sqlDB, existing.columns["receipts"], reference.ddl["receipts"]); err != nil {
+			ddl, err := receiptTableDDL(reference)
+			if err != nil {
+				return err
+			}
+			if err := rebuildReceipts(ctx, sqlDB, existing.columns["receipts"], ddl); err != nil {
 				return err
 			}
 		}
 	}
-
-	actual, err := readSQLiteSchema(ctx, sqlDB)
-	if err != nil {
-		return err
-	}
-	if !reference.coveredBy(actual) {
-		return nil
-	}
-	// A base já está no schema final (produção adotada ou banco criado a partir
-	// do DDL canônico): registra TODAS as migrações como aplicadas. Reaplicar o
-	// SQL falharia — o SQLite não tem `ADD COLUMN IF NOT EXISTS`, e recriar
-	// tabelas seria destrutivo.
-	versions, err := embeddedVersions(DialectSQLite)
-	if err != nil {
-		return err
-	}
-	return markAppliedVersions(ctx, sqlDB, versions)
+	return nil
 }
 
-// embeddedVersions devolve, em ordem, as versões das migrações embutidas do
-// dialeto (o prefixo numérico do nome do arquivo).
-func embeddedVersions(dialect Dialect) ([]int64, error) {
-	dir := "sqlite"
+// receiptTableDDL devolve o CREATE TABLE de `receipts` como a migração embutida
+// o escreve: o rebuild da base antiga usa a mesma definição, sem uma terceira
+// cópia do DDL. Vale a definição mais recente, que é o estado atual.
+func receiptTableDDL(reference []migrationSnapshot) (string, error) {
+	for index := len(reference) - 1; index >= 0; index-- {
+		for _, table := range reference[index].schema.Tables {
+			if table.Name == "receipts" && table.DDL != "" {
+				return table.DDL, nil
+			}
+		}
+	}
+	return "", errors.New("definição de receipts ausente na migração embutida")
+}
+
+// migrationSource abre o SQL embutido do dialeto.
+func migrationSource(dialect Dialect) (fs.FS, string, error) {
+	dir, name := "sqlite", "sqlite"
 	if dialect == DialectPostgres {
-		dir = "postgres"
+		dir, name = "postgres", "postgres"
 	}
 	embedded, err := fs.Sub(migrations.FS, dir)
 	if err != nil {
-		return nil, fmt.Errorf("abrir migrações embutidas de %s: %w", dir, err)
+		return nil, "", fmt.Errorf("abrir migrações embutidas de %s: %w", dir, err)
+	}
+	return embedded, name, nil
+}
+
+// migrationSnapshot é o schema que uma migração embutida deve produzir, já
+// considerando as anteriores.
+type migrationSnapshot struct {
+	version int64
+	schema  schema.Schema
+}
+
+// migrationSnapshots lê as migrações embutidas em ordem e devolve, para cada
+// uma, o schema acumulado até ela. É a expectativa da adoção: nada aqui é
+// copiado do DDL canônico, tudo vem do próprio SQL que o goose aplicaria.
+func migrationSnapshots(dialect Dialect) ([]migrationSnapshot, error) {
+	embedded, _, err := migrationSource(dialect)
+	if err != nil {
+		return nil, err
 	}
 	names, err := fs.Glob(embedded, "*.sql")
 	if err != nil {
-		return nil, fmt.Errorf("listar migrações embutidas de %s: %w", dir, err)
+		return nil, fmt.Errorf("listar migrações embutidas de %s: %w", dialect, err)
+	}
+	sort.Strings(names)
+
+	parserDialect := schema.SQLite
+	if dialect == DialectPostgres {
+		parserDialect = schema.Postgres
 	}
 
-	versions := make([]int64, 0, len(names))
+	var accumulated strings.Builder
+	snapshots := make([]migrationSnapshot, 0, len(names))
 	for _, name := range names {
+		content, err := fs.ReadFile(embedded, name)
+		if err != nil {
+			return nil, fmt.Errorf("ler migração %q: %w", name, err)
+		}
+		accumulated.Write(content)
+		accumulated.WriteString("\n")
+
+		parsed, err := schema.ParseSQL(accumulated.String(), parserDialect)
+		if err != nil {
+			return nil, fmt.Errorf("ler o schema da migração %q: %w", name, err)
+		}
 		prefix, _, found := strings.Cut(path.Base(name), "_")
 		if !found {
 			return nil, fmt.Errorf("migração %q sem versão no nome", name)
@@ -189,10 +244,23 @@ func embeddedVersions(dialect Dialect) ([]int64, error) {
 		if err != nil {
 			return nil, fmt.Errorf("migração %q com versão inválida: %w", name, err)
 		}
-		versions = append(versions, version)
+		snapshots = append(snapshots, migrationSnapshot{version: version, schema: parsed})
 	}
-	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
-	return versions, nil
+	return snapshots, nil
+}
+
+// coveredVersions devolve as migrações que o banco já reflete, em ordem,
+// parando na primeira que ele não cobre: o que vem depois dela ainda precisa
+// rodar.
+func coveredVersions(reference []migrationSnapshot, actual schemaSnapshot) []int64 {
+	var covered []int64
+	for _, snapshot := range reference {
+		if !actual.covers(snapshot.schema) {
+			break
+		}
+		covered = append(covered, snapshot.version)
+	}
+	return covered
 }
 
 // addLegacyColumn acrescenta a coluna, ignorando a falha: uma base viva pode
@@ -274,18 +342,24 @@ func receiptCopyColumns(source map[string]bool) (target, selection []string) {
 	return target, selection
 }
 
-// markAppliedVersions registra as migrações embutidas como aplicadas sem
-// executá-las: a base já tem o schema final e recriar tabelas seria destrutivo.
-func markAppliedVersions(ctx context.Context, sqlDB *sql.DB, versions []int64) error {
+// markAppliedVersions registra as migrações já refletidas na base como
+// aplicadas, sem executar o SQL delas: reaplicar um `ADD COLUMN` derruba o boot
+// (o SQLite não tem `ADD COLUMN IF NOT EXISTS`) e recriar tabelas seria
+// destrutivo.
+func markAppliedVersions(ctx context.Context, sqlDB *sql.DB, dialect Dialect, versions []int64) error {
 	if len(versions) == 0 {
 		return nil
 	}
-	store, err := database.NewStore(database.DialectSQLite3, goose.TableName())
+	gooseDialect := database.DialectSQLite3
+	if dialect == DialectPostgres {
+		gooseDialect = database.DialectPostgres
+	}
+	store, err := database.NewStore(gooseDialect, goose.TableName())
 	if err != nil {
 		return fmt.Errorf("abrir controle de versão do goose: %w", err)
 	}
 
-	exists, err := sqliteTableExists(ctx, sqlDB, goose.TableName())
+	exists, err := tableExists(ctx, sqlDB, dialect, goose.TableName())
 	if err != nil {
 		return err
 	}
@@ -307,30 +381,36 @@ func markAppliedVersions(ctx context.Context, sqlDB *sql.DB, versions []int64) e
 			return fmt.Errorf("registrar migração %d: %w", version, err)
 		}
 	}
-	slog.Info("schema existente adotado", "scope", "db.migrate", "versions", versions)
+	slog.Info("schema existente adotado", "scope", "db.migrate", "dialect", dialect, "versions", versions)
 	return nil
 }
 
-// ── Leitura de schema (SQLite) ─────────────────────────────────────
+// ── Leitura do schema atual ────────────────────────────────────────
 
-// sqliteSchema é a fotografia do schema de um banco SQLite: o DDL de cada
-// tabela, suas colunas e os índices nomeados.
-type sqliteSchema struct {
-	ddl     map[string]string
+// schemaSnapshot é a fotografia do schema de um banco: as colunas de cada tabela
+// e os índices nomeados. É o que decide se uma migração já está refletida na base.
+type schemaSnapshot struct {
 	columns map[string]map[string]bool
 	indexes map[string]bool
 }
 
+// readSchema lê o schema atual no dialeto informado.
+func readSchema(ctx context.Context, sqlDB *sql.DB, dialect Dialect) (schemaSnapshot, error) {
+	if dialect == DialectPostgres {
+		return readPostgresSchema(ctx, sqlDB)
+	}
+	return readSQLiteSchema(ctx, sqlDB)
+}
+
 // readSQLiteSchema lê tabelas, colunas e índices, ignorando as tabelas internas
 // do SQLite e as de controle de migração.
-func readSQLiteSchema(ctx context.Context, sqlDB *sql.DB) (sqliteSchema, error) {
-	schema := sqliteSchema{
-		ddl:     map[string]string{},
+func readSQLiteSchema(ctx context.Context, sqlDB *sql.DB) (schemaSnapshot, error) {
+	schema := schemaSnapshot{
 		columns: map[string]map[string]bool{},
 		indexes: map[string]bool{},
 	}
 
-	rows, err := sqlDB.QueryContext(ctx, "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+	rows, err := sqlDB.QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
 	if err != nil {
 		return schema, fmt.Errorf("listar tabelas do SQLite: %w", err)
 	}
@@ -338,20 +418,19 @@ func readSQLiteSchema(ctx context.Context, sqlDB *sql.DB) (sqliteSchema, error) 
 
 	for rows.Next() {
 		var name string
-		var ddl sql.NullString
-		if err := rows.Scan(&name, &ddl); err != nil {
+		if err := rows.Scan(&name); err != nil {
 			return schema, fmt.Errorf("ler tabela do SQLite: %w", err)
 		}
 		if isControlTable(name) {
 			continue
 		}
-		schema.ddl[name] = ddl.String
+		schema.columns[name] = map[string]bool{}
 	}
 	if err := rows.Err(); err != nil {
 		return schema, fmt.Errorf("percorrer tabelas do SQLite: %w", err)
 	}
 
-	for name := range schema.ddl {
+	for name := range schema.columns {
 		columns, err := sqliteColumns(ctx, sqlDB, name)
 		if err != nil {
 			return schema, err
@@ -413,8 +492,17 @@ func sqliteColumnRequired(ctx context.Context, sqlDB *sql.DB, table, column stri
 	return notNull == 1, nil
 }
 
-// sqliteTableExists informa se a tabela existe.
-func sqliteTableExists(ctx context.Context, sqlDB *sql.DB, table string) (bool, error) {
+// tableExists informa se a tabela existe no dialeto informado.
+func tableExists(ctx context.Context, sqlDB *sql.DB, dialect Dialect, table string) (bool, error) {
+	if dialect == DialectPostgres {
+		row := sqlDB.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = $1`, table)
+		var total int
+		if err := row.Scan(&total); err != nil {
+			return false, fmt.Errorf("procurar a tabela %s: %w", table, err)
+		}
+		return total > 0, nil
+	}
 	row := sqlDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table)
 	var total int
 	if err := row.Scan(&total); err != nil {
@@ -423,43 +511,68 @@ func sqliteTableExists(ctx context.Context, sqlDB *sql.DB, table string) (bool, 
 	return total > 0, nil
 }
 
-// readSQLiteSchemaFromMigration monta o schema final aplicando o SQL embutido
-// num banco descartável em memória: a expectativa nunca diverge da migração.
-func readSQLiteSchemaFromMigration(ctx context.Context) (sqliteSchema, error) {
-	scratch, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		return sqliteSchema{}, fmt.Errorf("abrir banco de referência: %w", err)
-	}
-	defer func() { _ = scratch.Close() }()
+// readPostgresSchema lê tabelas, colunas e índices do schema corrente via
+// information_schema (índices em pg_indexes). Tabelas internas do Postgres não
+// aparecem em information_schema, e as de controle do goose só somam: a
+// comparação pergunta se o esperado está presente, nunca o contrário.
+func readPostgresSchema(ctx context.Context, sqlDB *sql.DB) (schemaSnapshot, error) {
+	snapshot := schemaSnapshot{columns: map[string]map[string]bool{}, indexes: map[string]bool{}}
 
-	gooseMu.Lock()
-	err = prepareGoose(DialectSQLite)
-	if err == nil {
-		err = goose.UpContext(ctx, scratch, ".")
-	}
-	gooseMu.Unlock()
+	rows, err := sqlDB.QueryContext(ctx,
+		`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema()`)
 	if err != nil {
-		return sqliteSchema{}, fmt.Errorf("aplicar migração de referência: %w", err)
+		return snapshot, fmt.Errorf("listar colunas do Postgres: %w", err)
 	}
-	return readSQLiteSchema(ctx, scratch)
+	defer rows.Close()
+	for rows.Next() {
+		var table, column string
+		if err := rows.Scan(&table, &column); err != nil {
+			return snapshot, fmt.Errorf("ler coluna do Postgres: %w", err)
+		}
+		if snapshot.columns[table] == nil {
+			snapshot.columns[table] = map[string]bool{}
+		}
+		snapshot.columns[table][column] = true
+	}
+	if err := rows.Err(); err != nil {
+		return snapshot, fmt.Errorf("percorrer colunas do Postgres: %w", err)
+	}
+
+	indexRows, err := sqlDB.QueryContext(ctx,
+		`SELECT indexname FROM pg_indexes WHERE schemaname = current_schema()`)
+	if err != nil {
+		return snapshot, fmt.Errorf("listar índices do Postgres: %w", err)
+	}
+	defer indexRows.Close()
+	for indexRows.Next() {
+		var name string
+		if err := indexRows.Scan(&name); err != nil {
+			return snapshot, fmt.Errorf("ler índice do Postgres: %w", err)
+		}
+		snapshot.indexes[name] = true
+	}
+	if err := indexRows.Err(); err != nil {
+		return snapshot, fmt.Errorf("percorrer índices do Postgres: %w", err)
+	}
+	return snapshot, nil
 }
 
-// coveredBy informa se `actual` já contém tudo o que o schema de referência
-// define: todas as tabelas com todas as colunas e todos os índices nomeados.
-func (s sqliteSchema) coveredBy(actual sqliteSchema) bool {
-	for table, expected := range s.columns {
-		columns, ok := actual.columns[table]
+// covers informa se o banco já tem tudo o que o schema de referência define:
+// todas as tabelas com todas as colunas e todos os índices nomeados.
+func (s schemaSnapshot) covers(reference schema.Schema) bool {
+	for _, table := range reference.Tables {
+		columns, ok := s.columns[table.Name]
 		if !ok {
 			return false
 		}
-		for column := range expected {
-			if !columns[column] {
+		for _, column := range table.Columns {
+			if !columns[column.Name] {
 				return false
 			}
 		}
 	}
-	for index := range s.indexes {
-		if !actual.indexes[index] {
+	for _, index := range reference.Indexes {
+		if !s.indexes[index.Name] {
 			return false
 		}
 	}

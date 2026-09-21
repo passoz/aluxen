@@ -61,6 +61,10 @@ const (
 	receiptSignatureLineWidth = 220.0
 	// receiptQRSize é o lado do QR Code do rodapé.
 	receiptQRSize = 58.0
+	// receiptSignatureNote acompanha o bloco de assinatura e explica o que a
+	// assinatura impressa significa: é a imagem da assinatura do locador, não
+	// uma assinatura eletrônica com validade jurídica nos termos da ICP-Brasil.
+	receiptSignatureNote = "Assinatura visualizada: a assinatura do locador é a imagem impressa neste documento; não é assinatura eletrônica com validade jurídica nos termos da ICP-Brasil."
 )
 
 // BuildReceipt monta o modelo do recibo de pagamento.
@@ -162,6 +166,7 @@ func BuildReceipt(input ReceiptInput) (Document, error) {
 	if cpf := strings.TrimSpace(input.LandlordCPF); cpf != "" {
 		blocks = append(blocks, Block{Kind: BlockSubtitle, Text: "CPF " + cpf, Align: AlignCenter, Size: 10, Tone: ToneMuted})
 	}
+	blocks = append(blocks, Block{Kind: BlockText, Text: receiptSignatureNote, Size: 8, Tone: ToneMuted})
 
 	blocks = append(blocks, Block{Kind: BlockGap, Size: 14})
 	blocks = append(blocks, authBlock(input.ValidationURL, input.AuthCode, receiptAuthCaption, receiptQRSize))

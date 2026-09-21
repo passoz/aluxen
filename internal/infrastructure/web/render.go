@@ -55,18 +55,16 @@ func NewRenderer() (*Renderer, error) {
 		"moneyValue":   domain.FormatFloat,
 		"date":         format.FormatDateBR,
 		"datetime":     format.FormatDateTimeBR,
-		"leaseStatus":  func(status string) string { return domain.LeaseStatusLabel(domain.LeaseStatus(status)) },
-		"category":     func(category string) string { return domain.ReceiptCategoryLabel(domain.ReceiptCategory(category)) },
-		"receiptState": func(status string) string { return domain.ReceiptStatusLabel(domain.ReceiptStatus(status)) },
+		"leaseStatus":  labelOf[domain.LeaseStatus](domain.LeaseStatusLabel),
+		"category":     labelOf[domain.ReceiptCategory](domain.ReceiptCategoryLabel),
+		"receiptState": labelOf[domain.ReceiptStatus](domain.ReceiptStatusLabel),
 		"receiptStatus": func(receipt domain.Receipt) string {
 			return domain.ReceiptStatusLabel(domain.ReceiptStatusOf(receipt, time.Now()))
 		},
 		"receiptStatusCode": func(receipt domain.Receipt) string {
 			return string(domain.ReceiptStatusOf(receipt, time.Now()))
 		},
-		"depositStatus": func(status string) string {
-			return domain.DepositStatusLabel(domain.DepositStatus(status))
-		},
+		"depositStatus": labelOf[domain.DepositStatus](domain.DepositStatusLabel),
 		"hasDeposit": func(lease domain.Lease) bool {
 			return domain.HasDeposit(lease.DepositAmount, lease.DepositStatus)
 		},
@@ -157,6 +155,22 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, data *
 		return fmt.Errorf("escrever resposta de %s: %w", page, err)
 	}
 	return nil
+}
+
+// labelOf converte um valor de template (o tipo do domínio ou uma string) no
+// rótulo em português. Aceita os dois porque o mesmo rótulo é usado a partir de
+// entidades e de campos já convertidos para texto.
+func labelOf[T ~string](label func(T) string) func(any) string {
+	return func(value any) string {
+		switch typed := value.(type) {
+		case T:
+			return label(typed)
+		case string:
+			return label(T(typed))
+		default:
+			return fmt.Sprint(value)
+		}
+	}
 }
 
 // Has informa se o template existe. Permite que áreas independentes publiquem

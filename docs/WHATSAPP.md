@@ -1,5 +1,10 @@
 # Robô do WhatsApp — Guia Completo e Operação
 
+> **Documento legado (app Bun).** Descreve o robô headless com Puppeteer/Chromium
+> do app Bun, **substituído no branch `devgo`** pelo canal HTTP do port Go (WAHA).
+> Para a versão vigente — modos demo/cliente, configuração e webhook — consulte
+> [`WHATSAPP-GO.md`](WHATSAPP-GO.md). Mantido como referência histórica.
+
 O **Aluxen** conta com um sistema integrado para envio de comprovantes de pagamento e contratos de locação via **WhatsApp**, operando tanto de forma **direta** (abrindo o WhatsApp Web ou aplicativo do usuário via link `wa.me`) quanto de forma **100% automatizada em segundo plano** (Robô Headless utilizando Puppeteer e Chromium).
 
 ---

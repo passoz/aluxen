@@ -96,19 +96,15 @@ func BuildDepositReceipt(input DepositReceiptInput) (Document, error) {
 	})
 	blocks = append(blocks, Block{Kind: BlockRule, Tone: ToneAccent})
 
-	blocks = append(blocks, Block{Kind: BlockSection, Text: "Locador", Size: 11, Tone: ToneAccent})
-	blocks = append(blocks, label("Nome:", input.LandlordName))
+	blocks = append(blocks, Block{Kind: BlockSection, Text: "Partes e imóvel", Size: 11, Tone: ToneAccent})
+	blocks = append(blocks, label("Locador:", input.LandlordName))
 	if cpf := strings.TrimSpace(input.LandlordCPF); cpf != "" {
-		blocks = append(blocks, label("CPF:", cpf))
+		blocks = append(blocks, label("CPF do locador:", cpf))
 	}
-
-	blocks = append(blocks, Block{Kind: BlockSection, Text: "Locatário", Size: 11, Tone: ToneAccent})
-	blocks = append(blocks, label("Nome:", input.TenantName))
+	blocks = append(blocks, label("Locatário:", input.TenantName))
 	if cpf := strings.TrimSpace(input.TenantCPF); cpf != "" {
-		blocks = append(blocks, label("CPF:", cpf))
+		blocks = append(blocks, label("CPF do locatário:", cpf))
 	}
-
-	blocks = append(blocks, Block{Kind: BlockSection, Text: "Imóvel", Size: 11, Tone: ToneAccent})
 	blocks = append(blocks, label("Imóvel:", input.PropertyName))
 	if address := strings.TrimSpace(input.PropertyAddress); address != "" {
 		blocks = append(blocks, label("Endereço:", address))

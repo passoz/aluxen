@@ -17,15 +17,18 @@ import (
 type Store struct {
 	Dialect Dialect
 
-	Users       domain.UserRepository
-	Tenants     domain.TenantRepository
-	Properties  domain.PropertyRepository
-	Leases      domain.LeaseRepository
-	Receipts    domain.ReceiptRepository
-	Settings    domain.SettingRepository
-	Audit       domain.AuditRepository
-	WhatsApp    domain.WhatsAppMessageRepository
-	Inspections domain.InspectionRepository
+	Users         domain.UserRepository
+	Tenants       domain.TenantRepository
+	Properties    domain.PropertyRepository
+	Leases        domain.LeaseRepository
+	Receipts      domain.ReceiptRepository
+	Settings      domain.SettingRepository
+	Audit         domain.AuditRepository
+	WhatsApp      domain.WhatsAppMessageRepository
+	Inspections   domain.InspectionRepository
+	Jobs          domain.JobRepository
+	PaymentProofs domain.PaymentProofRepository
+	Intakes       domain.DocumentIntakeRepository
 
 	db   *sql.DB
 	path string
@@ -45,6 +48,9 @@ func newStore(dialect Dialect, sqlDB *sql.DB, target string) *Store {
 		store.Audit = postgres.NewAudit(sqlDB)
 		store.WhatsApp = postgres.NewWhatsAppMessages(sqlDB)
 		store.Inspections = postgres.NewInspections(sqlDB)
+		store.Jobs = postgres.NewJobs(sqlDB)
+		store.PaymentProofs = postgres.NewPaymentProofs(sqlDB)
+		store.Intakes = postgres.NewDocumentIntakes(sqlDB)
 		return store
 	}
 
@@ -58,6 +64,9 @@ func newStore(dialect Dialect, sqlDB *sql.DB, target string) *Store {
 	store.Audit = sqlite.NewAudit(sqlDB)
 	store.WhatsApp = sqlite.NewWhatsAppMessages(sqlDB)
 	store.Inspections = sqlite.NewInspections(sqlDB)
+	store.Jobs = sqlite.NewJobs(sqlDB)
+	store.PaymentProofs = sqlite.NewPaymentProofs(sqlDB)
+	store.Intakes = sqlite.NewDocumentIntakes(sqlDB)
 	return store
 }
 

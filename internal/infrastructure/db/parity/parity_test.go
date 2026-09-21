@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/passoz/aluxen/internal/infrastructure/db"
-	"github.com/passoz/aluxen/internal/infrastructure/db/parity"
+	"github.com/passoz/aluxen/internal/infrastructure/db/schema"
 )
 
 // Estes testes são a trava de paridade do banco: o mesmo arquivo de queries e o
@@ -27,10 +27,10 @@ const (
 // TestSchemaParity compara o DDL canônico dos dois dialetos.
 func TestSchemaParity(t *testing.T) {
 	root := repoRoot(t)
-	sqliteSchema := parseFile(t, filepath.Join(root, "schema", "sqlite.sql"))
-	postgresSchema := parseFile(t, filepath.Join(root, "schema", "postgres.sql"))
+	sqliteSchema := parseFile(t, filepath.Join(root, "schema", "sqlite.sql"), schema.SQLite)
+	postgresSchema := parseFile(t, filepath.Join(root, "schema", "postgres.sql"), schema.Postgres)
 
-	assertNoDiff(t, parity.Diff(sqliteSchema, postgresSchema, sqliteLabel, postgresLabel))
+	assertNoDiff(t, schema.Diff(sqliteSchema, postgresSchema, sqliteLabel, postgresLabel))
 }
 
 // TestGeneratedCodeParity compara o código gerado pelo sqlc nos dois dialetos,
@@ -70,23 +70,23 @@ func TestSQLiteMigrationsMatchCanonicalSchema(t *testing.T) {
 		}
 	}()
 
-	actual, err := parity.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
+	actual, err := schema.LoadSQLite(ctx, store.DB(), map[string]bool{"goose_db_version": true})
 	if err != nil {
 		t.Fatalf("ler schema migrado: %v", err)
 	}
-	expected := parseFile(t, filepath.Join(root, "schema", "sqlite.sql"))
+	expected := parseFile(t, filepath.Join(root, "schema", "sqlite.sql"), schema.SQLite)
 
-	assertNoDiff(t, parity.Diff(expected, actual, sqliteLabel, "migrações aplicadas"))
+	assertNoDiff(t, schema.Diff(expected, actual, sqliteLabel, "migrações aplicadas"))
 }
 
 // TestPostgresMigrationsMatchCanonicalSchema faz a mesma conferência do lado
 // Postgres, sem servidor: compara o SQL das migrações com o DDL canônico.
 func TestPostgresMigrationsMatchCanonicalSchema(t *testing.T) {
 	root := repoRoot(t)
-	expected := parseFile(t, filepath.Join(root, "schema", "postgres.sql"))
-	actual := parseFiles(t, filepath.Join(root, "migrations", "postgres"), ".sql")
+	expected := parseFile(t, filepath.Join(root, "schema", "postgres.sql"), schema.Postgres)
+	actual := parseFiles(t, filepath.Join(root, "migrations", "postgres"), ".sql", schema.Postgres)
 
-	assertNoDiff(t, parity.Diff(expected, actual, postgresLabel, "migrations/postgres"))
+	assertNoDiff(t, schema.Diff(expected, actual, postgresLabel, "migrations/postgres"))
 }
 
 // ── Apoio ──────────────────────────────────────────────────────────
@@ -100,16 +100,16 @@ func assertNoDiff(t *testing.T, diffs []string) {
 	t.Fatalf("paridade de schema quebrada:\n  %s", strings.Join(diffs, "\n  "))
 }
 
-func parseFile(t *testing.T, path string) parity.Schema {
+func parseFile(t *testing.T, path string, dialect schema.Dialect) schema.Schema {
 	t.Helper()
-	schema, err := parity.ParseSQL(readFile(t, path))
+	schema, err := schema.ParseSQL(readFile(t, path), dialect)
 	if err != nil {
 		t.Fatalf("ler %s: %v", path, err)
 	}
 	return schema
 }
 
-func parseFiles(t *testing.T, dir, suffix string) parity.Schema {
+func parseFiles(t *testing.T, dir, suffix string, dialect schema.Dialect) schema.Schema {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -128,7 +128,7 @@ func parseFiles(t *testing.T, dir, suffix string) parity.Schema {
 	if found == 0 {
 		t.Fatalf("nenhuma migração em %s", dir)
 	}
-	schema, err := parity.ParseSQL(joined.String())
+	schema, err := schema.ParseSQL(joined.String(), dialect)
 	if err != nil {
 		t.Fatalf("ler migrações de %s: %v", dir, err)
 	}

@@ -13,21 +13,23 @@ import (
 const countAuditLogs = `-- name: CountAuditLogs :one
 SELECT COUNT(*) AS total FROM audit_logs
 WHERE (entity = $1 OR $1 = '')
-  AND (action = $2 OR $2 = '')
-  AND (coalesce(actor_name, '') = $3 OR $3 = '')
-  AND (created_at >= $4 OR $4 = '')
-  AND (created_at <= $5 OR $5 = '')
+  AND (coalesce(entity_id, '') = $2 OR $2 = '')
+  AND (action = $3 OR $3 = '')
+  AND (coalesce(actor_name, '') = $4 OR $4 = '')
+  AND (created_at >= $5 OR $5 = '')
+  AND (created_at <= $6 OR $6 = '')
   AND (
-    lower(summary) LIKE $6
-    OR $6 = ''
-    OR lower(coalesce(entity_label, '')) LIKE $6
-    OR lower(coalesce(actor_name, '')) LIKE $6
-    OR lower(coalesce(entity_id, '')) LIKE $6
+    lower(summary) LIKE $7
+    OR $7 = ''
+    OR lower(coalesce(entity_label, '')) LIKE $7
+    OR lower(coalesce(actor_name, '')) LIKE $7
+    OR lower(coalesce(entity_id, '')) LIKE $7
   )
 `
 
 type CountAuditLogsParams struct {
 	Entity     string         `json:"entity"`
+	EntityID   sql.NullString `json:"entity_id"`
 	Action     string         `json:"action"`
 	Actor      sql.NullString `json:"actor"`
 	FromDate   string         `json:"from_date"`
@@ -38,6 +40,7 @@ type CountAuditLogsParams struct {
 func (q *Queries) CountAuditLogs(ctx context.Context, arg CountAuditLogsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countAuditLogs,
 		arg.Entity,
+		arg.EntityID,
 		arg.Action,
 		arg.Actor,
 		arg.FromDate,
@@ -1078,23 +1081,25 @@ func (q *Queries) ListAuditActors(ctx context.Context) ([]sql.NullString, error)
 const listAuditLogsAsc = `-- name: ListAuditLogsAsc :many
 SELECT id, created_at, actor_id, actor_name, action, entity, entity_id, entity_label, summary, changes, metadata, origin, ip, user_agent, request_id FROM audit_logs
 WHERE (entity = $1 OR $1 = '')
-  AND (action = $2 OR $2 = '')
-  AND (coalesce(actor_name, '') = $3 OR $3 = '')
-  AND (created_at >= $4 OR $4 = '')
-  AND (created_at <= $5 OR $5 = '')
+  AND (coalesce(entity_id, '') = $2 OR $2 = '')
+  AND (action = $3 OR $3 = '')
+  AND (coalesce(actor_name, '') = $4 OR $4 = '')
+  AND (created_at >= $5 OR $5 = '')
+  AND (created_at <= $6 OR $6 = '')
   AND (
-    lower(summary) LIKE $6
-    OR $6 = ''
-    OR lower(coalesce(entity_label, '')) LIKE $6
-    OR lower(coalesce(actor_name, '')) LIKE $6
-    OR lower(coalesce(entity_id, '')) LIKE $6
+    lower(summary) LIKE $7
+    OR $7 = ''
+    OR lower(coalesce(entity_label, '')) LIKE $7
+    OR lower(coalesce(actor_name, '')) LIKE $7
+    OR lower(coalesce(entity_id, '')) LIKE $7
   )
 ORDER BY created_at ASC, id ASC
-LIMIT $8 OFFSET $7
+LIMIT $9 OFFSET $8
 `
 
 type ListAuditLogsAscParams struct {
 	Entity     string         `json:"entity"`
+	EntityID   sql.NullString `json:"entity_id"`
 	Action     string         `json:"action"`
 	Actor      sql.NullString `json:"actor"`
 	FromDate   string         `json:"from_date"`
@@ -1107,6 +1112,7 @@ type ListAuditLogsAscParams struct {
 func (q *Queries) ListAuditLogsAsc(ctx context.Context, arg ListAuditLogsAscParams) ([]AuditLog, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditLogsAsc,
 		arg.Entity,
+		arg.EntityID,
 		arg.Action,
 		arg.Actor,
 		arg.FromDate,
@@ -1155,23 +1161,25 @@ func (q *Queries) ListAuditLogsAsc(ctx context.Context, arg ListAuditLogsAscPara
 const listAuditLogsDesc = `-- name: ListAuditLogsDesc :many
 SELECT id, created_at, actor_id, actor_name, action, entity, entity_id, entity_label, summary, changes, metadata, origin, ip, user_agent, request_id FROM audit_logs
 WHERE (entity = $1 OR $1 = '')
-  AND (action = $2 OR $2 = '')
-  AND (coalesce(actor_name, '') = $3 OR $3 = '')
-  AND (created_at >= $4 OR $4 = '')
-  AND (created_at <= $5 OR $5 = '')
+  AND (coalesce(entity_id, '') = $2 OR $2 = '')
+  AND (action = $3 OR $3 = '')
+  AND (coalesce(actor_name, '') = $4 OR $4 = '')
+  AND (created_at >= $5 OR $5 = '')
+  AND (created_at <= $6 OR $6 = '')
   AND (
-    lower(summary) LIKE $6
-    OR $6 = ''
-    OR lower(coalesce(entity_label, '')) LIKE $6
-    OR lower(coalesce(actor_name, '')) LIKE $6
-    OR lower(coalesce(entity_id, '')) LIKE $6
+    lower(summary) LIKE $7
+    OR $7 = ''
+    OR lower(coalesce(entity_label, '')) LIKE $7
+    OR lower(coalesce(actor_name, '')) LIKE $7
+    OR lower(coalesce(entity_id, '')) LIKE $7
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $8 OFFSET $7
+LIMIT $9 OFFSET $8
 `
 
 type ListAuditLogsDescParams struct {
 	Entity     string         `json:"entity"`
+	EntityID   sql.NullString `json:"entity_id"`
 	Action     string         `json:"action"`
 	Actor      sql.NullString `json:"actor"`
 	FromDate   string         `json:"from_date"`
@@ -1184,6 +1192,7 @@ type ListAuditLogsDescParams struct {
 func (q *Queries) ListAuditLogsDesc(ctx context.Context, arg ListAuditLogsDescParams) ([]AuditLog, error) {
 	rows, err := q.db.QueryContext(ctx, listAuditLogsDesc,
 		arg.Entity,
+		arg.EntityID,
 		arg.Action,
 		arg.Actor,
 		arg.FromDate,
@@ -2628,19 +2637,29 @@ const updatePaymentProofDecision = `-- name: UpdatePaymentProofDecision :exec
 UPDATE payment_proofs
 SET updated_at = $1, status = $2, decision = $3,
     decision_reason = $4, decided_by = $5, decided_at = $6,
-    receipt_id = $7
-WHERE id = $8
+    receipt_id = $7, extracted_amount = $8,
+    extracted_date = $9, extracted_payer = $10,
+    extracted_payee = $11, extracted_identifier = $12,
+    confidence = $13, raw_response = $14
+WHERE id = $15
 `
 
 type UpdatePaymentProofDecisionParams struct {
-	UpdatedAt      string         `json:"updated_at"`
-	Status         string         `json:"status"`
-	Decision       string         `json:"decision"`
-	DecisionReason sql.NullString `json:"decision_reason"`
-	DecidedBy      sql.NullString `json:"decided_by"`
-	DecidedAt      sql.NullString `json:"decided_at"`
-	ReceiptID      sql.NullString `json:"receipt_id"`
-	ID             string         `json:"id"`
+	UpdatedAt           string          `json:"updated_at"`
+	Status              string          `json:"status"`
+	Decision            string          `json:"decision"`
+	DecisionReason      sql.NullString  `json:"decision_reason"`
+	DecidedBy           sql.NullString  `json:"decided_by"`
+	DecidedAt           sql.NullString  `json:"decided_at"`
+	ReceiptID           sql.NullString  `json:"receipt_id"`
+	ExtractedAmount     sql.NullFloat64 `json:"extracted_amount"`
+	ExtractedDate       sql.NullString  `json:"extracted_date"`
+	ExtractedPayer      sql.NullString  `json:"extracted_payer"`
+	ExtractedPayee      sql.NullString  `json:"extracted_payee"`
+	ExtractedIdentifier sql.NullString  `json:"extracted_identifier"`
+	Confidence          sql.NullFloat64 `json:"confidence"`
+	RawResponse         sql.NullString  `json:"raw_response"`
+	ID                  string          `json:"id"`
 }
 
 func (q *Queries) UpdatePaymentProofDecision(ctx context.Context, arg UpdatePaymentProofDecisionParams) error {
@@ -2652,6 +2671,13 @@ func (q *Queries) UpdatePaymentProofDecision(ctx context.Context, arg UpdatePaym
 		arg.DecidedBy,
 		arg.DecidedAt,
 		arg.ReceiptID,
+		arg.ExtractedAmount,
+		arg.ExtractedDate,
+		arg.ExtractedPayer,
+		arg.ExtractedPayee,
+		arg.ExtractedIdentifier,
+		arg.Confidence,
+		arg.RawResponse,
 		arg.ID,
 	)
 	return err

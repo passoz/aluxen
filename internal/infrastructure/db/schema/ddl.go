@@ -1,11 +1,13 @@
-// Package parity mantém o schema dos dois dialetos em sincronia: o mesmo
-// arquivo SQL alimenta o sqlc do SQLite e o do Postgres, então uma divergência
-// de tabela, coluna, nulidade, chave ou índice precisa quebrar o build.
+// Package schema lê DDL dos dois dialetos num modelo comparável. Ele sustenta
+// duas coisas: a paridade de schema (internal/infrastructure/db/parity compara o
+// DDL canônico, o resultado das migrações e os dois sqlcgen) e a adoção de uma
+// base que já está no schema final, no boot (internal/infrastructure/db/migrate.go
+// usa o schema que cada migração deve produzir para não reaplicar SQL).
 //
-// O parser de DDL daqui é deliberadamente pequeno e legível: ele entende apenas
-// as instruções que o projeto usa (CREATE TABLE, CREATE INDEX) e normaliza os
+// O parser é deliberadamente pequeno e legível: ele entende as instruções que o
+// projeto usa (CREATE TABLE, CREATE INDEX, ALTER TABLE ADD COLUMN) e normaliza os
 // tipos pelo mapa canônico text→text, integer→integer, real→double precision.
-package parity
+package schema
 
 import (
 	"context"
@@ -39,11 +41,13 @@ type Index struct {
 	Columns []string
 }
 
-// Table é uma tabela do schema.
+// Table é uma tabela do schema. DDL guarda o CREATE TABLE como foi escrito, para
+// quem precisa reexecutá-lo (o rebuild de `receipts` da base SQLite antiga).
 type Table struct {
 	Name        string
 	Columns     []Column
 	ForeignKeys []ForeignKey
+	DDL         string
 }
 
 // Schema é o conjunto de tabelas e índices de um banco.
@@ -52,25 +56,66 @@ type Schema struct {
 	Indexes []Index
 }
 
-// canonicalTypes mapeia os tipos de cada dialeto para o nome canônico.
-var canonicalTypes = map[string]string{
-	"text":             "text",
-	"integer":          "integer",
-	"real":             "real",
-	"double precision": "real",
+// Dialect identifica o mapa de tipos aceito ao ler um DDL.
+type Dialect string
+
+const (
+	// SQLite é o dialeto em que o ponto flutuante se escreve `real` (8 bytes).
+	SQLite Dialect = "sqlite"
+	// Postgres é o dialeto em que o ponto flutuante se escreve `double precision`.
+	// `real` no Postgres é float de 4 bytes: NÃO é paridade com o real do SQLite.
+	Postgres Dialect = "postgres"
+)
+
+// canonicalTypes mapeia o tipo escrito em cada dialeto para o nome canônico. O
+// mapa é por dialeto de propósito: `real` significa coisas diferentes nos dois,
+// e aceitá-lo dos dois lados esconderia a perda de precisão.
+var canonicalTypes = map[Dialect]map[string]string{
+	SQLite: {
+		"text":    "text",
+		"integer": "integer",
+		"real":    "real",
+	},
+	Postgres: {
+		"text":             "text",
+		"integer":          "integer",
+		"double precision": "real",
+	},
 }
 
-// ParseSQL lê o schema descrito por um texto SQL. Entende CREATE TABLE,
-// CREATE INDEX e ALTER TABLE ... ADD COLUMN (as migrações acrescentam colunas
-// assim); qualquer outra instrução é ignorada, e tudo a partir do marcador
-// `-- +goose Down` é descartado — o que precisa casar com o schema canônico é o
-// caminho de subida.
-func ParseSQL(source string) (Schema, error) {
+// foreignDialectTypes explica, na mensagem de erro, por que o tipo escrito é o
+// do outro dialeto.
+var foreignDialectTypes = map[Dialect]map[string]string{
+	Postgres: {
+		"real": "no Postgres `real` é float de 4 bytes; use `double precision` para ter o mesmo número do real do SQLite",
+	},
+	SQLite: {
+		"double precision": "no SQLite o ponto flutuante se escreve `real`",
+	},
+}
+
+// acceptedTypes lista, em ordem, os tipos aceitos num dialeto (para a mensagem
+// de erro).
+func acceptedTypes(dialect Dialect) []string {
+	types := make([]string, 0, len(canonicalTypes[dialect]))
+	for name := range canonicalTypes[dialect] {
+		types = append(types, name)
+	}
+	sort.Strings(types)
+	return types
+}
+
+// ParseSQL lê o schema descrito por um texto SQL no dialeto informado. Entende
+// CREATE TABLE, CREATE INDEX e ALTER TABLE ... ADD COLUMN (as migrações
+// acrescentam colunas assim); qualquer outra instrução é ignorada, e tudo a
+// partir do marcador `-- +goose Down` é descartado — o que precisa casar com o
+// schema canônico é o caminho de subida.
+func ParseSQL(source string, dialect Dialect) (Schema, error) {
 	var schema Schema
 	for _, statement := range splitStatements(source) {
 		switch {
 		case createTablePattern.MatchString(statement):
-			table, err := parseCreateTable(statement)
+			table, err := parseCreateTable(statement, dialect)
 			if err != nil {
 				return Schema{}, err
 			}
@@ -82,7 +127,7 @@ func ParseSQL(source string) (Schema, error) {
 			}
 			schema.Indexes = append(schema.Indexes, index)
 		case alterAddColumnPattern.MatchString(statement):
-			if err := applyAddColumn(&schema, statement); err != nil {
+			if err := applyAddColumn(&schema, statement, dialect); err != nil {
 				return Schema{}, err
 			}
 		}
@@ -93,14 +138,14 @@ func ParseSQL(source string) (Schema, error) {
 
 // applyAddColumn acrescenta a coluna ao modelo da tabela alterada. Coluna
 // adicionada depois é sempre a última da tabela, exatamente como o banco faz.
-func applyAddColumn(schema *Schema, statement string) error {
+func applyAddColumn(schema *Schema, statement string, dialect Dialect) error {
 	matches := alterAddColumnPattern.FindStringSubmatch(statement)
 	if matches == nil {
 		return fmt.Errorf("não foi possível ler o ALTER TABLE: %s", statement)
 	}
 	tableName := normalizeIdentifier(matches[1])
 	// Grupo 2 é o `COLUMN` opcional; grupo 3 é a definição da coluna.
-	column, err := parseColumn(strings.TrimSpace(matches[3]))
+	column, err := parseColumn(strings.TrimSpace(matches[3]), dialect)
 	if err != nil {
 		return err
 	}
@@ -139,7 +184,7 @@ func LoadSQLite(ctx context.Context, db *sql.DB, ignore map[string]bool) (Schema
 		return Schema{}, fmt.Errorf("percorrer o schema do SQLite: %w", err)
 	}
 
-	schema, err := ParseSQL(strings.Join(statements, ";\n"))
+	schema, err := ParseSQL(strings.Join(statements, ";\n"), SQLite)
 	if err != nil {
 		return Schema{}, err
 	}
@@ -364,12 +409,12 @@ func splitStatements(source string) []string {
 	return statements
 }
 
-func parseCreateTable(statement string) (Table, error) {
+func parseCreateTable(statement string, dialect Dialect) (Table, error) {
 	header := tableHeaderPattern.FindStringSubmatch(statement)
 	if header == nil {
 		return Table{}, fmt.Errorf("não entendi o CREATE TABLE: %.60s", statement)
 	}
-	table := Table{Name: normalizeIdentifier(header[2])}
+	table := Table{Name: normalizeIdentifier(header[2]), DDL: strings.TrimSpace(statement)}
 
 	body, err := tableBody(statement, header[0])
 	if err != nil {
@@ -392,7 +437,7 @@ func parseCreateTable(statement string) (Table, error) {
 			// chave primária composta: marcada nas colunas depois
 			continue
 		default:
-			column, err := parseColumn(item)
+			column, err := parseColumn(item, dialect)
 			if err != nil {
 				return Table{}, fmt.Errorf("tabela %q: %w", table.Name, err)
 			}
@@ -416,7 +461,7 @@ func tableBody(statement, header string) (string, error) {
 	return statement[start+1 : end], nil
 }
 
-func parseColumn(item string) (Column, error) {
+func parseColumn(item string, dialect Dialect) (Column, error) {
 	fields := strings.Fields(item)
 	if len(fields) < 2 {
 		return Column{}, fmt.Errorf("não entendi a coluna: %q", item)
@@ -425,14 +470,17 @@ func parseColumn(item string) (Column, error) {
 
 	typeName := strings.ToLower(fields[1])
 	if len(fields) > 2 {
-		if twoWords := typeName + " " + strings.ToLower(fields[2]); canonicalTypes[twoWords] != "" {
+		if twoWords := typeName + " " + strings.ToLower(fields[2]); canonicalTypes[dialect][twoWords] != "" {
 			typeName = twoWords
 		}
 	}
-	canonical, ok := canonicalTypes[typeName]
+	canonical, ok := canonicalTypes[dialect][typeName]
 	if !ok {
-		return Column{}, fmt.Errorf("tipo desconhecido %q na coluna %q (mapa aceito: text, integer, real, double precision)",
-			typeName, column.Name)
+		if hint := foreignDialectTypes[dialect][typeName]; hint != "" {
+			return Column{}, fmt.Errorf("coluna %q: %s", column.Name, hint)
+		}
+		return Column{}, fmt.Errorf("tipo desconhecido %q na coluna %q (aceitos em %s: %s)",
+			typeName, column.Name, dialect, strings.Join(acceptedTypes(dialect), ", "))
 	}
 	column.Type = canonical
 

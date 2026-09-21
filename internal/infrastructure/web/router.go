@@ -56,10 +56,20 @@ func (h *Handlers) routes() *http.ServeMux {
 
 	// Comprovantes e revisão assistida por IA
 	mux.HandleFunc("POST /api/payments/proof", h.PaymentProofUpload)
+	mux.HandleFunc("GET /api/payments/proof/{id}/file", h.PaymentProofFile)
 	mux.HandleFunc("GET /api/payments/review", h.PaymentProofReviewList)
 	mux.HandleFunc("POST /api/payments/review", h.PaymentProofReviewDecision)
 	mux.HandleFunc("POST /api/intake/document", h.DocumentIntake)
 	mux.HandleFunc("POST /api/intake/confirm", h.DocumentIntakeConfirm)
+
+	// Conversas, cobrança e tier 2 assistido
+	mux.HandleFunc("GET /api/conversations", h.ConversationList)
+	mux.HandleFunc("POST /dashboard/conversation", h.ConversationMutation)
+	mux.HandleFunc("POST /api/collection/run", h.CollectionRun)
+	mux.HandleFunc("GET /api/report/monthly", h.ReportMonthly)
+	mux.HandleFunc("POST /api/report/ask", h.ReportAsk)
+	mux.HandleFunc("POST /api/adjustment/preview", h.AdjustmentPreview)
+	mux.HandleFunc("POST /api/adjustment/apply", h.AdjustmentApply)
 
 	// WhatsApp
 	mux.HandleFunc("GET /api/whatsapp/status", h.WhatsAppStatus)

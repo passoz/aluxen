@@ -16,20 +16,24 @@ import (
 // despacho, carregamento de dados e renderização da casca.
 
 // dashboardTabs são as abas válidas do painel.
-var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "history", "metrics"}
+var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "review", "intake", "conversations", "adjustment", "history", "metrics"}
 
 // tabTemplate é o template de conteúdo de cada aba. Áreas que ainda não
 // publicaram o template apenas não renderizam conteúdo (o painel não quebra).
 var tabTemplate = map[string]string{
-	"dashboard":  "tab_dashboard",
-	"tenants":    "tab_tenants",
-	"properties": "tab_properties",
-	"leases":     "tab_leases",
-	"receipts":   "tab_receipts",
-	"season":     "tab_season",
-	"calendar":   "tab_calendar",
-	"history":    "tab_history",
-	"metrics":    "tab_metrics",
+	"dashboard":     "tab_dashboard",
+	"tenants":       "tab_tenants",
+	"properties":    "tab_properties",
+	"leases":        "tab_leases",
+	"receipts":      "tab_receipts",
+	"season":        "tab_season",
+	"calendar":      "tab_calendar",
+	"review":        "tab_review",
+	"intake":        "tab_intake",
+	"conversations": "tab_conversations",
+	"adjustment":    "tab_adjustment",
+	"history":       "tab_history",
+	"metrics":       "tab_metrics",
 }
 
 // Dashboard renderiza o painel na aba pedida (ou devolve JSON com json=true).
@@ -59,22 +63,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tab := normalizeTab(r.URL.Query().Get("tab"))
-	seasonOverview, err := application.BuildSeasonOverview(r.Context(), h.Deps)
-	if err != nil {
-		h.mapError(w, r, err)
-		return
-	}
-
-	calendarYear, calendarMonth := parseCalendarQuery(r.URL.Query().Get("year"), r.URL.Query().Get("month"), h.Deps.Clock.Now())
-	calendar, err := application.BuildCalendar(r.Context(), h.Deps, calendarYear, calendarMonth)
-	if err != nil {
-		h.mapError(w, r, err)
-		return
-	}
-
-	content, err := h.renderTab(tab, &tabData{
-		Season:     seasonOverview,
-		Calendar:   calendar,
+	tabContext := &tabData{
 		User:       user,
 		Snapshot:   snapshot,
 		Tab:        tab,
@@ -84,7 +73,15 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		Toast:      r.URL.Query().Get("toast"),
 		CSRFToken:  h.CSRF.Token(w, r),
 		RequestURL: r.URL.String(),
-	})
+	}
+	// Cada área carrega o contexto da SUA aba: o painel não paga I/O de tela que
+	// o locador não abriu, e um recurso não configurado não derruba as demais.
+	if err := h.loadTabContext(r, tabContext); err != nil {
+		h.mapError(w, r, err)
+		return
+	}
+
+	content, err := h.renderTab(tab, tabContext)
 	if err != nil {
 		h.Log.Error("falha ao renderizar aba do painel", "scope", "http", "tab", tab, "err", err)
 		h.renderError(w, r, http.StatusInternalServerError, "Erro interno do servidor.")
@@ -106,20 +103,54 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// loadTabContext carrega o contexto específico da aba aberta.
+func (h *Handlers) loadTabContext(r *http.Request, data *tabData) error {
+	ctx := r.Context()
+	var err error
+
+	switch data.Tab {
+	case "season":
+		data.Season, err = application.BuildSeasonOverview(ctx, h.Deps)
+	case "calendar":
+		year, month := parseCalendarQuery(r.URL.Query().Get("year"), r.URL.Query().Get("month"), h.Deps.Clock.Now())
+		data.Calendar, err = application.BuildCalendar(ctx, h.Deps, year, month)
+	case "review":
+		data.Review, err = application.ListPaymentProofReview(ctx, h.Deps, 50)
+	case "intake":
+		data.Intake, err = h.intakeTabData(ctx)
+	case "conversations":
+		data.Conversations, err = h.conversationsTabData(ctx)
+	case "adjustment":
+		data.Adjustments, err = h.adjustmentTabData(ctx)
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // tabData é o contexto entregue ao template da aba.
 type tabData struct {
-	User       *domain.User
-	Snapshot   *application.DashboardData
-	Season     *application.SeasonOverview
-	Calendar   *application.CalendarView
-	Tab        string
-	Month      string
-	Year       string
-	Status     string
-	Toast      string
-	CSRFToken  string
-	RequestURL string
-	HTML       template.HTML
+	User     *domain.User
+	Snapshot *application.DashboardData
+	Season   *application.SeasonOverview
+	Calendar *application.CalendarView
+	Tab      string
+	// Review é a fila de comprovantes em revisão humana.
+	Review []application.PaymentProofRow
+	// Intake é a lista de cadastros propostos a partir de documento.
+	Intake any
+	// Conversations e Adjustments são os contextos das abas de mensageria e de
+	// reajuste, montados por quem é dono de cada área.
+	Conversations any
+	Adjustments   any
+	Month         string
+	Year          string
+	Status        string
+	Toast         string
+	CSRFToken     string
+	RequestURL    string
+	HTML          template.HTML
 }
 
 // renderTab executa o template da aba, quando ele existe.
