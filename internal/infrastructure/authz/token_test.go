@@ -17,10 +17,15 @@ const testReceiptID = "018f2c1e-6b3d-7c4a-9e21-5f6a7b8c9d0e"
 // usa o segredo padrão do app Bun: é ele que garante que os documentos já
 // impressos continuam válidos quando a instância tem o mesmo SESSION_SECRET.
 const (
-	legacySecret       = "aluxen-authenticity-secret-key-2026"
-	legacyReceiptToken = "26e2ba16fd4168935f107b30810a1e3b"
-	legacyLeaseToken   = "f5056b3371be8a715796f2822ad83c54"
+	legacySecret          = "aluxen-authenticity-secret-key-2026"
+	legacyReceiptToken    = "26e2ba16fd4168935f107b30810a1e3b"
+	legacyLeaseToken      = "f5056b3371be8a715796f2822ad83c54"
+	legacyInspectionToken = "cab40fc212026cbcfe5205a6bee2b0e8"
+	legacyDepositToken    = "00a9c052a71ad1bb8458cce351e776c8"
 )
+
+// Os quatro tipos de documento assinados pelo app.
+var allKinds = []authz.Kind{authz.KindReceipt, authz.KindLease, authz.KindInspection, authz.KindDeposit}
 
 func TestGenerateIsDeterministicAndMatchesLegacyApp(t *testing.T) {
 	generator := authz.NewTokenGenerator(legacySecret)
@@ -35,13 +40,21 @@ func TestGenerateIsDeterministicAndMatchesLegacyApp(t *testing.T) {
 	if lease := generator.Generate(authz.KindLease, testReceiptID); lease != legacyLeaseToken {
 		t.Fatalf("token do contrato = %q, esperado %q", lease, legacyLeaseToken)
 	}
+	// Os documentos da temporada seguem o mesmo cálculo, com o seu próprio tipo
+	// (`inspection` e `deposit`).
+	if inspection := generator.Generate(authz.KindInspection, testReceiptID); inspection != legacyInspectionToken {
+		t.Fatalf("token da vistoria = %q, esperado %q", inspection, legacyInspectionToken)
+	}
+	if deposit := generator.Generate(authz.KindDeposit, testReceiptID); deposit != legacyDepositToken {
+		t.Fatalf("token da caução = %q, esperado %q", deposit, legacyDepositToken)
+	}
 }
 
 func TestGenerateProducesThirtyTwoHexCharacters(t *testing.T) {
 	pattern := regexp.MustCompile(`^[0-9a-f]{32}$`)
 	generator := authz.NewTokenGenerator("segredo-de-teste")
 
-	for _, kind := range []authz.Kind{authz.KindReceipt, authz.KindLease} {
+	for _, kind := range allKinds {
 		token := generator.Generate(kind, testReceiptID)
 		if !pattern.MatchString(token) {
 			t.Fatalf("token de %s = %q: esperado 32 caracteres hexadecimais minúsculos", kind, token)
@@ -69,19 +82,29 @@ func TestVerifyAcceptsOnlyTheMatchingDocument(t *testing.T) {
 	if !generator.Verify(authz.KindReceipt, testReceiptID, valid) {
 		t.Fatal("token válido foi recusado")
 	}
+	// Cada tipo de documento tem a sua própria chave.
+	for _, kind := range allKinds {
+		if !generator.Verify(kind, testReceiptID, generator.Generate(kind, testReceiptID)) {
+			t.Fatalf("token válido de %s foi recusado", kind)
+		}
+	}
 
 	cases := map[string]struct {
 		kind  authz.Kind
 		id    string
 		token string
 	}{
-		"outro tipo de documento": {authz.KindLease, testReceiptID, valid},
-		"outro documento":         {authz.KindReceipt, "outro-id", valid},
-		"token vazio":             {authz.KindReceipt, testReceiptID, ""},
-		"token curto":             {authz.KindReceipt, testReceiptID, valid[:16]},
-		"token longo":             {authz.KindReceipt, testReceiptID, valid + "00"},
-		"token em maiúsculas":     {authz.KindReceipt, testReceiptID, "26E2BA16FD4168935F107B30810A1E3B"},
-		"outro segredo":           {authz.KindReceipt, testReceiptID, authz.NewTokenGenerator("outro-segredo").Generate(authz.KindReceipt, testReceiptID)},
+		"outro tipo de documento":     {authz.KindLease, testReceiptID, valid},
+		"outro documento":             {authz.KindReceipt, "outro-id", valid},
+		"token vazio":                 {authz.KindReceipt, testReceiptID, ""},
+		"token curto":                 {authz.KindReceipt, testReceiptID, valid[:16]},
+		"token longo":                 {authz.KindReceipt, testReceiptID, valid + "00"},
+		"token em maiúsculas":         {authz.KindReceipt, testReceiptID, "26E2BA16FD4168935F107B30810A1E3B"},
+		"outro segredo":               {authz.KindReceipt, testReceiptID, authz.NewTokenGenerator("outro-segredo").Generate(authz.KindReceipt, testReceiptID)},
+		"chave da vistoria no recibo": {authz.KindReceipt, testReceiptID, generator.Generate(authz.KindInspection, testReceiptID)},
+		"chave da caução na vistoria": {authz.KindInspection, testReceiptID, generator.Generate(authz.KindDeposit, testReceiptID)},
+		"chave do contrato na caução": {authz.KindDeposit, testReceiptID, generator.Generate(authz.KindLease, testReceiptID)},
+		"vistoria de outro id":        {authz.KindInspection, testReceiptID, generator.Generate(authz.KindInspection, "outro-id")},
 	}
 	for name, testCase := range cases {
 		if generator.Verify(testCase.kind, testCase.id, testCase.token) {
@@ -114,6 +137,19 @@ func TestValidationURL(t *testing.T) {
 	expectedLease := "http://192.168.0.10:3000/validar/contrato/" + testReceiptID + "?token=" + legacyLeaseToken
 	if lease != expectedLease {
 		t.Fatalf("URL do contrato = %q, esperado %q", lease, expectedLease)
+	}
+
+	// Os documentos da temporada têm o seu próprio caminho público de validação.
+	inspection := generator.ValidationURL("https://aluxen.evolucsia.com/", authz.KindInspection, testReceiptID, legacyInspectionToken)
+	expectedInspection := "https://aluxen.evolucsia.com/validar/vistoria/" + testReceiptID + "?token=" + legacyInspectionToken
+	if inspection != expectedInspection {
+		t.Fatalf("URL da vistoria = %q, esperado %q", inspection, expectedInspection)
+	}
+
+	deposit := generator.ValidationURL("https://aluxen.evolucsia.com", authz.KindDeposit, testReceiptID, legacyDepositToken)
+	expectedDeposit := "https://aluxen.evolucsia.com/validar/caucao/" + testReceiptID + "?token=" + legacyDepositToken
+	if deposit != expectedDeposit {
+		t.Fatalf("URL da caução = %q, esperado %q", deposit, expectedDeposit)
 	}
 }
 

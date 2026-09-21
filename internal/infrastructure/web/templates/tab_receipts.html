@@ -1,0 +1,310 @@
+{{define "tab_receipts"}}
+{{$receipts := .Snapshot.Receipts}}
+{{$leases := .Snapshot.Leases}}
+{{$tenants := .Snapshot.Tenants}}
+{{$properties := .Snapshot.Properties}}
+<section class="card stack-lg" data-batch>
+  <div class="section-header">
+    <h2>Pagamentos e Recibos</h2>
+    <div class="auth-actions">
+      <form method="post" action="/dashboard">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.batch-pay">
+        <input type="hidden" name="ids" value="">
+        <button type="button" class="btn btn-secondary" data-batch-action="receipt.batch-pay" data-confirm="Dar baixa nos recibos selecionados pelo valor total?">Dar baixa em lote</button>
+      </form>
+      <form method="post" action="/dashboard">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.batch-delete">
+        <input type="hidden" name="ids" value="">
+        <button type="button" class="btn btn-danger" data-batch-action="receipt.batch-delete" data-confirm="Excluir os recibos selecionados?">Excluir em lote</button>
+      </form>
+      <span class="cell-muted" data-batch-count></span>
+      <form method="post" action="/dashboard" data-offline>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.generate-monthly">
+        <button type="submit" class="btn btn-secondary">Gerar pagamentos do mês</button>
+      </form>
+      <button type="button" class="btn btn-secondary" data-modal-open="receipt-create-extra">Nova taxa avulsa</button>
+      <button type="button" class="btn btn-primary" data-modal-open="receipt-create-rent">Novo pagamento</button>
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="receipts-search">Buscar</label>
+      <input id="receipts-search" type="search" data-filter="recibos" placeholder="Buscar por inquilino, imóvel, descrição, vencimento ou valor">
+    </div>
+    <div class="filter-field">
+      <label class="filter-label" for="receipts-category">Categoria</label>
+      <select id="receipts-category" data-filter-select="category">
+        <option value="">Todas</option>
+        <option value="rent">Aluguel</option>
+        <option value="extra">Avulsa</option>
+      </select>
+    </div>
+    <div class="filter-field">
+      <label class="filter-label" for="receipts-status">Situação</label>
+      <select id="receipts-status" data-filter-select="status">
+        <option value="">Todas</option>
+        <option value="due">A vencer</option>
+        <option value="overdue">Vencido</option>
+        <option value="partial">Parcial</option>
+        <option value="paid">Pago</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th><input type="checkbox" data-batch-all aria-label="Selecionar todos os lançamentos visíveis"></th>
+          <th data-sort="tenant">Inquilino</th>
+          <th data-sort="property">Imóvel</th>
+          <th data-sort="competence">Competência</th>
+          <th data-sort="category">Categoria</th>
+          <th data-sort="due_date">Vencimento</th>
+          <th data-sort="amount">Valor</th>
+          <th data-sort="paid_amount">Valor pago</th>
+          <th>Situação</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $receipts}}
+          {{$status := receiptStatusCode .}}
+          {{$category := printf "%s" .Category}}
+          {{$pay := moneyValue .Amount}}
+          {{$paid := ""}}
+          {{if .PaidAmount}}
+            {{$pay = moneyValue .PaidAmount}}
+            {{$paid = moneyValue .PaidAmount}}
+          {{end}}
+          <tr data-category="{{$category}}" data-status="{{$status}}" data-search="{{.TenantName}} {{.PropertyName}} {{deref .Description}} {{category $category}} {{receiptStatus .}}">
+            <td>
+              <input type="checkbox" data-batch-item value="{{.ID}}" aria-label="Selecionar lançamento">
+            </td>
+            <td>
+              {{if .TenantName}}{{.TenantName}}{{else}}<span class="cell-muted">Sem vínculo</span>{{end}}
+            </td>
+            <td>
+              {{if .PropertyName}}{{.PropertyName}}{{else}}<span class="cell-muted">—</span>{{end}}
+            </td>
+            <td data-sort-value="{{.DueDate}}">
+              {{if ge (len .DueDate) 7}}{{slice .DueDate 5 7}}/{{slice .DueDate 0 4}}{{else}}<span class="cell-muted">—</span>{{end}}
+            </td>
+            <td class="contract-cell">
+              <span>{{category $category}}</span>
+              {{if .Description}}<span>{{.Description}}</span>{{end}}
+            </td>
+            <td data-sort-value="{{.DueDate}}">{{date .DueDate}}</td>
+            <td>{{money .Amount}}</td>
+            <td>
+              {{if .PaidAmount}}{{money .PaidAmount}}{{else}}<span class="cell-muted">—</span>{{end}}
+            </td>
+            <td>
+              <span class="status-badge {{$status}}">{{receiptStatus .}}</span>
+            </td>
+            <td class="row-actions">
+              {{if or (eq $status "paid") (eq $status "partial")}}
+                <details class="pdf-dropdown">
+                  <summary class="btn btn-sm btn-secondary">PDF</summary>
+                  <div class="pdf-menu">
+                    <a class="btn btn-sm btn-secondary" href="/pdf?id={{.ID}}" target="_blank" rel="noreferrer">Abrir PDF</a>
+                    <a class="btn btn-sm btn-secondary" href="/pdf?id={{.ID}}&amp;assinatura=false" target="_blank" rel="noreferrer">PDF s/ assinatura</a>
+                    <a class="btn btn-sm btn-secondary" href="/pdf?id={{.ID}}" download>Download</a>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-sm btn-outline" data-whatsapp-send="receipt" data-whatsapp-id="{{.ID}}">WhatsApp</button>
+              {{else}}
+                <span class="cell-muted" title="Disponível após o pagamento">—</span>
+              {{end}}
+              {{if ne $status "paid"}}
+                <button type="button" class="btn btn-sm btn-primary" data-modal-open="receipt-pay" data-modal-fill='{{json (dict "id" .ID "pay_amount" $pay "paid_at" "")}}' title="Lançar pagamento parcial ou integral">Baixa</button>
+              {{end}}
+              <button type="button" class="btn btn-sm btn-secondary" data-modal-open="receipt-edit" data-modal-fill='{{json (dict "id" .ID "lease_id" (deref .LeaseID) "tenant_id" (deref .TenantID) "property_id" (deref .PropertyID) "category" $category "description" (deref .Description) "due_date" .DueDate "paid_at" (deref .PaidAt) "amount" (moneyValue .Amount) "paid_amount" $paid)}}'>Editar</button>
+              <form method="post" action="/dashboard" data-offline data-confirm="Excluir este lançamento?">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="intent" value="receipt.delete">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {{else}}
+          <tr>
+            <td colspan="10"><span class="cell-muted">Cadastre um contrato para gerar recibos.</span></td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div data-pagination></div>
+
+  <div class="modal-backdrop" id="receipt-create-rent" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Novo Pagamento de Aluguel">
+      <div class="modal-header">
+        <h3>Novo Pagamento de Aluguel</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+      </div>
+      <form method="post" action="/dashboard" class="stack" data-offline>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.create">
+        <input type="hidden" name="category" value="rent">
+        <div class="form-group">
+          <label for="create-receipt-lease">Contrato</label>
+          <select id="create-receipt-lease" name="lease_id" required>
+            <option value="">Selecione</option>
+            {{range $leases}}<option value="{{.ID}}">{{.TenantName}} / {{.PropertyName}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="create-receipt-due">Vencimento</label>
+          <input id="create-receipt-due" name="due_date" data-datepicker required>
+        </div>
+        <div class="form-group">
+          <label for="create-receipt-paid">Pago em</label>
+          <input id="create-receipt-paid" name="paid_at" data-datepicker data-datetime>
+        </div>
+        <div class="form-group">
+          <label for="create-receipt-amount">Valor</label>
+          <input id="create-receipt-amount" name="amount" data-mask="money" data-money-input inputmode="numeric" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Adicionar pagamento</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="receipt-create-extra" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Nova Taxa Avulsa">
+      <div class="modal-header">
+        <h3>Nova Taxa Avulsa</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+      </div>
+      <form method="post" action="/dashboard" class="stack" data-offline>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.create">
+        <input type="hidden" name="category" value="extra">
+        <div class="form-group">
+          <label for="create-extra-description">Descrição</label>
+          <input id="create-extra-description" name="description" type="text" placeholder="Ex: Taxa de condomínio, Multa, Pintura…" autocomplete="off" required>
+        </div>
+        <div class="form-group">
+          <label for="create-extra-tenant">Inquilino (opcional)</label>
+          <select id="create-extra-tenant" name="tenant_id">
+            <option value="">Nenhum</option>
+            {{range $tenants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="create-extra-property">Imóvel (opcional)</label>
+          <select id="create-extra-property" name="property_id">
+            <option value="">Nenhum</option>
+            {{range $properties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="create-extra-due">Vencimento</label>
+          <input id="create-extra-due" name="due_date" data-datepicker required>
+        </div>
+        <div class="form-group">
+          <label for="create-extra-paid">Pago em</label>
+          <input id="create-extra-paid" name="paid_at" data-datepicker data-datetime>
+        </div>
+        <div class="form-group">
+          <label for="create-extra-amount">Valor</label>
+          <input id="create-extra-amount" name="amount" data-mask="money" data-money-input inputmode="numeric" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Cadastrar taxa avulsa</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="receipt-pay" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Lançar Pagamento">
+      <div class="modal-header">
+        <h3>Lançar Pagamento</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+      </div>
+      <form method="post" action="/dashboard" class="stack">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.pay">
+        <input type="hidden" name="id" value="">
+        <div class="form-group">
+          <label for="pay-receipt-amount">Valor pago</label>
+          <input id="pay-receipt-amount" name="pay_amount" data-mask="money" data-money-input inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label for="pay-receipt-paid-at">Data/hora do pagamento</label>
+          <input id="pay-receipt-paid-at" name="paid_at" data-datepicker data-datetime>
+        </div>
+        <button type="submit" class="btn btn-primary">Confirmar pagamento</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="receipt-edit" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-label="Editar Pagamento">
+      <div class="modal-header">
+        <h3>Editar Pagamento</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+      </div>
+      <form method="post" action="/dashboard" class="stack" data-offline>
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="intent" value="receipt.update">
+        <input type="hidden" name="id" value="">
+        <div class="form-group">
+          <label for="edit-receipt-category">Categoria</label>
+          <select id="edit-receipt-category" name="category">
+            <option value="rent">Aluguel</option>
+            <option value="extra">Avulsa</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-lease">Contrato</label>
+          <select id="edit-receipt-lease" name="lease_id">
+            <option value="">Sem contrato</option>
+            {{range $leases}}<option value="{{.ID}}">{{.TenantName}} / {{.PropertyName}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-description">Descrição</label>
+          <input id="edit-receipt-description" name="description" type="text" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-tenant">Inquilino (opcional)</label>
+          <select id="edit-receipt-tenant" name="tenant_id">
+            <option value="">Nenhum</option>
+            {{range $tenants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-property">Imóvel (opcional)</label>
+          <select id="edit-receipt-property" name="property_id">
+            <option value="">Nenhum</option>
+            {{range $properties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-due">Vencimento</label>
+          <input id="edit-receipt-due" name="due_date" data-datepicker required>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-paid">Pago em</label>
+          <input id="edit-receipt-paid" name="paid_at" data-datepicker data-datetime>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-amount">Valor</label>
+          <input id="edit-receipt-amount" name="amount" data-mask="money" data-money-input inputmode="numeric" required>
+        </div>
+        <div class="form-group">
+          <label for="edit-receipt-paid-amount">Valor pago</label>
+          <input id="edit-receipt-paid-amount" name="paid_amount" data-mask="money" data-money-input inputmode="numeric">
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar alterações</button>
+      </form>
+    </div>
+  </div>
+</section>
+{{end}}

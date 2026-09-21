@@ -1,0 +1,119 @@
+{
+  "$schema": "../../../schemas/prd.schema.json",
+  "id": "PRD-0003",
+  "meta": {
+    "version": "1.0",
+    "created_at": "2026-09-21T20:17:59.533Z",
+    "updated_at": "2026-09-21T20:17:59.533Z",
+    "author": "operator"
+  },
+  "title": "PRD — IA de entrada: baixa automática por comprovante e onboarding por documento",
+  "status": "approved",
+  "scenario": "brownfield",
+  "problem": {
+    "statement": "O ciclo da locação no Aluxen termina no recibo, mas começa antes: o locatário paga, manda o comprovante e alguém precisa ler, conferir e dar baixa. Essa etapa é manual e é exatamente onde o dinheiro fica parado. O sistema também não aceita carteira existente: migrar 30 contratos significa digitar 30 contratos, que é a objeção número um de quem já administra temporada."
+  },
+  "solution": {
+    "statement": "Pipeline de leitura assistida por IA com decisão determinística: o modelo lê o documento e devolve JSON tipado; o código valida valor, destinatário, data e titular; confiança alta dá baixa automática e emite o recibo, ambiguidade vai para fila de revisão humana. O mesmo pipeline lê contrato antigo, RG/CNH e comprovante de residência para propor um cadastro que só é gravado após conferência humana. Toda extração, confiança e decisão entram na trilha de auditoria."
+  },
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "Extração usa provedor OpenAI-compatible já existente, com saída JSON tipada validada contra schema; falha de formato nunca vira decisão.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-002",
+      "statement": "A decisão de baixa é determinística (valor, destinatário, janela de data, titular) e o limiar de confiança separa baixa automática de revisão humana.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-003",
+      "statement": "Onboarding por documento nunca grava direto: sempre passa por tela de conferência.",
+      "status": "accepted",
+      "made_by": "operator"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "FR-201",
+      "type": "functional",
+      "statement": "Extração tipada de comprovante: Como locador, quero que o comprovante enviado seja lido automaticamente, para não digitar valor e data.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-202",
+      "type": "functional",
+      "statement": "Decisão determinística de baixa: Como locador, quero que a baixa automática só aconteça quando as regras fecham, para não perder controle do dinheiro.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-203",
+      "type": "functional",
+      "statement": "Fila de revisão humana: Como locador, quero revisar os comprovantes ambíguos em uma tela própria, para decidir com o documento à vista.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-204",
+      "type": "functional",
+      "statement": "Resposta automática no WhatsApp: Como locatário, quero receber a confirmação da baixa, para saber que meu pagamento foi reconhecido.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-205",
+      "type": "functional",
+      "statement": "Onboarding por documento: Como locador, quero jogar o contrato antigo e ter o cadastro proposto, para migrar minha carteira sem digitar tudo.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-206",
+      "type": "functional",
+      "statement": "Fila de processamento assíncrono: Como operador, quero que a leitura rode em segundo plano, para que o envio do comprovante não trave o WhatsApp nem o portal.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-207",
+      "type": "functional",
+      "statement": "Operação da fila verificada: Como operador, quero a fila observável e recuperável, para não perder trabalho quando o processo reinicia.",
+      "priority": "must"
+    }
+  ],
+  "stakeholders": [
+    {
+      "name": "Locador (administrador)",
+      "role": "ACT-001"
+    },
+    {
+      "name": "Locatário",
+      "role": "ACT-002"
+    },
+    {
+      "name": "Operador de instância",
+      "role": "ACT-004"
+    }
+  ],
+  "scope": {
+    "in_scope": [
+      "Comprovante (imagem ou PDF) vira JSON tipado com valor, data, pagador, destinatário e identificador.",
+      "Validação determinística contra o recibo aberto do titular, com baixa automática quando a confiança e as regras permitem.",
+      "Recibo em PDF emitido e resposta automática no WhatsApp confirmando a quitação.",
+      "Fila de revisão humana no painel para os casos ambíguos, com decisão auditada.",
+      "Onboarding por documento: contrato antigo, RG/CNH e comprovante de residência geram cadastro proposto, gravado só após confirmação.",
+      "Fila de processamento assíncrono (worker) para não bloquear a requisição HTTP."
+    ],
+    "out_of_scope": [
+      "Fora de escopo: modelo próprio, fine-tuning, text-to-SQL solto e orientação jurídica a locatário."
+    ]
+  },
+  "accepted_requirements": [
+    "FR-201",
+    "FR-202",
+    "FR-203",
+    "FR-204",
+    "FR-205",
+    "FR-206",
+    "FR-207"
+  ]
+}

@@ -1,0 +1,68 @@
+{{define "tab_calendar"}}
+{{$calendar := .Calendar}}
+{{with $calendar}}
+<div class="stack-lg">
+  <div class="section-header">
+    <h2 style="font-size: 1.05rem; margin: 0;">Ocupação de {{.Month.Label}}</h2>
+    <p class="subtitle" style="margin: 0.25rem 0 0;">
+      Leitura dos contratos existentes: temporada, contrato ativo e suspenso com marcação distinta.
+      Nada é gravado por esta tela.
+    </p>
+  </div>
+
+  <div class="row-actions" style="justify-content: flex-start; gap: 0.5rem;">
+    <a class="btn btn-sm btn-outline" href="{{.Month.Previous}}">Mês anterior</a>
+    <a class="btn btn-sm btn-outline" href="{{.Month.Next}}">Próximo mês</a>
+    <span class="cell-muted">Início do mês em {{weekdayName .Month.FirstWeek}}</span>
+  </div>
+
+  <section class="card" style="padding: 1.25rem;">
+    <div class="calendar-legend">
+      <span><span class="status-dot" style="background: var(--primary);"></span> Temporada</span>
+      <span><span class="status-dot" style="background: #3b82f6;"></span> Contrato ativo</span>
+      <span><span class="status-dot" style="background: var(--warning);"></span> Suspenso</span>
+      <span><span class="status-dot" style="background: var(--surface-subtle);"></span> Livre</span>
+    </div>
+
+    <div class="table-wrap">
+      <table class="calendar-table">
+        <thead>
+          <tr>
+            <th class="calendar-property">Imóvel</th>
+            {{range seq 1 .Month.Days}}<th class="calendar-day">{{.}}</th>{{end}}
+            <th class="calendar-total">Dias</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Properties}}
+            <tr>
+              <th class="calendar-property" scope="row">
+                <div>{{.PropertyName}}</div>
+                <div class="cell-muted" style="font-size: 0.75rem;">{{.City}}/{{.State}}</div>
+                {{range .Periods}}
+                  <div class="cell-muted" style="font-size: 0.72rem;">
+                    {{date .StartDate}} – {{date .EndDate}} · {{.TenantName}}
+                  </div>
+                {{end}}
+              </th>
+              {{$property := .}}
+              {{range .Days}}
+                <td class="calendar-cell {{if .Occupied}}{{if eq (printf "%s" .Status) "season"}}occupied-season{{else}}occupied-active{{end}}{{else if eq (printf "%s" .Status) "suspended"}}occupied-suspended{{end}}"
+                    title="{{if .TenantName}}{{.TenantName}} · {{leaseStatus .Status}}{{else}}Livre{{end}}">
+                  {{if .Occupied}}<span class="visually-hidden">Ocupado</span>{{end}}
+                </td>
+              {{end}}
+              <td class="calendar-total">{{$property.OccupiedDays}}</td>
+            </tr>
+          {{else}}
+            <tr><td class="empty-state">Nenhum imóvel cadastrado.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{{else}}
+<div class="card empty-state">Calendário indisponível.</div>
+{{end}}
+{{end}}

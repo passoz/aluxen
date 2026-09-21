@@ -1,0 +1,108 @@
+{
+  "$schema": "../../../schemas/prd.schema.json",
+  "id": "PRD-0005",
+  "meta": {
+    "version": "1.0",
+    "created_at": "2026-09-21T20:17:59.858Z",
+    "updated_at": "2026-09-21T20:17:59.858Z",
+    "author": "operator"
+  },
+  "title": "PRD — Deploy por instância, migração de dialeto e tier 2 assistido",
+  "status": "approved",
+  "scenario": "brownfield",
+  "problem": {
+    "statement": "Demos e clientes serão servidos por uma instância por cliente no Easypanel, mas provisionar isso hoje é trabalho manual repetitivo: criar app, montar volume, definir variáveis, criar domínio, subir e semear. Além disso, a instância que precisa trocar de SQLite para Postgres não tem caminho seguro, e as duas dores anuais do locador (reajuste esquecido e leitura dos próprios números) seguem manuais."
+  },
+  "solution": {
+    "statement": "Fechar o ciclo de operação: script de provisionamento sobre a API do Easypanel que cria uma demo em um comando, rotina de expiração e remoção sem resíduo, CLI de migração SQLite → Postgres com pré-checagem, dry-run, transação e verificação por contagem e checksum, e os dois incrementos assistidos de tier 2 — reajuste anual com índice e notificação formal redigida, e relatório mensal com consulta em linguagem natural respondida por tool-calling tipado sobre os dados."
+  },
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "Provisionamento é script sobre a API do Easypanel; o registro DNS continua manual, como decidido.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-002",
+      "statement": "Migração de dialeto é CLI de operador, com dry-run e verificação por contagem e checksum; o volume antigo fica como backup.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-003",
+      "statement": "Consulta em linguagem natural usa apenas ferramentas tipadas sobre os casos de uso; nenhum SQL gerado por modelo.",
+      "status": "accepted",
+      "made_by": "operator"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "FR-401",
+      "type": "functional",
+      "statement": "Provisionamento de instância: Como operador, quero criar uma demo em um comando, para entregar demonstração sem trabalho manual.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-402",
+      "type": "functional",
+      "statement": "Ciclo de vida da demo: Como operador, quero listar e remover demos vencidas, para não acumular instância esquecida.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-403",
+      "type": "functional",
+      "statement": "CLI de migração de dialeto: Como operador, quero migrar uma instância de SQLite para Postgres com segurança, para trocar de banco sem perder dado.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-404",
+      "type": "functional",
+      "statement": "Reajuste assistido: Como locador, quero aplicar o índice do meu contrato e gerar a notificação, para não esquecer o reajuste anual.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-405",
+      "type": "functional",
+      "statement": "Consulta em linguagem natural: Como locador, quero perguntar quanto recebi no mês e receber o número do banco, para não montar planilha.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-406",
+      "type": "functional",
+      "statement": "Documentação de operação: Como operador, quero um roteiro de operação, para repetir o processo sem depender de memória.",
+      "priority": "must"
+    }
+  ],
+  "stakeholders": [
+    {
+      "name": "Locador (administrador)",
+      "role": "ACT-001"
+    },
+    {
+      "name": "Operador de instância",
+      "role": "ACT-004"
+    }
+  ],
+  "scope": {
+    "in_scope": [
+      "Criar uma instância de demo em um comando, com volume, variáveis, domínio e seed.",
+      "Rotina de expiração e remoção de demos sem resíduo.",
+      "CLI de migração SQLite → Postgres com dry-run, verificação e rollback documentado.",
+      "Reajuste anual assistido (IGP-M/IPCA) com notificação formal redigida.",
+      "Relatório mensal e consulta em linguagem natural por ferramentas tipadas.",
+      "Documentação de operação: provisionamento, expiração, migração e atualização canário."
+    ],
+    "out_of_scope": [
+      "Fora de escopo: billing, planos, onboarding self-service e multi-tenant no código."
+    ]
+  },
+  "accepted_requirements": [
+    "FR-401",
+    "FR-402",
+    "FR-403",
+    "FR-404",
+    "FR-405",
+    "FR-406"
+  ]
+}

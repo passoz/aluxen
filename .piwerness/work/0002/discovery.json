@@ -1,0 +1,41 @@
+{
+  "work_id": "0002",
+  "title": "Funcionalidades de temporada: caução, vistoria, calendário e taxas",
+  "grilling_depth": "deep",
+  "problem": "O Aluxen atende locação longa e já aceita contrato de temporada (status `season`, com validação de sobreposição), mas não cobre as quatro rotinas que definem a temporada: caução (dinheiro que entra, fica retido e volta), auto de vistoria (a peça que resolve conflito de dano na saída), calendário de ocupação (o administrador pensa em período por imóvel, não em tabela) e taxa de limpeza/consumíveis. Sem isso o produto não serve ao administrador de temporada, que é o comprador escolhido.",
+  "actors": [
+    "ACT-001",
+    "ACT-002",
+    "ACT-003"
+  ],
+  "actor_details": [
+    {
+      "id": "ACT-001",
+      "name": "Locador (administrador)",
+      "description": "Registra caução, faz vistoria de entrada e saída, consulta o calendário e lança taxas de temporada."
+    },
+    {
+      "id": "ACT-002",
+      "name": "Locatário",
+      "description": "Vê o contrato de temporada, o auto de vistoria anexado e o recibo de devolução da caução na Área do Cliente."
+    },
+    {
+      "id": "ACT-003",
+      "name": "Verificador externo",
+      "description": "Confere a autenticidade do auto de vistoria e do recibo de devolução pela página pública /validar."
+    }
+  ],
+  "objectives": [
+    "Caução com controle de entrada, retenção, devolução total/parcial e recibo em PDF com prova de autenticidade.",
+    "Auto de vistoria de entrada e saída com itens, estado, observações, fotos e PDF anexado ao portal do locatário.",
+    "Calendário de ocupação por imóvel, lendo os contratos existentes, com destaque para temporada.",
+    "Categorias de lançamento para taxa de limpeza e consumíveis.",
+    "Cobertura de testes >= 90% mantida e gates de qualidade verdes."
+  ],
+  "constraints": [
+    "Tudo aditivo: campos novos são opcionais e aparecem apenas em contrato de temporada.",
+    "Nenhum campo existente é renomeado e nenhum fluxo atual muda de comportamento.",
+    "O SQLite continua sendo o padrão; Postgres mantém paridade de schema enforced.",
+    "Fora de escopo: multi-tenant, billing, extração por IA e WhatsApp bidirecional (Works seguintes)."
+  ]
+}

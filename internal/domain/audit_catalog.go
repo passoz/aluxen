@@ -57,6 +57,8 @@ const (
 	ActionLogout                  = "auth.logout"
 	ActionDocumentReceipt         = "document.receipt"
 	ActionDocumentContract        = "document.contract"
+	ActionDocumentInspection      = "document.inspection"
+	ActionDocumentDeposit         = "document.deposit"
 	ActionWhatsAppSend            = "whatsapp.send"
 	ActionWhatsAppSendFailed      = "whatsapp.send-failed"
 	ActionWhatsAppLogout          = "whatsapp.logout"
@@ -126,6 +128,8 @@ var auditActions = map[string]AuditActionMeta{
 	ActionLogout:                  {ActionLogout, "Saída do sistema", EntityUser, ToneAccess},
 	ActionDocumentReceipt:         {ActionDocumentReceipt, "Recibo emitido", EntityDocument, ToneIssue},
 	ActionDocumentContract:        {ActionDocumentContract, "Contrato emitido", EntityDocument, ToneIssue},
+	ActionDocumentInspection:      {ActionDocumentInspection, "Auto de vistoria emitido", EntityDocument, ToneIssue},
+	ActionDocumentDeposit:         {ActionDocumentDeposit, "Recibo de devolução de caução emitido", EntityDocument, ToneIssue},
 	ActionWhatsAppSend:            {ActionWhatsAppSend, "Envio por WhatsApp", EntityWhatsApp, ToneIssue},
 	ActionWhatsAppSendFailed:      {ActionWhatsAppSendFailed, "Falha no envio por WhatsApp", EntityWhatsApp, ToneFailure},
 	ActionWhatsAppLogout:          {ActionWhatsAppLogout, "WhatsApp desconectado", EntityWhatsApp, ToneAccess},

@@ -230,9 +230,7 @@ func (m *LoginManager) follow(generation uint64, stop <-chan struct{}) {
 
 			switch state.Status {
 			case LoginStateConnected:
-				if m.apply(generation, LoginState{Status: LoginStateConnected, Message: loginConnected}) {
-					return
-				}
+				m.apply(generation, LoginState{Status: LoginStateConnected, Message: loginConnected})
 				return
 			case LoginStateScanQR:
 				m.apply(generation, state)
@@ -244,19 +242,16 @@ func (m *LoginManager) follow(generation uint64, stop <-chan struct{}) {
 	}
 }
 
-// timeoutLogin encerra o pareamento vencido: o painel vê `timeout` e a sessão do
-// WAHA é parada para não ficar gerando QR Code em vão.
+// timeoutLogin encerra o pareamento vencido: a sessão do WAHA é parada primeiro
+// (para não ficar gerando QR Code em vão) e só então o painel vê `timeout`.
 func (m *LoginManager) timeoutLogin(generation uint64) {
-	applied := m.apply(generation, LoginState{Status: LoginStateTimeout, Error: loginTimeoutMessage})
-	if !applied {
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := m.client.CancelLogin(ctx); err != nil {
 		m.log.Warn("falha ao parar a sessão do WhatsApp vencida", "scope", "whatsapp", "err", err)
 	}
+
+	m.apply(generation, LoginState{Status: LoginStateTimeout, Error: loginTimeoutMessage})
 }
 
 // apply publica o estado se este monitor ainda for o atual. Devolve false quando

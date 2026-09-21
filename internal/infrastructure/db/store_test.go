@@ -44,18 +44,29 @@ func openStore(t *testing.T, tgt target) *db.Store {
 	return store
 }
 
-// resetPostgres limpa o banco de teste para cada caso começar do zero.
+// resetPostgres limpa o banco de teste para cada caso começar do zero. As
+// tabelas são descobertas no catálogo (e não numa lista fixa) para que uma
+// tabela nova nunca vaze de um caso para o outro.
 func resetPostgres(t *testing.T, dsn string) {
 	t.Helper()
+	ctx := context.Background()
 	handle, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, handle.Close()) }()
 
-	for _, table := range []string{
-		"whatsapp_messages", "audit_logs", "receipts", "leases",
-		"properties", "tenants", "settings", "users", "goose_db_version",
-	} {
-		_, err := handle.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+table+" CASCADE")
+	rows, err := handle.QueryContext(ctx, "SELECT tablename FROM pg_tables WHERE schemaname = current_schema()")
+	require.NoError(t, err)
+	var tables []string
+	for rows.Next() {
+		var name string
+		require.NoError(t, rows.Scan(&name))
+		tables = append(tables, name)
+	}
+	require.NoError(t, rows.Err())
+	require.NoError(t, rows.Close())
+
+	for _, table := range tables {
+		_, err := handle.ExecContext(ctx, `DROP TABLE IF EXISTS "`+table+`" CASCADE`)
 		require.NoError(t, err, "limpar %s", table)
 	}
 }
@@ -539,20 +550,21 @@ func TestAuditRepository(t *testing.T) {
 				require.NoError(t, store.Audit.Insert(ctx, entry))
 			}
 
-			list, err := store.Audit.List(ctx, domain.AuditFilter{Limit: 10})
+			// a trilha é lida da mais recente para a mais antiga quando o filtro pede
+			list, err := store.Audit.List(ctx, domain.AuditFilter{Limit: 10, Descending: true})
 			require.NoError(t, err)
 			require.Len(t, list, 3)
 			assert.Equal(t, []string{"audit-3", "audit-2", "audit-1"}, []string{list[0].ID, list[1].ID, list[2].ID})
 			assert.Equal(t, *entries[0], list[2])
 			assert.Equal(t, "client", string(list[1].Origin))
 
-			list, err = store.Audit.List(ctx, domain.AuditFilter{Limit: 10, Descending: false})
+			list, err = store.Audit.List(ctx, domain.AuditFilter{Limit: 10})
 			require.NoError(t, err)
 			require.Len(t, list, 3)
 			assert.Equal(t, []string{"audit-1", "audit-2", "audit-3"}, []string{list[0].ID, list[1].ID, list[2].ID})
 
 			// filtros
-			list, err = store.Audit.List(ctx, domain.AuditFilter{Entity: "receipt", Limit: 10})
+			list, err = store.Audit.List(ctx, domain.AuditFilter{Entity: "receipt", Limit: 10, Descending: true})
 			require.NoError(t, err)
 			require.Len(t, list, 1)
 			assert.Equal(t, "audit-2", list[0].ID)
@@ -571,9 +583,10 @@ func TestAuditRepository(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, list, 1)
 			assert.Equal(t, "audit-3", list[0].ID)
-			list, err = store.Audit.List(ctx, domain.AuditFilter{Search: "CARLOS DRUMMOND", Limit: 10})
+			list, err = store.Audit.List(ctx, domain.AuditFilter{Search: "APTO 101", Limit: 10})
 			require.NoError(t, err)
-			assert.Len(t, list, 2)
+			require.Len(t, list, 1)
+			assert.Equal(t, "audit-2", list[0].ID)
 			list, err = store.Audit.List(ctx, domain.AuditFilter{Search: "receipt-1", Limit: 10})
 			require.NoError(t, err)
 			require.Len(t, list, 1)
@@ -589,10 +602,11 @@ func TestAuditRepository(t *testing.T) {
 			assert.Equal(t, "audit-3", list[0].ID)
 
 			// paginação
-			page, err := store.Audit.List(ctx, domain.AuditFilter{Limit: 2})
+			page, err := store.Audit.List(ctx, domain.AuditFilter{Limit: 2, Descending: true})
 			require.NoError(t, err)
 			require.Len(t, page, 2)
-			page, err = store.Audit.List(ctx, domain.AuditFilter{Limit: 2, Offset: 2})
+			assert.Equal(t, []string{"audit-3", "audit-2"}, []string{page[0].ID, page[1].ID})
+			page, err = store.Audit.List(ctx, domain.AuditFilter{Limit: 2, Offset: 2, Descending: true})
 			require.NoError(t, err)
 			require.Len(t, page, 1)
 			assert.Equal(t, "audit-1", page[0].ID)
@@ -730,6 +744,214 @@ func TestWhatsAppMessagesRepository(t *testing.T) {
 	}
 }
 
+// ── Vistorias e caução (temporada) ─────────────────────────────────
+
+func TestInspectionsRepository(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+			fixtures := seedPeople(t, store)
+			lease := seedLease(t, store, "lease-1", fixtures.tenantA, fixtures.propertyA, "2026-01-01", "2026-12-31")
+			other := seedLease(t, store, "lease-2", fixtures.tenantB, fixtures.propertyB, "2025-01-01", "2025-12-31")
+
+			checkIn := &domain.Inspection{
+				ID: "inspection-1", LeaseID: lease.ID, Kind: domain.InspectionKindCheckIn,
+				PerformedAt: "2026-01-01", Condition: domain.InspectionConditionGood,
+				Notes: domain.StrPtr("Imóvel entregue limpo"),
+				Items: []domain.InspectionItem{
+					{Area: "Sala", Item: "Sofá", State: "bom", Notes: "pequeno rasgo"},
+					{Area: "Cozinha", Item: "Geladeira", State: "ótimo"},
+				},
+				Photos: []domain.InspectionPhoto{
+					{Name: "sala-1.jpg", Label: "Sala", Caption: "vista geral"},
+					{Name: "cozinha-1.jpg"},
+				},
+				AuthToken: domain.StrPtr("token-vistoria"),
+				CreatedAt: "2026-01-01 10:00:00", UpdatedAt: "2026-01-01 10:00:00",
+			}
+			require.NoError(t, store.Inspections.Create(ctx, checkIn))
+
+			byID, err := store.Inspections.ByID(ctx, checkIn.ID)
+			require.NoError(t, err)
+			checkIn.TenantName, checkIn.PropertyName = byID.TenantName, byID.PropertyName
+			assert.Equal(t, *checkIn, *byID)
+			assert.Equal(t, "Carlos Drummond", byID.TenantName)
+			assert.Equal(t, "Apto 101", byID.PropertyName)
+			assert.Equal(t, "pequeno rasgo", byID.Items[0].Notes)
+			assert.Equal(t, "vista geral", byID.Photos[0].Caption)
+
+			_, err = store.Inspections.ByID(ctx, "inexistente")
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+
+			// vistoria sem itens nem fotos grava NULL e volta como lista vazia
+			checkOut := &domain.Inspection{
+				ID: "inspection-2", LeaseID: lease.ID, Kind: domain.InspectionKindCheckOut,
+				PerformedAt: "2026-06-30", Condition: domain.InspectionConditionFair,
+				CreatedAt: "2026-06-30 18:00:00", UpdatedAt: "2026-06-30 18:00:00",
+			}
+			require.NoError(t, store.Inspections.Create(ctx, checkOut))
+
+			byID, err = store.Inspections.ByID(ctx, checkOut.ID)
+			require.NoError(t, err)
+			assert.Empty(t, byID.Items)
+			assert.Empty(t, byID.Photos)
+			assert.Nil(t, byID.Notes)
+			assert.Nil(t, byID.AuthToken)
+			assert.Equal(t, domain.InspectionKindCheckOut, byID.Kind)
+			assert.Equal(t, domain.InspectionConditionFair, byID.Condition)
+			nullColumns := rawInspectionNulls(t, ctx, store)
+			assert.True(t, nullColumns["inspection-2"]["items"], "lista vazia de itens deve virar NULL")
+			assert.True(t, nullColumns["inspection-2"]["photos"], "lista vazia de fotos deve virar NULL")
+			assert.False(t, nullColumns["inspection-1"]["items"])
+
+			// listagem geral: da vistoria mais recente para a mais antiga
+			list, err := store.Inspections.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, list, 2)
+			assert.Equal(t, []string{"inspection-2", "inspection-1"}, []string{list[0].ID, list[1].ID})
+
+			byLease, err := store.Inspections.ByLease(ctx, lease.ID)
+			require.NoError(t, err)
+			require.Len(t, byLease, 2)
+			assert.Equal(t, []string{"inspection-2", "inspection-1"}, []string{byLease[0].ID, byLease[1].ID})
+			byLease, err = store.Inspections.ByLease(ctx, other.ID)
+			require.NoError(t, err)
+			assert.Empty(t, byLease)
+
+			// edição troca o conteúdo e volta a gravar NULL quando esvazia
+			checkOut.Condition = domain.InspectionConditionBad
+			checkOut.Notes = domain.StrPtr("Marcas na parede da sala")
+			checkOut.Items = []domain.InspectionItem{{Area: "Sala", Item: "Parede", State: "ruim"}}
+			checkOut.Photos = []domain.InspectionPhoto{{Name: "parede-1.jpg"}}
+			checkOut.UpdatedAt = "2026-07-01 09:00:00"
+			require.NoError(t, store.Inspections.Update(ctx, checkOut))
+
+			updated, err := store.Inspections.ByID(ctx, checkOut.ID)
+			require.NoError(t, err)
+			assert.Equal(t, domain.InspectionConditionBad, updated.Condition)
+			assert.Equal(t, "Marcas na parede da sala", domain.Str(updated.Notes))
+			assert.Equal(t, []domain.InspectionItem{{Area: "Sala", Item: "Parede", State: "ruim"}}, updated.Items)
+			assert.Equal(t, []domain.InspectionPhoto{{Name: "parede-1.jpg"}}, updated.Photos)
+
+			checkOut.Items = nil
+			checkOut.Photos = nil
+			require.NoError(t, store.Inspections.Update(ctx, checkOut))
+			updated, err = store.Inspections.ByID(ctx, checkOut.ID)
+			require.NoError(t, err)
+			assert.Empty(t, updated.Items)
+			assert.Empty(t, updated.Photos)
+			nullColumns = rawInspectionNulls(t, ctx, store)
+			assert.True(t, nullColumns["inspection-2"]["items"])
+			assert.True(t, nullColumns["inspection-2"]["photos"])
+
+			require.NoError(t, store.Inspections.Delete(ctx, checkOut.ID))
+			_, err = store.Inspections.ByID(ctx, checkOut.ID)
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+
+			// excluir o contrato leva as vistorias dele
+			require.NoError(t, store.Leases.Delete(ctx, lease.ID))
+			_, err = store.Inspections.ByID(ctx, checkIn.ID)
+			assert.ErrorIs(t, err, domain.ErrNotFound)
+			list, err = store.Inspections.List(ctx)
+			require.NoError(t, err)
+			assert.Empty(t, list)
+		})
+	}
+}
+
+func TestLeaseDeposit(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+			fixtures := seedPeople(t, store)
+
+			// contrato comum (locação longa): nenhuma caução
+			plain := seedLease(t, store, "lease-1", fixtures.tenantA, fixtures.propertyA, "2026-01-01", "2026-12-31")
+			read, err := store.Leases.ByID(ctx, plain.ID)
+			require.NoError(t, err)
+			assert.Nil(t, read.DepositAmount)
+			assert.Nil(t, read.DepositReceivedAt)
+			assert.Nil(t, read.DepositRefundedAt)
+			assert.Nil(t, read.DepositRefundedAmt)
+			assert.Nil(t, read.DepositNotes)
+			assert.Equal(t, domain.DepositStatusNone, read.DepositStatus)
+			assert.False(t, domain.HasDeposit(read.DepositAmount, read.DepositStatus))
+			nulls := rawLeaseDepositNulls(t, ctx, store)
+			assert.True(t, nulls[plain.ID]["status"], "contrato sem caução grava NULL em deposit_status")
+			assert.True(t, nulls[plain.ID]["amount"])
+
+			// contrato de temporada com caução retida
+			season := &domain.Lease{
+				ID: "lease-2", TenantID: fixtures.tenantB, PropertyID: fixtures.propertyB,
+				StartDate: "2026-02-01", EndDate: "2026-02-28", DueDay: 5, RentAmount: 1200,
+				Status:        domain.LeaseStatusSeason,
+				DepositAmount: domain.FloatPtr(1500), DepositStatus: domain.DepositStatusHeld,
+				DepositReceivedAt: domain.StrPtr("2026-02-01T15:00"),
+				DepositNotes:      domain.StrPtr("Caução recebida por PIX"),
+				CreatedAt:         "2026-01-20 10:00:00", UpdatedAt: "2026-01-20 10:00:00",
+			}
+			require.NoError(t, store.Leases.Create(ctx, season))
+
+			read, err = store.Leases.ByID(ctx, season.ID)
+			require.NoError(t, err)
+			require.NotNil(t, read.DepositAmount)
+			assert.Equal(t, 1500.0, *read.DepositAmount)
+			assert.Equal(t, domain.DepositStatusHeld, read.DepositStatus)
+			assert.Equal(t, "2026-02-01T15:00", domain.Str(read.DepositReceivedAt))
+			assert.Equal(t, "Caução recebida por PIX", domain.Str(read.DepositNotes))
+			assert.True(t, domain.HasDeposit(read.DepositAmount, read.DepositStatus))
+			nulls = rawLeaseDepositNulls(t, ctx, store)
+			assert.False(t, nulls[season.ID]["status"])
+			assert.False(t, nulls[season.ID]["amount"])
+
+			// a devolução entra pela edição do contrato
+			season.DepositStatus = domain.DepositStatusPartiallyRefunded
+			season.DepositRefundedAt = domain.StrPtr("2026-03-01T11:30")
+			season.DepositRefundedAmt = domain.FloatPtr(900)
+			season.DepositNotes = domain.StrPtr("Retidos R$ 600,00 do sofá")
+			season.UpdatedAt = "2026-03-01 11:30:00"
+			require.NoError(t, store.Leases.Update(ctx, season))
+
+			read, err = store.Leases.ByID(ctx, season.ID)
+			require.NoError(t, err)
+			assert.Equal(t, domain.DepositStatusPartiallyRefunded, read.DepositStatus)
+			require.NotNil(t, read.DepositRefundedAmt)
+			assert.Equal(t, 900.0, *read.DepositRefundedAmt)
+			assert.Equal(t, "2026-03-01T11:30", domain.Str(read.DepositRefundedAt))
+			assert.Equal(t, "Retidos R$ 600,00 do sofá", domain.Str(read.DepositNotes))
+
+			// voltar para "sem caução" limpa as colunas
+			season.DepositAmount = nil
+			season.DepositStatus = domain.DepositStatusNone
+			season.DepositReceivedAt = nil
+			season.DepositRefundedAt = nil
+			season.DepositRefundedAmt = nil
+			season.DepositNotes = nil
+			season.UpdatedAt = "2026-03-02 09:00:00"
+			require.NoError(t, store.Leases.Update(ctx, season))
+
+			read, err = store.Leases.ByID(ctx, season.ID)
+			require.NoError(t, err)
+			assert.Nil(t, read.DepositAmount)
+			assert.Nil(t, read.DepositRefundedAmt)
+			assert.Equal(t, domain.DepositStatusNone, read.DepositStatus)
+			nulls = rawLeaseDepositNulls(t, ctx, store)
+			assert.True(t, nulls[season.ID]["status"])
+			assert.True(t, nulls[season.ID]["amount"])
+
+			// a listagem também traz a caução
+			list, err := store.Leases.List(ctx)
+			require.NoError(t, err)
+			require.Len(t, list, 2)
+			for _, lease := range list {
+				assert.Equal(t, domain.DepositStatusNone, lease.DepositStatus)
+			}
+		})
+	}
+}
+
 // ── Apoio ──────────────────────────────────────────────────────────
 
 type people struct {
@@ -797,4 +1019,54 @@ func TestOpenResolvesDialect(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, db.DialectPostgres, dialect)
 	assert.Equal(t, "postgres://user:pass@host:5432/aluxen", target)
+}
+
+// seedLease cria um contrato comum (sem caução) para os testes de vistoria.
+func seedLease(t *testing.T, store *db.Store, id, tenantID, propertyID, startDate, endDate string) *domain.Lease {
+	t.Helper()
+	lease := &domain.Lease{
+		ID: id, TenantID: tenantID, PropertyID: propertyID,
+		StartDate: startDate, EndDate: endDate, DueDay: 10, RentAmount: 2500,
+		Status: domain.LeaseStatusActive, CreatedAt: "2026-01-01 10:00:00", UpdatedAt: "2026-01-01 10:00:00",
+	}
+	require.NoError(t, store.Leases.Create(context.Background(), lease))
+	return lease
+}
+
+// rawInspectionNulls lê diretamente as colunas de itens e fotos de cada vistoria:
+// prova que lista vazia é gravada como NULL, não como JSON vazio.
+func rawInspectionNulls(t *testing.T, ctx context.Context, store *db.Store) map[string]map[string]bool {
+	t.Helper()
+	rows, err := store.DB().QueryContext(ctx, "SELECT id, items IS NULL, photos IS NULL FROM inspections")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	nulls := map[string]map[string]bool{}
+	for rows.Next() {
+		var id string
+		var itemsNull, photosNull bool
+		require.NoError(t, rows.Scan(&id, &itemsNull, &photosNull))
+		nulls[id] = map[string]bool{"items": itemsNull, "photos": photosNull}
+	}
+	require.NoError(t, rows.Err())
+	return nulls
+}
+
+// rawLeaseDepositNulls lê diretamente as colunas de caução de cada contrato.
+func rawLeaseDepositNulls(t *testing.T, ctx context.Context, store *db.Store) map[string]map[string]bool {
+	t.Helper()
+	rows, err := store.DB().QueryContext(ctx,
+		"SELECT id, deposit_status IS NULL, deposit_amount IS NULL FROM leases")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	nulls := map[string]map[string]bool{}
+	for rows.Next() {
+		var id string
+		var statusNull, amountNull bool
+		require.NoError(t, rows.Scan(&id, &statusNull, &amountNull))
+		nulls[id] = map[string]bool{"status": statusNull, "amount": amountNull}
+	}
+	require.NoError(t, rows.Err())
+	return nulls
 }

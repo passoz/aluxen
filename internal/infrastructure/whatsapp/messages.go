@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"fmt"
 	"strings"
+
+	"github.com/passoz/aluxen/internal/application"
 )
 
 // Textos das mensagens do WhatsApp. São os mesmos que o app atual envia: o
@@ -88,32 +90,9 @@ func ChatID(phone string) string {
 	return clean + "@c.us"
 }
 
-// ReceiptMessageInput reúne o que a mensagem do recibo mostra. Os valores já
-// vêm formatados para exibição (datas em dd/mm/aaaa, dinheiro em Real).
-type ReceiptMessageInput struct {
-	TenantName      string
-	PropertyName    string
-	PropertyAddress string
-	DueDate         string
-	Amount          string
-	PaidAmount      string
-	// PaidAmountRaw alimenta a decisão de pagamento parcial (valor pago menor
-	// que o valor do recibo); nil quando não houve baixa.
-	PaidAmountRaw *float64
-	AmountRaw     float64
-	Category      string
-	Description   string
-	// PaidAt é a data da baixa já formatada (dd/mm/aaaa HH:mm); vazio quando não
-	// houve pagamento.
-	PaidAt        string
-	PDFURL        string
-	ValidationURL string
-	LandlordName  string
-}
-
 // ReceiptMessage monta a mensagem do recibo — o `buildReceiptWhatsAppMessage`
 // do app atual, linha por linha.
-func ReceiptMessage(in ReceiptMessageInput) string {
+func ReceiptMessage(in application.WhatsAppReceiptMessage) string {
 	isExtra := in.Category == "extra" || in.Description != ""
 	isPartial := in.PaidAmountRaw != nil && *in.PaidAmountRaw > 0 && *in.PaidAmountRaw < in.AmountRaw
 	isPaid := in.PaidAt != "" && !isPartial
@@ -178,23 +157,9 @@ Atenciosamente,
 		in.PDFURL, in.ValidationURL, landlordName)
 }
 
-// ContractMessageInput reúne o que a mensagem do contrato mostra.
-type ContractMessageInput struct {
-	TenantName      string
-	PropertyName    string
-	PropertyAddress string
-	StartDate       string
-	EndDate         string
-	DueDay          int
-	RentAmount      string
-	PDFURL          string
-	ValidationURL   string
-	LandlordName    string
-}
-
 // ContractMessage monta a mensagem do contrato — o
 // `buildContractWhatsAppMessage` do app atual, linha por linha.
-func ContractMessage(in ContractMessageInput) string {
+func ContractMessage(in application.WhatsAppContractMessage) string {
 	landlordName := in.LandlordName
 	if landlordName == "" {
 		landlordName = "Locador"
@@ -220,4 +185,29 @@ Atenciosamente,
 *%s*`,
 		in.TenantName, in.PropertyName, in.RentAmount, in.DueDay, in.StartDate, in.EndDate,
 		in.PDFURL, in.ValidationURL, landlordName)
+}
+
+// Messages implementa application.WhatsAppMessages sobre as funções puras deste
+// pacote: é o valor sem estado que o composition root injeta em `Deps.Messages`,
+// permitindo ao caso de uso montar a mensagem sem depender da infraestrutura.
+type Messages struct{}
+
+var _ application.WhatsAppMessages = Messages{}
+
+// SanitizePhone devolve o número no formato do WhatsApp.
+func (Messages) SanitizePhone(raw string) string { return SanitizePhone(raw) }
+
+// DirectURLWithMessage devolve o link direto com a mensagem pré-preenchida.
+func (Messages) DirectURLWithMessage(phone, message string) string {
+	return DirectURLWithMessage(phone, message)
+}
+
+// Receipt monta a mensagem do recibo.
+func (Messages) Receipt(message application.WhatsAppReceiptMessage) string {
+	return ReceiptMessage(message)
+}
+
+// Contract monta a mensagem do contrato.
+func (Messages) Contract(message application.WhatsAppContractMessage) string {
+	return ContractMessage(message)
 }

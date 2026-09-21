@@ -45,6 +45,9 @@ const (
 	BlockRule BlockKind = "rule"
 	// BlockGap é um espaço vertical (`Size` em pontos).
 	BlockGap BlockKind = "gap"
+	// BlockTable é uma tabela de colunas fixas: o cabeçalho em negrito e uma
+	// linha por registro (`Columns`, `Rows` e `ColumnWidths`).
+	BlockTable BlockKind = "table"
 	// BlockImage é uma imagem embutida (`ImagePNG`), medida em milímetros.
 	BlockImage BlockKind = "image"
 	// BlockSignature é uma linha de assinatura com o rótulo do signatário. Duas
@@ -95,6 +98,14 @@ type Block struct {
 	WidthMM  float64
 	HeightMM float64
 	QR       string
+	// Columns e Rows formam a tabela do bloco `table`: o cabeçalho e as linhas
+	// de dados, célula a célula. Cada célula é quebrada em linhas dentro da
+	// largura da sua coluna.
+	Columns []string
+	Rows    [][]string
+	// ColumnWidths são as frações de largura das colunas (somam 1). Sem elas, as
+	// colunas saem com a mesma largura.
+	ColumnWidths []float64
 }
 
 // newDocument monta um documento de uma página a partir dos blocos.
@@ -120,6 +131,12 @@ func section(text string) Block {
 // metric monta uma célula do resumo (rótulo sobre o valor).
 func metric(text, value string, size float64, tone string) Block {
 	return Block{Kind: BlockMetric, Text: text, Value: value, Size: size, Tone: tone}
+}
+
+// table monta uma tabela: o cabeçalho, as linhas de dados e as frações de
+// largura das colunas.
+func table(columns []string, rows [][]string, widths []float64, size float64) Block {
+	return Block{Kind: BlockTable, Columns: columns, Rows: rows, ColumnWidths: widths, Size: size}
 }
 
 // authBlock monta o selo de autenticidade do documento.

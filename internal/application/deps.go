@@ -20,6 +20,16 @@ type Repositories struct {
 	Receipts   domain.ReceiptRepository
 	Settings   domain.SettingRepository
 	Audit      domain.AuditRepository
+	// WhatsApp guarda as mensagens trocadas pelo canal (webhook do WAHA).
+	WhatsApp domain.WhatsAppMessageRepository
+	// Inspections guarda os autos de vistoria de entrada e saída (temporada).
+	Inspections domain.InspectionRepository
+	// Jobs é a fila de trabalho assíncrono (leitura de documento, envio, cobrança).
+	Jobs domain.JobRepository
+	// PaymentProofs guarda comprovantes lidos e a decisão sobre eles.
+	PaymentProofs domain.PaymentProofRepository
+	// Intakes guarda cadastros propostos a partir de documento.
+	Intakes domain.DocumentIntakeRepository
 }
 
 // Options são as configurações de produto que os casos de uso precisam conhecer.
@@ -54,6 +64,12 @@ type Deps struct {
 	IDs    domain.IDGenerator
 	Hasher domain.PasswordHasher
 	Signer TokenSigner
-	Log    *slog.Logger
-	Opts   Options
+	// Messages monta os textos do canal do WhatsApp (textos literais do app
+	// atual). É um valor sem estado; a implementação vive em
+	// internal/infrastructure/whatsapp.
+	Messages WhatsAppMessages
+	// Attachments guarda fotos de vistoria e documentos enviados.
+	Attachments AttachmentStore
+	Log         *slog.Logger
+	Opts        Options
 }

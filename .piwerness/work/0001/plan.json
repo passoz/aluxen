@@ -144,7 +144,7 @@
     {
       "id": "1.3",
       "title": "Migrações por dialeto e seeds de instância",
-      "requirement_id": "FR-002",
+      "requirement_id": "FR-017",
       "spec_reference": "CAP-001",
       "contract_id": "CTR-003",
       "complexity": "standard",

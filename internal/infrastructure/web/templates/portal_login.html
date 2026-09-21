@@ -1,0 +1,31 @@
+{{define "portal_login.html"}}{{template "head" .}}
+<div class="login-page">
+  <div class="card login-card">
+    <div class="brand-lockup">
+      <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
+      <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
+      <p class="subtitle" style="margin: 0;">Área do Cliente</p>
+    </div>
+
+    <form method="post" action="/portal/login" class="stack" data-native>
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      {{with .Data}}
+      {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+      <div class="form-group">
+        <label for="cpf">CPF</label>
+        <input id="cpf" name="cpf" type="text" inputmode="numeric" autocomplete="username"
+               placeholder="000.000.000-00" value="{{.CPF}}" data-mask="cpf" required autofocus>
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <small style="color: var(--text-muted); font-size: 0.8rem;">
+          No primeiro acesso a senha é o seu CPF (somente números).
+        </small>
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+      {{end}}
+    </form>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

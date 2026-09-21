@@ -1,0 +1,464 @@
+{
+  "work_id": "0005",
+  "title": "Deploy por instância, migração de dialeto e tier 2 assistido",
+  "scenario": "brownfield",
+  "problem": "Demos e clientes serão servidos por uma instância por cliente no Easypanel, mas provisionar isso hoje é trabalho manual repetitivo: criar app, montar volume, definir variáveis, criar domínio, subir e semear. Além disso, a instância que precisa trocar de SQLite para Postgres não tem caminho seguro, e as duas dores anuais do locador (reajuste esquecido e leitura dos próprios números) seguem manuais.",
+  "solution": "Fechar o ciclo de operação: script de provisionamento sobre a API do Easypanel que cria uma demo em um comando, rotina de expiração e remoção sem resíduo, CLI de migração SQLite → Postgres com pré-checagem, dry-run, transação e verificação por contagem e checksum, e os dois incrementos assistidos de tier 2 — reajuste anual com índice e notificação formal redigida, e relatório mensal com consulta em linguagem natural respondida por tool-calling tipado sobre os dados.",
+  "actors": [
+    {
+      "id": "ACT-001",
+      "name": "Locador (administrador)",
+      "description": "Aplica reajuste assistido e consulta os números em linguagem natural."
+    },
+    {
+      "id": "ACT-004",
+      "name": "Operador de instância",
+      "description": "Provisiona demos e clientes, expira demos, migra dialeto e opera o ciclo de vida."
+    }
+  ],
+  "constraints": [
+    "Nenhuma migração de dados sem dry-run, transação e verificação; o SQLite de origem nunca é apagado.",
+    "Consulta em linguagem natural só por tool-calling tipado sobre os casos de uso — nunca text-to-SQL solto.",
+    "Cálculo de reajuste é regra determinística; a IA, quando usada, apenas redige a notificação já decidida.",
+    "Fora de escopo: billing, planos, onboarding self-service e multi-tenant no código."
+  ],
+  "objectives": [
+    "Criar uma instância de demo em um comando, com volume, variáveis, domínio e seed.",
+    "Rotina de expiração e remoção de demos sem resíduo.",
+    "CLI de migração SQLite → Postgres com dry-run, verificação e rollback documentado.",
+    "Reajuste anual assistido (IGP-M/IPCA) com notificação formal redigida.",
+    "Relatório mensal e consulta em linguagem natural por ferramentas tipadas.",
+    "Documentação de operação: provisionamento, expiração, migração e atualização canário."
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "Provisionamento é script sobre a API do Easypanel; o registro DNS continua manual, como decidido.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-002",
+      "statement": "Migração de dialeto é CLI de operador, com dry-run e verificação por contagem e checksum; o volume antigo fica como backup.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-003",
+      "statement": "Consulta em linguagem natural usa apenas ferramentas tipadas sobre os casos de uso; nenhum SQL gerado por modelo.",
+      "status": "accepted",
+      "made_by": "operator"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "FR-401",
+      "title": "Provisionamento de instância",
+      "user_story": "Como operador, quero criar uma demo em um comando, para entregar demonstração sem trabalho manual.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre o cliente do Easypanel com servidor falso (criar app, volume, variáveis, domínio, deploy)",
+        "O script aceita nome, subdomínio, imagem e variáveis e é idempotente para o mesmo nome",
+        "A demo sobe já com dados de demonstração"
+      ]
+    },
+    {
+      "id": "FR-402",
+      "title": "Ciclo de vida da demo",
+      "user_story": "Como operador, quero listar e remover demos vencidas, para não acumular instância esquecida.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre listagem por etiqueta de expiração e remoção de app e volume",
+        "A remoção não deixa resíduo em nenhum outro lugar",
+        "A rotina é executável por comando e registra o que removeu"
+      ]
+    },
+    {
+      "id": "FR-403",
+      "title": "CLI de migração de dialeto",
+      "user_story": "Como operador, quero migrar uma instância de SQLite para Postgres com segurança, para trocar de banco sem perder dado.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre pré-checagem, dry-run, cópia em transação, verificação por contagem e checksum e rollback",
+        "A origem permanece intacta ao final",
+        "Falha no meio da cópia não deixa destino parcial consistente (transação revertida)"
+      ]
+    },
+    {
+      "id": "FR-404",
+      "title": "Reajuste assistido",
+      "user_story": "Como locador, quero aplicar o índice do meu contrato e gerar a notificação, para não esquecer o reajuste anual.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre cálculo por índice, arredondamento, aplicação no contrato e geração do texto de notificação",
+        "O cálculo é determinístico e auditado; o texto pode ser redigido por IA a partir do valor já calculado",
+        "Reajuste aplicado gera evento na trilha e pode ser enviado por WhatsApp"
+      ]
+    },
+    {
+      "id": "FR-405",
+      "title": "Consulta em linguagem natural",
+      "user_story": "Como locador, quero perguntar quanto recebi no mês e receber o número do banco, para não montar planilha.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre relatório mensal e perguntas respondidas por ferramenta tipada",
+        "Nenhum SQL é gerado por modelo; perguntas sem ferramenta aplicável são recusadas com clareza",
+        "A resposta cita os números vindos dos casos de uso"
+      ]
+    },
+    {
+      "id": "FR-406",
+      "title": "Documentação de operação",
+      "user_story": "Como operador, quero um roteiro de operação, para repetir o processo sem depender de memória.",
+      "acceptance_criteria": [
+        "Documento cobre provisionamento, expiração, migração, atualização canário e backup por volume",
+        "README descreve a operação por instância e as variáveis de ambiente",
+        "Nenhuma instrução depende de passo não versionado"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-401",
+      "name": "Provisionamento",
+      "description": "Cliente da API do Easypanel, comando de criação de instância e seed de demonstração.",
+      "rules": [
+        "BR-401"
+      ]
+    },
+    {
+      "id": "CAP-402",
+      "name": "Ciclo de vida",
+      "description": "Listagem por expiração e remoção de demo com volume.",
+      "rules": [
+        "BR-402"
+      ]
+    },
+    {
+      "id": "CAP-403",
+      "name": "Migração de dialeto",
+      "description": "CLI de cópia verificada entre dialetos, com dry-run e rollback.",
+      "rules": [
+        "BR-403"
+      ]
+    },
+    {
+      "id": "CAP-404",
+      "name": "Tier 2 assistido",
+      "description": "Reajuste anual e consulta em linguagem natural por ferramentas tipadas.",
+      "rules": [
+        "BR-404",
+        "BR-405"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-401",
+      "statement": "Provisionamento usa a imagem publicada e não constrói nada na VPS.",
+      "coverage": [
+        "CAP-401"
+      ],
+      "evidence": "go test ./internal/infrastructure/easypanel/..."
+    },
+    {
+      "id": "BR-402",
+      "statement": "Remover instância remove app e volume; nada fica em banco compartilhado porque ele não existe.",
+      "coverage": [
+        "CAP-402"
+      ],
+      "evidence": "go test ./internal/infrastructure/easypanel/..."
+    },
+    {
+      "id": "BR-403",
+      "statement": "Migração de dialeto só troca a variável de ambiente depois de verificação por contagem e checksum, e nunca apaga a origem.",
+      "coverage": [
+        "CAP-403"
+      ],
+      "evidence": "go test ./cmd/migrate/..."
+    },
+    {
+      "id": "BR-404",
+      "statement": "Reajuste é cálculo determinístico auditado; IA no máximo redige o texto.",
+      "coverage": [
+        "CAP-404"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-405",
+      "statement": "Consulta em linguagem natural usa apenas ferramentas tipadas; nenhum SQL gerado por modelo.",
+      "coverage": [
+        "CAP-404"
+      ],
+      "evidence": "go test ./internal/application/..."
+    }
+  ],
+  "components": [
+    {
+      "name": "ops",
+      "purpose": "Provisionamento, ciclo de vida e migração"
+    },
+    {
+      "name": "application",
+      "purpose": "Reajuste assistido e consulta em linguagem natural"
+    },
+    {
+      "name": "docs",
+      "purpose": "Roteiro de operação e documentação"
+    },
+    {
+      "name": "web",
+      "purpose": "Tela de reajuste e relatórios"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "acceptance": [
+    {
+      "command": "go build ./...",
+      "description": "compilação de todos os pacotes"
+    },
+    {
+      "command": "go vet ./...",
+      "description": "análise estática do vet"
+    },
+    {
+      "command": "go test ./...",
+      "description": "suíte completa de testes"
+    }
+  ],
+  "default_write_allow": [
+    "cmd/**",
+    "internal/**",
+    "docs/**",
+    "README.md",
+    "scripts/**",
+    "*.go",
+    "*.md",
+    "*.yaml",
+    "*.yml",
+    "*.json"
+  ],
+  "default_write_deny": [
+    ".git/**",
+    ".env",
+    ".env.*",
+    "!.env.example"
+  ],
+  "tasks": [
+    {
+      "id": "5.1",
+      "title": "Provisionamento de instância no Easypanel",
+      "requirement_id": "FR-401",
+      "spec_reference": "CAP-401",
+      "behavior": "um comando cria a instância com imagem, volume, variáveis, domínio e seed",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/infrastructure/easypanel/",
+        "cmd/provision/main.go"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/easypanel/**",
+        "cmd/provision/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/easypanel/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes com servidor falso para cada chamada da API",
+        "Implementar o cliente e o comando de provisionamento com seed de demonstração"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "cliente e comando cobertos por teste"
+        }
+      ],
+      "risk": "L2"
+    },
+    {
+      "id": "5.2",
+      "title": "Ciclo de vida das demos",
+      "requirement_id": "FR-402",
+      "spec_reference": "CAP-402",
+      "behavior": "o comando lista instâncias por expiração e remove app e volume sem resíduo",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "cmd/provision/main.go",
+        "internal/infrastructure/easypanel/"
+      ],
+      "implementation_files": [
+        "cmd/**",
+        "internal/infrastructure/easypanel/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/easypanel/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de listagem e remoção",
+        "Implementar os subcomandos de expiração e remoção"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "ciclo de vida coberto por teste"
+        }
+      ],
+      "risk": "L2",
+      "depends_on": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "5.3",
+      "title": "CLI de migração SQLite para Postgres",
+      "requirement_id": "FR-403",
+      "spec_reference": "CAP-403",
+      "behavior": "a migração faz pré-checagem, dry-run, cópia em transação, verificação e relata o resultado",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "cmd/migrate/main.go",
+        "internal/application/migrate.go"
+      ],
+      "implementation_files": [
+        "cmd/migrate/**",
+        "internal/application/**"
+      ],
+      "test_files": [
+        "cmd/migrate/",
+        "internal/application/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de dry-run, cópia, verificação e falha no meio",
+        "Implementar a CLI com ordem de dependência e checksum"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "migração coberta por teste, incluindo rollback"
+        }
+      ],
+      "risk": "L4",
+      "depends_on": [
+        "5.1"
+      ]
+    },
+    {
+      "id": "5.4",
+      "title": "Reajuste anual assistido",
+      "requirement_id": "FR-404",
+      "spec_reference": "CAP-404",
+      "behavior": "o índice é aplicado ao contrato com cálculo determinístico e a notificação é gerada para envio",
+      "components": [
+        "application",
+        "web"
+      ],
+      "files": [
+        "internal/application/adjustment.go",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de cálculo, aplicação, auditoria e texto",
+        "Implementar o caso de uso e a tela de reajuste"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "reajuste coberto por teste"
+        }
+      ],
+      "risk": "L2"
+    },
+    {
+      "id": "5.5",
+      "title": "Relatório mensal e consulta em linguagem natural",
+      "requirement_id": "FR-405",
+      "spec_reference": "CAP-404",
+      "behavior": "o relatório é montado pelos casos de uso e as perguntas são respondidas por ferramentas tipadas",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/report.go",
+        "internal/application/ask.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de relatório e de perguntas com ferramenta e sem ferramenta",
+        "Implementar as ferramentas tipadas e a resposta"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "relatório e consulta cobertos por teste"
+        }
+      ],
+      "risk": "L2",
+      "depends_on": [
+        "5.4"
+      ]
+    },
+    {
+      "id": "5.6",
+      "title": "Documentação de operação",
+      "requirement_id": "FR-406",
+      "spec_reference": "CAP-401",
+      "behavior": "o roteiro de operação cobre provisionamento, expiração, migração, atualização canário e backup",
+      "components": [
+        "docs"
+      ],
+      "files": [
+        "docs/",
+        "README.md"
+      ],
+      "implementation_files": [
+        "docs/**",
+        "README.md"
+      ],
+      "test_files": [
+        "internal/"
+      ],
+      "implementation_steps": [
+        "Escrever o roteiro de operação",
+        "Atualizar o README com a operação por instância"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "risk": "L1",
+      "documentation": "REQUIRED",
+      "depends_on": [
+        "5.1",
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5"
+      ]
+    }
+  ]
+}

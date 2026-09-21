@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/passoz/aluxen/internal/application"
 )
 
 // Webhook do WAHA: por aqui entram as mensagens que o locatário manda. Duas
@@ -92,31 +94,6 @@ func (p WebhookPolicy) Open() bool {
 	return strings.TrimSpace(p.Secret) == "" && p.Demo
 }
 
-// IncomingMessage é uma mensagem que chegou pelo webhook do WAHA.
-type IncomingMessage struct {
-	// Event é o nome do evento do WAHA (`message` ou `message.any`).
-	Event string
-	// Session é a sessão do WAHA que recebeu a mensagem.
-	Session string
-	// ID é o id da mensagem no WhatsApp (chave de idempotência do webhook).
-	ID string
-	// ChatID é a conversa no formato do WAHA (`5511999999999@c.us`).
-	ChatID string
-	// Phone é o telefone do outro lado, só dígitos.
-	Phone string
-	// ContactName é o nome exibido do contato, quando o WAHA o informa.
-	ContactName string
-	// Text é o corpo da mensagem.
-	Text string
-	// Timestamp é o instante em que o WhatsApp registrou a mensagem (zero
-	// quando o WAHA não informa).
-	Timestamp time.Time
-	// FromMe é true no eco de uma mensagem que nós mesmos enviamos.
-	FromMe bool
-	// HasMedia informa se a mensagem traz anexo (o Aluxen ainda não lê mídia).
-	HasMedia bool
-}
-
 // webhookEnvelope é o envelope do WAHA: evento, sessão e o payload da mensagem.
 type webhookEnvelope struct {
 	Event   string `json:"event"`
@@ -138,13 +115,17 @@ type webhookEnvelope struct {
 // ParseWebhook entende o envelope do WAHA e extrai remetente, texto, id e
 // instante da mensagem. Evento que não seja mensagem devolve ErrIgnoredEvent:
 // o WAHA entrega também avisos de sessão e confirmações de leitura.
-func ParseWebhook(body []byte) (IncomingMessage, error) {
+//
+// O tipo devolvido é o do caso de uso (application.IncomingMessage): a
+// infraestrutura preenche o contrato, e a aplicação persiste e audita sem
+// espelhar o mesmo struct em duas camadas.
+func ParseWebhook(body []byte) (application.IncomingMessage, error) {
 	var envelope webhookEnvelope
 	if err := json.Unmarshal(body, &envelope); err != nil {
-		return IncomingMessage{}, fmt.Errorf("webhook do WhatsApp ilegível: %w", err)
+		return application.IncomingMessage{}, fmt.Errorf("webhook do WhatsApp ilegível: %w", err)
 	}
 	if envelope.Event != EventMessage && envelope.Event != EventMessageAny {
-		return IncomingMessage{}, fmt.Errorf("%w: %s", ErrIgnoredEvent, envelope.Event)
+		return application.IncomingMessage{}, fmt.Errorf("%w: %s", ErrIgnoredEvent, envelope.Event)
 	}
 
 	chatID := envelope.Payload.From
@@ -157,14 +138,14 @@ func ParseWebhook(body []byte) (IncomingMessage, error) {
 		senderID = chatID
 	}
 
-	message := IncomingMessage{
+	message := application.IncomingMessage{
 		Event:       envelope.Event,
 		Session:     envelope.Session,
 		ID:          messageID(envelope.Payload.ID),
 		ChatID:      chatID,
 		Phone:       chatPhone(senderID),
 		ContactName: firstNonEmpty(envelope.Payload.PushName, envelope.Payload.NotifyName),
-		Text:        envelope.Payload.Body,
+		Body:        envelope.Payload.Body,
 		FromMe:      envelope.Payload.FromMe,
 		HasMedia:    envelope.Payload.HasMedia,
 	}

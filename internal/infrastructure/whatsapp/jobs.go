@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/domain"
 )
 
@@ -12,52 +13,12 @@ import (
 // com um `jobId` e o painel acompanha as etapas por polling.
 //
 // O job pertence a quem o criou: o `jobId` de outro administrador não é
-// consultável.
+// consultável. Os tipos do job são os do caso de uso (application) porque o
+// acompanhamento é o mesmo payload que o painel lê em
+// /api/whatsapp/send/status.
 
 // JobTTL é o tempo de vida de um job, igual ao `JOB_TTL_MS` do app atual.
 const JobTTL = 5 * time.Minute
-
-// JobStatus é o desfecho do envio.
-type JobStatus string
-
-const (
-	JobRunning JobStatus = "running"
-	JobDone    JobStatus = "done"
-	JobError   JobStatus = "error"
-)
-
-// SendStage é a etapa observável do envio, sem detalhes técnicos.
-type SendStage string
-
-const (
-	StagePreparing   SendStage = "preparing"
-	StageConnecting  SendStage = "connecting"
-	StageOpeningChat SendStage = "opening_chat"
-	StageSending     SendStage = "sending"
-	StageConfirming  SendStage = "confirming"
-	StageDone        SendStage = "done"
-)
-
-// SendResult é o resultado do envio concluído.
-type SendResult struct {
-	Success   bool   `json:"success"`
-	To        string `json:"to"`
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-	Error     string `json:"error,omitempty"`
-}
-
-// Job é o acompanhamento de um envio.
-type Job struct {
-	ID        string      `json:"id"`
-	UserID    string      `json:"userId"`
-	Status    JobStatus   `json:"status"`
-	Stage     SendStage   `json:"stage"`
-	Result    *SendResult `json:"result,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	CreatedAt int64       `json:"createdAt"`
-	UpdatedAt int64       `json:"updatedAt"`
-}
 
 // JobStore guarda os jobs em memória e descarta os vencidos.
 type JobStore struct {
@@ -66,27 +27,27 @@ type JobStore struct {
 	ttl   time.Duration
 
 	mu   sync.Mutex
-	jobs map[string]*Job
+	jobs map[string]*application.WhatsAppJob
 }
 
 // NewJobStore cria a fila de acompanhamento dos envios.
 func NewJobStore(clock domain.Clock, ids domain.IDGenerator) *JobStore {
-	return &JobStore{clock: clock, ids: ids, ttl: JobTTL, jobs: map[string]*Job{}}
+	return &JobStore{clock: clock, ids: ids, ttl: JobTTL, jobs: map[string]*application.WhatsAppJob{}}
 }
 
 // Create abre um job para o administrador informado.
-func (s *JobStore) Create(userID string) Job {
+func (s *JobStore) Create(userID string) application.WhatsAppJob {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := s.now()
 	s.prune(now)
 
-	job := &Job{
+	job := &application.WhatsAppJob{
 		ID:        s.ids.New(),
 		UserID:    userID,
-		Status:    JobRunning,
-		Stage:     StagePreparing,
+		Status:    application.JobRunning,
+		Stage:     application.StagePreparing,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -95,11 +56,11 @@ func (s *JobStore) Create(userID string) Job {
 }
 
 // Stage publica a etapa atual do envio.
-func (s *JobStore) Stage(id string, stage SendStage) {
+func (s *JobStore) Stage(jobID string, stage application.WhatsAppStage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, ok := s.jobs[id]
+	job, ok := s.jobs[jobID]
 	if !ok {
 		return
 	}
@@ -108,45 +69,45 @@ func (s *JobStore) Stage(id string, stage SendStage) {
 }
 
 // Complete encerra o job com o resultado do envio.
-func (s *JobStore) Complete(id string, result SendResult) {
+func (s *JobStore) Complete(jobID string, result application.WhatsAppSendResult) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, ok := s.jobs[id]
+	job, ok := s.jobs[jobID]
 	if !ok {
 		return
 	}
-	job.Status = JobDone
-	job.Stage = StageDone
+	job.Status = application.JobDone
+	job.Stage = application.StageDone
 	job.Result = &result
 	job.Error = ""
 	job.UpdatedAt = s.now()
 }
 
 // Fail encerra o job com a razão da falha.
-func (s *JobStore) Fail(id, reason string) {
+func (s *JobStore) Fail(jobID, reason string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	job, ok := s.jobs[id]
+	job, ok := s.jobs[jobID]
 	if !ok {
 		return
 	}
-	job.Status = JobError
+	job.Status = application.JobError
 	job.Error = reason
 	job.UpdatedAt = s.now()
 }
 
 // Get devolve o job do administrador informado. O job de outro dono é
 // indistinguível de um job inexistente.
-func (s *JobStore) Get(id, userID string) (Job, bool) {
+func (s *JobStore) Get(jobID, userID string) (application.WhatsAppJob, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.prune(s.now())
-	job, ok := s.jobs[id]
+	job, ok := s.jobs[jobID]
 	if !ok || job.UserID != userID {
-		return Job{}, false
+		return application.WhatsAppJob{}, false
 	}
 	return *job, true
 }

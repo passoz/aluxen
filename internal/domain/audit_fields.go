@@ -21,6 +21,9 @@ const (
 	AuditFormatDateTime        AuditValueFormat = "datetime"
 	AuditFormatLeaseStatus     AuditValueFormat = "leaseStatus"
 	AuditFormatReceiptCategory AuditValueFormat = "receiptCategory"
+	AuditFormatDepositStatus   AuditValueFormat = "depositStatus"
+	AuditFormatInspectionKind  AuditValueFormat = "inspectionKind"
+	AuditFormatCondition       AuditValueFormat = "inspectionCondition"
 )
 
 // AuditFieldSpec liga a chave do campo ao rótulo e ao formato de apresentação.
@@ -89,17 +92,17 @@ var (
 	DepositAuditFields = []AuditFieldSpec{
 		{Key: "amount", Label: "Caução", Format: AuditFormatCurrency},
 		{Key: "refundedAmount", Label: "Valor devolvido", Format: AuditFormatCurrency},
-		{Key: "status", Label: "Situação", Format: AuditFormatText},
+		{Key: "status", Label: "Situação", Format: AuditFormatDepositStatus},
 		{Key: "refundedAt", Label: "Devolvida em", Format: AuditFormatDateTime},
 		{Key: "notes", Label: "Observações", Format: AuditFormatText},
 	}
 
 	InspectionAuditFields = []AuditFieldSpec{
-		{Key: "kind", Label: "Tipo", Format: AuditFormatText},
+		{Key: "kind", Label: "Tipo", Format: AuditFormatInspectionKind},
 		{Key: "performedAt", Label: "Realizada em", Format: AuditFormatDateTime},
 		{Key: "tenant_name", Label: "Inquilino", Format: AuditFormatText},
 		{Key: "property_name", Label: "Imóvel", Format: AuditFormatText},
-		{Key: "condition", Label: "Estado geral", Format: AuditFormatText},
+		{Key: "condition", Label: "Estado geral", Format: AuditFormatCondition},
 		{Key: "notes", Label: "Observações", Format: AuditFormatText},
 	}
 )
@@ -123,6 +126,12 @@ func FormatAuditValue(valueFormat AuditValueFormat, raw string) *string {
 		formatted = LeaseStatusLabel(LeaseStatus(trimmed))
 	case AuditFormatReceiptCategory:
 		formatted = ReceiptCategoryLabel(ReceiptCategory(trimmed))
+	case AuditFormatDepositStatus:
+		formatted = DepositStatusLabel(DepositStatus(trimmed))
+	case AuditFormatInspectionKind:
+		formatted = InspectionKindLabel(InspectionKind(trimmed))
+	case AuditFormatCondition:
+		formatted = InspectionConditionLabel(InspectionCondition(trimmed))
 	default:
 		formatted = trimmed
 	}

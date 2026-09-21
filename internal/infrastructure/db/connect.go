@@ -13,10 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/passoz/aluxen/internal/domain"
-	"github.com/passoz/aluxen/internal/infrastructure/db/postgres"
-	"github.com/passoz/aluxen/internal/infrastructure/db/sqlite"
-
 	_ "github.com/jackc/pgx/v5/stdlib" // driver "pgx"
 	_ "modernc.org/sqlite"             // driver "sqlite"
 )
@@ -31,25 +27,6 @@ const (
 
 // defaultDBFile é o nome do arquivo usado quando não há DATABASE_URL.
 const defaultDBFile = "aluxen.db"
-
-// Store é a conexão aberta com todos os repositórios do sistema. Os campos de
-// repositório são as portas de domínio; quem consome o banco depende apenas
-// delas (o composition root monta application.Repositories a partir daqui).
-type Store struct {
-	Dialect Dialect
-
-	Users      domain.UserRepository
-	Tenants    domain.TenantRepository
-	Properties domain.PropertyRepository
-	Leases     domain.LeaseRepository
-	Receipts   domain.ReceiptRepository
-	Settings   domain.SettingRepository
-	Audit      domain.AuditRepository
-	WhatsApp   domain.WhatsAppMessageRepository
-
-	db   *sql.DB
-	path string
-}
 
 // ResolveDialect decide o dialeto e o destino da conexão a partir da
 // configuração, com a mesma precedência do app atual (`src/db/index.ts`):
@@ -108,34 +85,6 @@ func Open(ctx context.Context, databaseURL, dbDir string) (*Store, error) {
 	return store, nil
 }
 
-// newStore monta os repositórios do dialeto sobre a conexão aberta.
-func newStore(dialect Dialect, sqlDB *sql.DB, target string) *Store {
-	store := &Store{Dialect: dialect, db: sqlDB}
-	if dialect == DialectPostgres {
-		store.path = "" // não há arquivo no Postgres
-		store.Users = postgres.NewUsers(sqlDB)
-		store.Tenants = postgres.NewTenants(sqlDB)
-		store.Properties = postgres.NewProperties(sqlDB)
-		store.Leases = postgres.NewLeases(sqlDB)
-		store.Receipts = postgres.NewReceipts(sqlDB)
-		store.Settings = postgres.NewSettings(sqlDB)
-		store.Audit = postgres.NewAudit(sqlDB)
-		store.WhatsApp = postgres.NewWhatsAppMessages(sqlDB)
-		return store
-	}
-
-	store.path = target
-	store.Users = sqlite.NewUsers(sqlDB)
-	store.Tenants = sqlite.NewTenants(sqlDB)
-	store.Properties = sqlite.NewProperties(sqlDB)
-	store.Leases = sqlite.NewLeases(sqlDB)
-	store.Receipts = sqlite.NewReceipts(sqlDB)
-	store.Settings = sqlite.NewSettings(sqlDB)
-	store.Audit = sqlite.NewAudit(sqlDB)
-	store.WhatsApp = sqlite.NewWhatsAppMessages(sqlDB)
-	return store
-}
-
 // open abre a conexão do dialeto e confirma que ela responde.
 func open(ctx context.Context, dialect Dialect, target string) (*sql.DB, error) {
 	if dialect == DialectPostgres {
@@ -172,43 +121,4 @@ func sqliteDSN(path string) string {
 	params.Add("_pragma", "journal_mode(WAL)")
 	params.Add("_pragma", "foreign_keys(ON)")
 	return path + "?" + params.Encode()
-}
-
-// Migrate aplica as migrações pendentes do dialeto da conexão.
-func (s *Store) Migrate(ctx context.Context) error {
-	return runMigrations(ctx, s.db, s.Dialect)
-}
-
-// Ping confirma que o banco responde.
-func (s *Store) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
-}
-
-// Close fecha a conexão.
-func (s *Store) Close() error {
-	return s.db.Close()
-}
-
-// Path devolve o caminho do arquivo SQLite (vazio no Postgres).
-func (s *Store) Path() string {
-	return s.path
-}
-
-// SizeBytes devolve o tamanho do arquivo SQLite em bytes (zero no Postgres).
-func (s *Store) SizeBytes() int64 {
-	if s.path == "" {
-		return 0
-	}
-	info, err := os.Stat(s.path)
-	if err != nil {
-		return 0
-	}
-	return info.Size()
-}
-
-// DB devolve a conexão crua para as rotinas de infraestrutura que precisam dela
-// (por exemplo a CLI de migração SQLite → Postgres). Os casos de uso nunca
-// devem usar isto: eles falam com as portas de domínio.
-func (s *Store) DB() *sql.DB {
-	return s.db
 }

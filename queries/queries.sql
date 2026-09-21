@@ -145,16 +145,24 @@ WHERE l.status = 'active'
 ORDER BY l.start_date ASC;
 
 -- name: InsertLease :exec
-INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, status, auth_token, created_at, updated_at)
+INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, status, auth_token,
+                    deposit_amount, deposit_status, deposit_received_at, deposit_refunded_at,
+                    deposit_refunded_amount, deposit_notes, created_at, updated_at)
 VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(property_id), sqlc.arg(start_date), sqlc.arg(end_date),
         sqlc.arg(due_day), sqlc.arg(rent_amount), sqlc.arg(status), sqlc.arg(auth_token),
+        sqlc.arg(deposit_amount), sqlc.arg(deposit_status), sqlc.arg(deposit_received_at),
+        sqlc.arg(deposit_refunded_at), sqlc.arg(deposit_refunded_amount), sqlc.arg(deposit_notes),
         sqlc.arg(created_at), sqlc.arg(updated_at));
 
 -- name: UpdateLease :exec
 UPDATE leases
 SET tenant_id = sqlc.arg(tenant_id), property_id = sqlc.arg(property_id), start_date = sqlc.arg(start_date),
     end_date = sqlc.arg(end_date), due_day = sqlc.arg(due_day), rent_amount = sqlc.arg(rent_amount),
-    status = sqlc.arg(status), updated_at = sqlc.arg(updated_at)
+    status = sqlc.arg(status),
+    deposit_amount = sqlc.arg(deposit_amount), deposit_status = sqlc.arg(deposit_status),
+    deposit_received_at = sqlc.arg(deposit_received_at), deposit_refunded_at = sqlc.arg(deposit_refunded_at),
+    deposit_refunded_amount = sqlc.arg(deposit_refunded_amount), deposit_notes = sqlc.arg(deposit_notes),
+    updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id);
 
 -- name: UpdateLeaseStatus :exec
@@ -339,3 +347,130 @@ SELECT * FROM whatsapp_messages
 WHERE tenant_id = sqlc.arg(tenant_id)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_limit);
+
+-- inspections ------------------------------------------------------
+
+-- name: ListInspections :many
+SELECT i.*, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+ORDER BY i.performed_at DESC, i.created_at DESC;
+
+-- name: GetInspectionByID :one
+SELECT i.*, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+WHERE i.id = sqlc.arg(id);
+
+-- name: ListInspectionsByLease :many
+SELECT i.*, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+WHERE i.lease_id = sqlc.arg(lease_id)
+ORDER BY i.performed_at DESC;
+
+-- name: InsertInspection :exec
+INSERT INTO inspections (id, lease_id, kind, performed_at, condition, notes, items, photos, auth_token, created_at, updated_at)
+VALUES (sqlc.arg(id), sqlc.arg(lease_id), sqlc.arg(kind), sqlc.arg(performed_at), sqlc.arg(condition),
+        sqlc.arg(notes), sqlc.arg(items), sqlc.arg(photos), sqlc.arg(auth_token), sqlc.arg(created_at), sqlc.arg(updated_at));
+
+-- name: UpdateInspection :exec
+UPDATE inspections
+SET kind = sqlc.arg(kind), performed_at = sqlc.arg(performed_at), condition = sqlc.arg(condition),
+    notes = sqlc.arg(notes), items = sqlc.arg(items), photos = sqlc.arg(photos), updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id);
+
+-- name: DeleteInspection :exec
+DELETE FROM inspections WHERE id = sqlc.arg(id);
+
+-- jobs -------------------------------------------------------------
+
+-- name: InsertJob :exec
+INSERT INTO jobs (id, created_at, updated_at, kind, status, attempts, max_attempts, payload, result, error, scheduled_at, started_at, finished_at)
+VALUES (sqlc.arg(id), sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(kind), sqlc.arg(status),
+        sqlc.arg(attempts), sqlc.arg(max_attempts), sqlc.arg(payload), sqlc.arg(result), sqlc.arg(error),
+        sqlc.arg(scheduled_at), sqlc.arg(started_at), sqlc.arg(finished_at));
+
+-- name: GetJobByID :one
+SELECT * FROM jobs WHERE id = sqlc.arg(id);
+
+-- name: ListJobsByStatus :many
+SELECT * FROM jobs
+WHERE status = sqlc.arg(status)
+ORDER BY scheduled_at ASC, created_at ASC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListJobs :many
+SELECT * FROM jobs ORDER BY created_at DESC LIMIT sqlc.arg(page_limit);
+
+-- name: UpdateJob :exec
+UPDATE jobs
+SET updated_at = sqlc.arg(updated_at), status = sqlc.arg(status), attempts = sqlc.arg(attempts),
+    result = sqlc.arg(result), error = sqlc.arg(error), scheduled_at = sqlc.arg(scheduled_at),
+    started_at = sqlc.arg(started_at), finished_at = sqlc.arg(finished_at)
+WHERE id = sqlc.arg(id);
+
+-- payment_proofs ---------------------------------------------------
+
+-- name: InsertPaymentProof :exec
+INSERT INTO payment_proofs (id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime,
+                            extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier,
+                            confidence, status, decision, decision_reason, decided_by, decided_at, raw_response)
+VALUES (sqlc.arg(id), sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(source), sqlc.arg(phone), sqlc.arg(tenant_id),
+        sqlc.arg(receipt_id), sqlc.arg(file_name), sqlc.arg(file_path), sqlc.arg(mime), sqlc.arg(extracted_amount),
+        sqlc.arg(extracted_date), sqlc.arg(extracted_payer), sqlc.arg(extracted_payee), sqlc.arg(extracted_identifier),
+        sqlc.arg(confidence), sqlc.arg(status), sqlc.arg(decision), sqlc.arg(decision_reason), sqlc.arg(decided_by),
+        sqlc.arg(decided_at), sqlc.arg(raw_response));
+
+-- name: GetPaymentProofByID :one
+SELECT * FROM payment_proofs WHERE id = sqlc.arg(id);
+
+-- name: ListPaymentProofsByStatus :many
+SELECT * FROM payment_proofs
+WHERE status = sqlc.arg(status)
+ORDER BY created_at DESC
+LIMIT sqlc.arg(page_limit);
+
+-- name: ListPaymentProofs :many
+SELECT * FROM payment_proofs ORDER BY created_at DESC LIMIT sqlc.arg(page_limit);
+
+-- name: ListPaymentProofsByReceipt :many
+SELECT * FROM payment_proofs WHERE receipt_id = sqlc.arg(receipt_id) ORDER BY created_at DESC;
+
+-- name: UpdatePaymentProofDecision :exec
+UPDATE payment_proofs
+SET updated_at = sqlc.arg(updated_at), status = sqlc.arg(status), decision = sqlc.arg(decision),
+    decision_reason = sqlc.arg(decision_reason), decided_by = sqlc.arg(decided_by), decided_at = sqlc.arg(decided_at),
+    receipt_id = sqlc.arg(receipt_id)
+WHERE id = sqlc.arg(id);
+
+-- document_intakes -------------------------------------------------
+
+-- name: InsertDocumentIntake :exec
+INSERT INTO document_intakes (id, created_at, updated_at, kind, file_name, file_path, mime, status, extracted,
+                              confidence, created_entity, created_entity_id, raw_response, notes)
+VALUES (sqlc.arg(id), sqlc.arg(created_at), sqlc.arg(updated_at), sqlc.arg(kind), sqlc.arg(file_name),
+        sqlc.arg(file_path), sqlc.arg(mime), sqlc.arg(status), sqlc.arg(extracted), sqlc.arg(confidence),
+        sqlc.arg(created_entity), sqlc.arg(created_entity_id), sqlc.arg(raw_response), sqlc.arg(notes));
+
+-- name: GetDocumentIntakeByID :one
+SELECT * FROM document_intakes WHERE id = sqlc.arg(id);
+
+-- name: ListDocumentIntakes :many
+SELECT * FROM document_intakes ORDER BY created_at DESC LIMIT sqlc.arg(page_limit);
+
+-- name: ListDocumentIntakesByStatus :many
+SELECT * FROM document_intakes WHERE status = sqlc.arg(status) ORDER BY created_at DESC LIMIT sqlc.arg(page_limit);
+
+-- name: UpdateDocumentIntake :exec
+UPDATE document_intakes
+SET updated_at = sqlc.arg(updated_at), status = sqlc.arg(status), extracted = sqlc.arg(extracted),
+    confidence = sqlc.arg(confidence), created_entity = sqlc.arg(created_entity),
+    created_entity_id = sqlc.arg(created_entity_id), raw_response = sqlc.arg(raw_response), notes = sqlc.arg(notes)
+WHERE id = sqlc.arg(id);

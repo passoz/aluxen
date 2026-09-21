@@ -56,6 +56,12 @@ CREATE TABLE leases (
   auth_token text,
   created_at text NOT NULL,
   updated_at text NOT NULL,
+  deposit_amount real,
+  deposit_status text,
+  deposit_received_at text,
+  deposit_refunded_at text,
+  deposit_refunded_amount real,
+  deposit_notes text,
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON UPDATE NO ACTION ON DELETE CASCADE,
   FOREIGN KEY (property_id) REFERENCES properties (id) ON UPDATE NO ACTION ON DELETE CASCADE
 );
@@ -131,3 +137,89 @@ CREATE TABLE whatsapp_messages (
 CREATE UNIQUE INDEX whatsapp_messages_external_id_idx ON whatsapp_messages (external_id);
 CREATE INDEX whatsapp_messages_tenant_idx ON whatsapp_messages (tenant_id, created_at);
 CREATE INDEX whatsapp_messages_created_at_idx ON whatsapp_messages (created_at);
+
+CREATE TABLE inspections (
+  id text PRIMARY KEY NOT NULL,
+  lease_id text NOT NULL,
+  kind text NOT NULL,
+  performed_at text NOT NULL,
+  condition text NOT NULL,
+  notes text,
+  items text,
+  photos text,
+  auth_token text,
+  created_at text NOT NULL,
+  updated_at text NOT NULL,
+  FOREIGN KEY (lease_id) REFERENCES leases (id) ON UPDATE NO ACTION ON DELETE CASCADE
+);
+
+CREATE INDEX inspections_lease_idx ON inspections (lease_id);
+CREATE INDEX inspections_performed_at_idx ON inspections (performed_at);
+
+CREATE TABLE jobs (
+  id text PRIMARY KEY NOT NULL,
+  created_at text NOT NULL,
+  updated_at text NOT NULL,
+  kind text NOT NULL,
+  status text NOT NULL,
+  attempts integer NOT NULL,
+  max_attempts integer NOT NULL,
+  payload text,
+  result text,
+  error text,
+  scheduled_at text NOT NULL,
+  started_at text,
+  finished_at text
+);
+
+CREATE INDEX jobs_status_idx ON jobs (status, scheduled_at);
+CREATE INDEX jobs_kind_idx ON jobs (kind, created_at);
+
+CREATE TABLE payment_proofs (
+  id text PRIMARY KEY NOT NULL,
+  created_at text NOT NULL,
+  updated_at text NOT NULL,
+  source text NOT NULL,
+  phone text,
+  tenant_id text,
+  receipt_id text,
+  file_name text,
+  file_path text,
+  mime text,
+  extracted_amount real,
+  extracted_date text,
+  extracted_payer text,
+  extracted_payee text,
+  extracted_identifier text,
+  confidence real,
+  status text NOT NULL,
+  decision text NOT NULL,
+  decision_reason text,
+  decided_by text,
+  decided_at text,
+  raw_response text,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON UPDATE NO ACTION ON DELETE SET NULL,
+  FOREIGN KEY (receipt_id) REFERENCES receipts (id) ON UPDATE NO ACTION ON DELETE SET NULL
+);
+
+CREATE INDEX payment_proofs_status_idx ON payment_proofs (status, created_at);
+CREATE INDEX payment_proofs_tenant_idx ON payment_proofs (tenant_id);
+
+CREATE TABLE document_intakes (
+  id text PRIMARY KEY NOT NULL,
+  created_at text NOT NULL,
+  updated_at text NOT NULL,
+  kind text NOT NULL,
+  file_name text,
+  file_path text,
+  mime text,
+  status text NOT NULL,
+  extracted text,
+  confidence real,
+  created_entity text,
+  created_entity_id text,
+  raw_response text,
+  notes text
+);
+
+CREATE INDEX document_intakes_status_idx ON document_intakes (status, created_at);

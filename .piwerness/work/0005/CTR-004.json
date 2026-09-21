@@ -1,0 +1,112 @@
+{
+  "contract_version": "4.0",
+  "task_id": "5.4",
+  "work_id": "0005",
+  "title": "Reajuste anual assistido",
+  "risk": {
+    "level": "L2",
+    "reasons": [
+      "Task 5.4 classificada como L2 na especificação do Work"
+    ]
+  },
+  "validation_strategy": "tdd-strict",
+  "behavioral_contract": {
+    "scenarios": [
+      {
+        "id": "SCENARIO-5.4-01",
+        "given": "Dado o Work 0005 (\"Deploy por instância, migração de dialeto e tier 2 assistido\") e a task 5.4 (\"Reajuste anual assistido\")",
+        "when": "Quando o executor implementa a task 5.4",
+        "then": "Então o índice é aplicado ao contrato com cálculo determinístico e a notificação é gerada para envio"
+      },
+      {
+        "id": "SCENARIO-5.4-02",
+        "given": "Dado que os critérios de aceite da task 5.4 são `go test ./...`",
+        "when": "Quando os comandos de aceite são executados no sandbox",
+        "then": "Então todos saem com exit 0 e nenhum arquivo fora da write_allow é modificado"
+      },
+      {
+        "id": "SCENARIO-5.4-REQ-1",
+        "given": "Dado o requisito FR-404 (\"Reajuste assistido\")",
+        "when": "Quando o comportamento descrito em \"`go test ./...` cobre cálculo por índice, arredondamento, aplicação no contrato e geração do texto de notificação\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-5.4-REQ-2",
+        "given": "Dado o requisito FR-404 (\"Reajuste assistido\")",
+        "when": "Quando o comportamento descrito em \"O cálculo é determinístico e auditado; o texto pode ser redigido por IA a partir do valor já calculado\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-5.4-REQ-3",
+        "given": "Dado o requisito FR-404 (\"Reajuste assistido\")",
+        "when": "Quando o comportamento descrito em \"Reajuste aplicado gera evento na trilha e pode ser enviado por WhatsApp\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      }
+    ]
+  },
+  "change_contract": {
+    "target_files": [
+      "internal/application/**",
+      "internal/infrastructure/web/**"
+    ],
+    "affected_components": [
+      "application",
+      "web"
+    ]
+  },
+  "architecture_contract": {
+    "invariants": [
+      "domain não importa application/infrastructure; infrastructure importa domain",
+      "Nenhum handler contém regra de negócio; nenhum acesso a dados monta SQL em runtime",
+      "O uso atual (contrato residencial, recibo mensal, baixa) permanece idêntico — toda mudança é aditiva"
+    ]
+  },
+  "acceptance_contract": {
+    "commands": [
+      "go test ./...",
+      "go build ./...",
+      "go vet ./..."
+    ],
+    "required_evidence": [
+      "evidence.json"
+    ]
+  },
+  "scope_contract": {
+    "write_allow": [
+      "cmd/**",
+      "internal/**",
+      "docs/**",
+      "README.md",
+      "scripts/**",
+      "*.go",
+      "*.md",
+      "*.yaml",
+      "*.yml",
+      "*.json"
+    ],
+    "write_deny": [
+      ".git/**",
+      ".env",
+      ".env.*",
+      "!.env.example"
+    ],
+    "out_of_scope": [
+      "Mudanças fora dos arquivos declarados na write_allow",
+      "Alterações destrutivas em dados de produção"
+    ]
+  },
+  "budget_contract": {
+    "max_tokens": 200000,
+    "max_cost_usd": 4,
+    "max_duration_minutes": 120,
+    "max_agent_attempts": 3,
+    "max_llm_calls": 80,
+    "max_tool_calls": 200,
+    "max_shell_executions": 40
+  },
+  "escalation_contract": {
+    "on_write_violation": "block_and_escalate",
+    "on_budget_exceeded": "escalate_to_strong_agent",
+    "on_attempt_failed": "retry_with_strong"
+  }
+}

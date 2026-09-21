@@ -1,0 +1,43 @@
+{
+  "work_id": "0003",
+  "title": "IA de entrada: baixa automática por comprovante e onboarding por documento",
+  "grilling_depth": "deep",
+  "problem": "O ciclo da locação no Aluxen termina no recibo, mas começa antes: o locatário paga, manda o comprovante e alguém precisa ler, conferir e dar baixa. Essa etapa é manual e é exatamente onde o dinheiro fica parado. O sistema também não aceita carteira existente: migrar 30 contratos significa digitar 30 contratos, que é a objeção número um de quem já administra temporada.",
+  "actors": [
+    "ACT-001",
+    "ACT-002",
+    "ACT-004"
+  ],
+  "actor_details": [
+    {
+      "id": "ACT-001",
+      "name": "Locador (administrador)",
+      "description": "Revisa a fila de comprovantes ambíguos, confere cadastros propostos e acompanha a trilha das decisões automáticas."
+    },
+    {
+      "id": "ACT-002",
+      "name": "Locatário",
+      "description": "Envia o comprovante pelo WhatsApp ou pelo portal e recebe a confirmação da baixa."
+    },
+    {
+      "id": "ACT-004",
+      "name": "Operador de instância",
+      "description": "Configura o provedor de IA (URL, chave, modelo, limite de confiança) por variável de ambiente da instância."
+    }
+  ],
+  "objectives": [
+    "Comprovante (imagem ou PDF) vira JSON tipado com valor, data, pagador, destinatário e identificador.",
+    "Validação determinística contra o recibo aberto do titular, com baixa automática quando a confiança e as regras permitem.",
+    "Recibo em PDF emitido e resposta automática no WhatsApp confirmando a quitação.",
+    "Fila de revisão humana no painel para os casos ambíguos, com decisão auditada.",
+    "Onboarding por documento: contrato antigo, RG/CNH e comprovante de residência geram cadastro proposto, gravado só após confirmação.",
+    "Fila de processamento assíncrono (worker) para não bloquear a requisição HTTP."
+  ],
+  "constraints": [
+    "A IA lê o documento; o código decide. Nenhuma baixa acontece por saída de LLM sem validação determinística.",
+    "Nenhuma escrita no banco a partir de documento sem confirmação humana (onboarding).",
+    "O provedor de IA é o mesmo já usado no stack (DeepSeek v4.1 Flash, que lê imagem) — sem dependência nova.",
+    "A extração guarda o que foi lido e a confiança, e é auditável.",
+    "Fora de escopo: modelo próprio, fine-tuning, text-to-SQL solto e orientação jurídica a locatário."
+  ]
+}

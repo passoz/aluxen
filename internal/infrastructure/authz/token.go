@@ -3,7 +3,9 @@
 //
 // Um documento é autenticado pelo token `HMAC-SHA256(segredo, "<kind>:<id>")`
 // em hexadecimal truncado nos 32 primeiros caracteres — exatamente o cálculo do
-// app Bun, de modo que recibos e contratos já impressos continuam válidos.
+// app Bun, de modo que recibos e contratos já impressos continuam válidos. Os
+// documentos da temporada (auto de vistoria e recibo de devolução de caução)
+// usam o mesmo cálculo, com o seu próprio `kind`.
 //
 // O segredo é sempre injetado pelo composition root (config `SESSION_SECRET`),
 // a mesma chave usada nas sessões e no CSRF. O app anterior tinha um segredo
@@ -37,7 +39,21 @@ const (
 	KindReceipt Kind = "receipt"
 	// KindLease assina contratos de locação.
 	KindLease Kind = "lease"
+	// KindInspection assina os autos de vistoria de entrada e de saída.
+	KindInspection Kind = "inspection"
+	// KindDeposit assina os recibos de devolução de caução da temporada.
+	KindDeposit Kind = "deposit"
 )
+
+// validationPaths é o caminho público de validação de cada tipo de documento:
+// `<base><caminho><id>?token=<token>`. Tipo desconhecido cai no recibo, o
+// documento padrão do app.
+var validationPaths = map[Kind]string{
+	KindReceipt:    "/validar/recibo/",
+	KindLease:      "/validar/contrato/",
+	KindInspection: "/validar/vistoria/",
+	KindDeposit:    "/validar/caucao/",
+}
 
 // TokenLength é o comprimento do token: os 32 primeiros caracteres
 // hexadecimais do HMAC-SHA256 (128 bits), como no app atual.
@@ -113,7 +129,8 @@ func (g *TokenGenerator) FormatCode(token string) string {
 }
 
 // ValidationURL monta o endereço público de validação do documento:
-// `<base>/validar/recibo/<id>?token=<token>` (ou `contrato`).
+// `<base>/validar/recibo/<id>?token=<token>` (ou `contrato`, `vistoria`,
+// `caucao`, conforme o tipo).
 func (g *TokenGenerator) ValidationURL(base string, kind Kind, id, token string) string {
 	return strings.TrimSuffix(base, "/") + validationPath(kind) + id + "?token=" + token
 }
@@ -143,10 +160,10 @@ func QRCode(content string) ([]byte, error) {
 
 // validationPath devolve o caminho público de validação do tipo de documento.
 func validationPath(kind Kind) string {
-	if kind == KindLease {
-		return "/validar/contrato/"
+	if path, ok := validationPaths[kind]; ok {
+		return path
 	}
-	return "/validar/recibo/"
+	return validationPaths[KindReceipt]
 }
 
 // alphanumeric devolve o token em maiúsculas sem pontuação, como o app atual

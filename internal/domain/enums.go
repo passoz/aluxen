@@ -49,8 +49,16 @@ func (s LeaseStatus) SelectableOnUpdate() bool {
 type ReceiptCategory string
 
 const (
-	ReceiptCategoryRent  ReceiptCategory = "rent"
+	ReceiptCategoryRent ReceiptCategory = "rent"
+	// ReceiptCategoryExtra é a cobrança avulsa genérica.
 	ReceiptCategoryExtra ReceiptCategory = "extra"
+	// ReceiptCategoryCleaning é a taxa de limpeza da temporada.
+	ReceiptCategoryCleaning ReceiptCategory = "cleaning"
+	// ReceiptCategoryConsumables são os consumíveis da temporada.
+	ReceiptCategoryConsumables ReceiptCategory = "consumables"
+	// ReceiptCategoryDepositRefund registra a devolução de caução na trilha
+	// financeira (o recibo em PDF é emitido a partir dela).
+	ReceiptCategoryDepositRefund ReceiptCategory = "deposit-refund"
 )
 
 // ReceiptCategoryLabel devolve o rótulo em português da categoria.
@@ -60,6 +68,12 @@ func ReceiptCategoryLabel(category ReceiptCategory) string {
 		return "Aluguel"
 	case ReceiptCategoryExtra:
 		return "Avulsa"
+	case ReceiptCategoryCleaning:
+		return "Taxa de limpeza"
+	case ReceiptCategoryConsumables:
+		return "Consumíveis"
+	case ReceiptCategoryDepositRefund:
+		return "Devolução de caução"
 	default:
 		return string(category)
 	}

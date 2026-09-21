@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"math"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
@@ -51,6 +52,7 @@ func NewRenderer() (*Renderer, error) {
 	funcs := template.FuncMap{
 		"money":        format.FormatCurrency,
 		"moneyText":    format.FormatCurrencyFromString,
+		"moneyValue":   domain.FormatFloat,
 		"date":         format.FormatDateBR,
 		"datetime":     format.FormatDateTimeBR,
 		"leaseStatus":  func(status string) string { return domain.LeaseStatusLabel(domain.LeaseStatus(status)) },
@@ -58,6 +60,15 @@ func NewRenderer() (*Renderer, error) {
 		"receiptState": func(status string) string { return domain.ReceiptStatusLabel(domain.ReceiptStatus(status)) },
 		"receiptStatus": func(receipt domain.Receipt) string {
 			return domain.ReceiptStatusLabel(domain.ReceiptStatusOf(receipt, time.Now()))
+		},
+		"receiptStatusCode": func(receipt domain.Receipt) string {
+			return string(domain.ReceiptStatusOf(receipt, time.Now()))
+		},
+		"depositStatus": func(status string) string {
+			return domain.DepositStatusLabel(domain.DepositStatus(status))
+		},
+		"hasDeposit": func(lease domain.Lease) bool {
+			return domain.HasDeposit(lease.DepositAmount, lease.DepositStatus)
 		},
 		"entityLabel": domain.EntityLabel,
 		"actionLabel": func(action string) string { return domain.AuditActionMetaFor(action).Label },
@@ -108,6 +119,13 @@ func NewRenderer() (*Renderer, error) {
 				return "#999999"
 			}
 		},
+		"weekdayName": func(weekday int) string {
+			names := []string{"domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"}
+			if weekday < 0 || weekday >= len(names) {
+				return ""
+			}
+			return names[weekday]
+		},
 		"hasPrefix": strings.HasPrefix,
 		"upper":     strings.ToUpper,
 		"add":       func(a, b int) int { return a + b },
@@ -154,6 +172,13 @@ func (r *Renderer) Execute(name string, data any) (template.HTML, error) {
 		return "", fmt.Errorf("renderizar %s: %w", name, err)
 	}
 	return template.HTML(buffer.String()), nil
+}
+
+// Os tipos que a stdlib não conhece precisam ser registrados: sem isso o
+// manifest do PWA sai como text/plain e o navegador reclama.
+func init() {
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	_ = mime.AddExtensionType(".webp", "image/webp")
 }
 
 // StaticHandler serve os arquivos embutidos de static/.

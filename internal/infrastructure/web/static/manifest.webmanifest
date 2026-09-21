@@ -1,12 +1,16 @@
 {
   "name": "Aluxen",
   "short_name": "Aluxen",
+  "description": "Aluxen — gestão de locação: contratos, recibos, portal do locatário e prova de autenticidade.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f7f4e8",
+  "orientation": "any",
+  "background_color": "#f8fafc",
   "theme_color": "#85e6c0",
   "lang": "pt-BR",
+  "dir": "ltr",
   "icons": [
     {
       "src": "/icon-192.png",

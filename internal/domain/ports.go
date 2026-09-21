@@ -76,6 +76,16 @@ type ReceiptRepository interface {
 	Count(ctx context.Context) (int, error)
 }
 
+// InspectionRepository lê e escreve os autos de vistoria.
+type InspectionRepository interface {
+	List(ctx context.Context) ([]Inspection, error)
+	ByID(ctx context.Context, id string) (*Inspection, error)
+	ByLease(ctx context.Context, leaseID string) ([]Inspection, error)
+	Create(ctx context.Context, inspection *Inspection) error
+	Update(ctx context.Context, inspection *Inspection) error
+	Delete(ctx context.Context, id string) error
+}
+
 // SettingRepository lê e escreve configurações.
 type SettingRepository interface {
 	Get(ctx context.Context, key string) (string, error)
@@ -113,6 +123,34 @@ type WhatsAppMessageRepository interface {
 	InsertIfAbsent(ctx context.Context, message *WhatsAppMessage) (int64, error)
 	// ByTenant devolve as mensagens do locatário, da mais recente para a mais antiga.
 	ByTenant(ctx context.Context, tenantID string, limit int) ([]WhatsAppMessage, error)
+}
+
+// JobRepository é a fila de trabalho assíncrono persistida.
+type JobRepository interface {
+	Create(ctx context.Context, job *Job) error
+	ByID(ctx context.Context, id string) (*Job, error)
+	ListByStatus(ctx context.Context, status JobStatus, limit int) ([]Job, error)
+	List(ctx context.Context, limit int) ([]Job, error)
+	Update(ctx context.Context, job *Job) error
+}
+
+// PaymentProofRepository guarda os comprovantes lidos e a decisão tomada.
+type PaymentProofRepository interface {
+	Create(ctx context.Context, proof *PaymentProof) error
+	ByID(ctx context.Context, id string) (*PaymentProof, error)
+	ListByStatus(ctx context.Context, status PaymentProofStatus, limit int) ([]PaymentProof, error)
+	List(ctx context.Context, limit int) ([]PaymentProof, error)
+	ByReceipt(ctx context.Context, receiptID string) ([]PaymentProof, error)
+	UpdateDecision(ctx context.Context, proof *PaymentProof) error
+}
+
+// DocumentIntakeRepository guarda os cadastros propostos a partir de documento.
+type DocumentIntakeRepository interface {
+	Create(ctx context.Context, intake *DocumentIntake) error
+	ByID(ctx context.Context, id string) (*DocumentIntake, error)
+	List(ctx context.Context, limit int) ([]DocumentIntake, error)
+	ListByStatus(ctx context.Context, status IntakeStatus, limit int) ([]DocumentIntake, error)
+	Update(ctx context.Context, intake *DocumentIntake) error
 }
 
 // ── Portas de serviço ──────────────────────────────────────────────

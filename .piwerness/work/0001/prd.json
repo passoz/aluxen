@@ -3,8 +3,8 @@
   "id": "PRD-0001",
   "meta": {
     "version": "1.0",
-    "created_at": "2026-09-21T19:37:56.235Z",
-    "updated_at": "2026-09-21T19:37:56.235Z",
+    "created_at": "2026-09-21T20:17:59.129Z",
+    "updated_at": "2026-09-21T20:17:59.129Z",
     "author": "operator"
   },
   "title": "PRD — Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go",
@@ -144,6 +144,12 @@
       "type": "functional",
       "statement": "Cutover sem código legado: Como mantenedor, quero um único app no branch, para não manter dois padrões.",
       "priority": "must"
+    },
+    {
+      "id": "FR-017",
+      "type": "functional",
+      "statement": "Migrações por dialeto e adoção de base legada: Como operador, quero que o boot migre a base do dialeto resolvido sem perder dados, para atualizar a instância em produção.",
+      "priority": "must"
     }
   ],
   "stakeholders": [
@@ -192,6 +198,7 @@
     "FR-013",
     "FR-014",
     "FR-015",
-    "FR-016"
+    "FR-016",
+    "FR-017"
   ]
 }

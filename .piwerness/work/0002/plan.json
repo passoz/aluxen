@@ -1,0 +1,334 @@
+{
+  "$schema": "../../../schemas/plan.schema.json",
+  "work_id": "0002",
+  "title": "Funcionalidades de temporada: caução, vistoria, calendário e taxas",
+  "components": [
+    {
+      "name": "domain",
+      "purpose": "Campos, enums e regras de caução, vistoria e categorias"
+    },
+    {
+      "name": "application",
+      "purpose": "Casos de uso de temporada"
+    },
+    {
+      "name": "db",
+      "purpose": "Migrações e adapters das novas tabelas e colunas"
+    },
+    {
+      "name": "web",
+      "purpose": "Abas, modais, calendário e handlers de temporada"
+    },
+    {
+      "name": "docs",
+      "purpose": "PDF do auto de vistoria e recibo de devolução de caução"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "tasks": [
+    {
+      "id": "2.1",
+      "title": "Schema, entidades e portas de temporada",
+      "requirement_id": "FR-105",
+      "spec_reference": "CAP-101",
+      "contract_id": "CTR-001",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "os dois dialetos ganham os campos de caução e a tabela de vistorias com paridade enforced, e o domínio ganha entidades, enums e regras puras de temporada",
+      "components": [
+        "domain",
+        "db"
+      ],
+      "files": [
+        "schema/sqlite.sql",
+        "schema/postgres.sql",
+        "migrations/sqlite/",
+        "migrations/postgres/",
+        "queries/queries.sql",
+        "internal/domain/",
+        "internal/infrastructure/db/"
+      ],
+      "implementation_files": [
+        "schema/**",
+        "migrations/**",
+        "queries/**",
+        "internal/domain/**",
+        "internal/infrastructure/db/**"
+      ],
+      "test_files": [
+        "internal/domain/",
+        "internal/infrastructure/db/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"os dois dialetos ganham os campos de caução e a tabela de vistorias com paridade enforced, e o domínio ganha entidades, enums e regras puras de temporada\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes das regras puras de caução e vistoria",
+        "Acrescentar colunas de caução em leases e a tabela inspections nos dois schemas, com migração correspondente",
+        "Adicionar as queries e regenerar o sqlc nos dois dialetos",
+        "Implementar os adapters das novas portas"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "paridade de schema, migração e regras cobertas por teste"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "análise estática limpa"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "2.2",
+      "title": "Caução: casos de uso, recibo de devolução e tela",
+      "requirement_id": "FR-101",
+      "spec_reference": "CAP-101",
+      "contract_id": "CTR-002",
+      "complexity": "standard",
+      "depends_on": [
+        "2.1"
+      ],
+      "behavior": "o locador registra a caução, devolve total ou parcialmente e obtém o recibo em PDF com prova de autenticidade",
+      "components": [
+        "application",
+        "web",
+        "docs"
+      ],
+      "files": [
+        "internal/application/season_deposit.go",
+        "internal/infrastructure/pdf/",
+        "internal/infrastructure/web/handlers_season.go",
+        "internal/infrastructure/web/templates/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/pdf/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o locador registra a caução, devolve total ou parcialmente e obtém o recibo em PDF com prova de autenticidade\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de entrada, devolução total, parcial e retenção",
+        "Implementar os casos de uso com auditoria e lançamento na trilha financeira",
+        "Gerar o recibo de devolução em PDF com o gerador existente e token HMAC",
+        "Publicar os modais e a coluna de caução na aba de contratos"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "caução coberta por teste em aplicação, PDF e HTTP"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "2.3",
+      "title": "Auto de vistoria com fotos e PDF",
+      "requirement_id": "FR-102",
+      "spec_reference": "CAP-102",
+      "contract_id": "CTR-003",
+      "complexity": "standard",
+      "depends_on": [
+        "2.1"
+      ],
+      "behavior": "o locador registra vistoria de entrada e saída com itens e fotos, gera o PDF e o locatário titular vê o documento",
+      "components": [
+        "application",
+        "web",
+        "docs"
+      ],
+      "files": [
+        "internal/application/season_inspection.go",
+        "internal/infrastructure/pdf/inspection.go",
+        "internal/infrastructure/web/handlers_season.go",
+        "internal/infrastructure/web/templates/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/pdf/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o locador registra vistoria de entrada e saída com itens e fotos, gera o PDF e o locatário titular vê o documento\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de criação, edição, exclusão, itens, fotos e acesso",
+        "Implementar o armazenamento de fotos com limite de tamanho e tipo",
+        "Gerar o PDF do auto de vistoria com QR de validação",
+        "Anexar o documento na Área do Cliente"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "vistoria coberta por teste em aplicação, PDF e HTTP"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "2.4",
+      "title": "Calendário de ocupação por imóvel",
+      "requirement_id": "FR-103",
+      "spec_reference": "CAP-103",
+      "contract_id": "CTR-004",
+      "complexity": "standard",
+      "depends_on": [
+        "2.1"
+      ],
+      "behavior": "a aba de calendário mostra os períodos ocupados por imóvel e mês, marcando temporada, ativo e suspenso",
+      "components": [
+        "application",
+        "web"
+      ],
+      "files": [
+        "internal/application/season_calendar.go",
+        "internal/infrastructure/web/templates/tab_calendar.html",
+        "internal/infrastructure/web/static/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"a aba de calendário mostra os períodos ocupados por imóvel e mês, marcando temporada, ativo e suspenso\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de montagem do calendário a partir dos contratos",
+        "Implementar o caso de uso de leitura",
+        "Publicar a aba com navegação por mês e marcação por situação"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "calendário coberto por teste"
+        }
+      ],
+      "visual": "REQUIRED",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "2.5",
+      "title": "Taxa de limpeza e consumíveis",
+      "requirement_id": "FR-104",
+      "spec_reference": "CAP-104",
+      "contract_id": "CTR-005",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "limpeza e consumíveis são categorias de lançamento com rótulo, filtro e auditoria próprios",
+      "components": [
+        "domain",
+        "web"
+      ],
+      "files": [
+        "internal/domain/",
+        "internal/infrastructure/web/templates/tab_receipts.html"
+      ],
+      "implementation_files": [
+        "internal/domain/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/domain/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"limpeza e consumíveis são categorias de lançamento com rótulo, filtro e auditoria próprios\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de rótulo e aceitação das novas categorias",
+        "Estender o enum, os rótulos e os filtros da aba de recibos"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "categorias cobertas por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "2.6",
+      "title": "Verificação final de temporada",
+      "requirement_id": "FR-105",
+      "spec_reference": "CAP-101",
+      "contract_id": "CTR-006",
+      "complexity": "standard",
+      "depends_on": [
+        "2.2",
+        "2.3",
+        "2.4",
+        "2.5"
+      ],
+      "behavior": "a suíte completa passa com cobertura >= 90% e a base de produção migra sem perda",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/",
+        "docs/"
+      ],
+      "implementation_files": [
+        "internal/**",
+        "docs/**"
+      ],
+      "test_files": [
+        "internal/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"a suíte completa passa com cobertura >= 90% e a base de produção migra sem perda\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Rodar os gates completos",
+        "Exercitar as telas novas no navegador",
+        "Atualizar a documentação do produto"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde com cobertura mínima"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    }
+  ]
+}

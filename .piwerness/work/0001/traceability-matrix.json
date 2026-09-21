@@ -23,7 +23,7 @@
     },
     {
       "origin": "DISC-0001",
-      "requirement_id": "FR-002",
+      "requirement_id": "FR-017",
       "decision_id": "DEC-001",
       "spec_section": "CAP-001",
       "task_id": "1.3",

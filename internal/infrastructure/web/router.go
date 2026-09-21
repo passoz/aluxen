@@ -51,6 +51,8 @@ func (h *Handlers) routes() *http.ServeMux {
 	mux.HandleFunc("POST /dashboard/inspection", h.InspectionMutation)
 	mux.HandleFunc("GET /inspection-pdf", h.InspectionPDF)
 	mux.HandleFunc("GET /deposit-pdf", h.DepositReceiptPDF)
+	mux.HandleFunc("GET /validar/vistoria/{id}", h.VerifyInspection)
+	mux.HandleFunc("GET /validar/caucao/{id}", h.VerifyDeposit)
 
 	// Comprovantes e revisão assistida por IA
 	mux.HandleFunc("POST /api/payments/proof", h.PaymentProofUpload)

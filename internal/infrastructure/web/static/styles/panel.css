@@ -229,3 +229,279 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   letter-spacing: 0.05em;
 }
+
+/* ── Camada de interação (static/app.js) ────────────────────────── */
+/* Estilos dos componentes criados/gerenciados por app.js: tabelas
+   ordenáveis/paginadas, seleção em lote, datepicker, modais, toasts e o
+   envio assistido por WhatsApp. Só tokens de globals.css — nenhum valor
+   de cor/tipografia é redefinido aqui. */
+
+/* `hidden` é a chave de visibilidade do JS: precisa vencer as regras de
+   display do design system (ex.: `.modal-backdrop { display: flex }`). */
+[hidden] {
+  display: none !important;
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+/* ── Toasts ─────────────────────────────────────────────────────── */
+/* O host é a pilha (flex column); cada toast é estático dentro dele. */
+.toast-host {
+  z-index: 1300;
+}
+
+.toast {
+  position: static;
+  bottom: auto;
+  right: auto;
+  width: 100%;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.toast-success {
+  background: var(--primary-tint);
+  border-color: var(--primary-tint-border);
+  border-left-color: var(--primary);
+  color: var(--primary-active);
+}
+
+.toast-error {
+  background: var(--danger-tint);
+  border-color: var(--danger-border);
+  border-left-color: var(--danger);
+  color: var(--danger-hover);
+}
+
+.toast-warning {
+  background: var(--warning-tint);
+  border-color: var(--warning-border);
+  border-left-color: var(--warning);
+  color: var(--warning);
+}
+
+/* ── Tabelas ordenáveis, filtradas e paginadas ──────────────────── */
+th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+
+th[data-sort]:hover .sort-header {
+  color: var(--text);
+}
+
+th[data-sort] .sort-header {
+  white-space: nowrap;
+}
+
+tr[data-table-empty] td.empty-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ── Seleção em lote ────────────────────────────────────────────── */
+[data-batch-item],
+[data-batch-all] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+[data-batch] th:has(> [data-batch-all]),
+[data-batch] td:has(> [data-batch-item]) {
+  width: 2.5rem;
+  text-align: center;
+}
+
+tbody tr:has([data-batch-item]:checked) {
+  background: var(--primary-tint);
+}
+
+[data-batch-toolbar] {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+[data-batch-count] {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ── Paginação local ────────────────────────────────────────────── */
+.pagination-size-select {
+  height: 32px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.pagination-size-select:hover {
+  border-color: var(--border-focus);
+}
+
+/* ── Datepicker próprio ─────────────────────────────────────────── */
+.date-picker-dropdown {
+  min-width: 288px;
+  max-height: min(460px, 85vh);
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.date-picker-display:not(.filled) {
+  color: var(--text-muted);
+}
+
+.date-picker-time {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.date-picker-time-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.date-picker-time .date-picker-select {
+  flex: 1;
+  width: auto;
+}
+
+/* ── Modais ─────────────────────────────────────────────────────── */
+.modal-card {
+  max-height: min(90vh, 900px);
+  overflow-y: auto;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+/* ── Campo de dinheiro ──────────────────────────────────────────── */
+input[data-mask="money"] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Envio assistido por WhatsApp ───────────────────────────────── */
+.whatsapp-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.whatsapp-steps li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.whatsapp-steps li::before {
+  content: '';
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.whatsapp-steps li.active {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.whatsapp-steps li.active::before {
+  background: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-tint);
+}
+
+.whatsapp-steps li.done {
+  color: var(--text-secondary);
+}
+
+.whatsapp-steps li.done::before {
+  background: var(--primary);
+}
+
+/* ── Menu de PDF (details nativo) ───────────────────────────────── */
+.pdf-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.pdf-dropdown > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pdf-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.pdf-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.pdf-menu .btn {
+  justify-content: flex-start;
+}
+
+/* ── Ajustes de tela estreita ───────────────────────────────────── */
+@media (max-width: 480px) {
+  .date-picker-dropdown {
+    min-width: 0;
+    width: calc(100vw - 2rem);
+  }
+
+  .toast-host {
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+  }
+
+  .toast {
+    max-width: none;
+  }
+}

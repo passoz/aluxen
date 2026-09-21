@@ -1,0 +1,195 @@
+{{define "verify.html"}}{{template "head" .}}
+<div class="login-page" style="padding: 2rem 1rem; min-height: 100vh;">
+  <div class="card login-card" style="max-width: 680px;">
+    <div class="brand-lockup">
+      <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
+      <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
+      <p class="subtitle" style="margin: 0.25rem 0 0; text-align: center; font-size: 0.9rem;">
+        Portal Oficial de Verificação e Autenticidade Digital
+      </p>
+    </div>
+
+    {{with .Data}}
+    {{if .Valid}}
+    <div class="card" style="background: var(--primary-tint); border-color: var(--primary-tint-border); text-align: center; margin-bottom: 1.5rem;">
+      <span class="history-badge create" style="font-size: 0.8rem;">✓ Documento autêntico</span>
+      <h2 style="color: var(--primary); font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0;">
+        DOCUMENTO AUTÊNTICO E VÁLIDO
+      </h2>
+      <p class="subtitle" style="margin: 0.35rem 0 0; font-size: 0.875rem;">
+        Este documento foi emitido e assinado digitalmente pelo sistema Aluxen.
+      </p>
+    </div>
+
+    <dl class="history-meta">
+      <div>
+        <dt>Tipo de Documento</dt>
+        <dd><strong>{{.TypeLabel}}</strong></dd>
+      </div>
+      <div>
+        <dt>Chave de Autenticação</dt>
+        <dd><strong style="font-family: ui-monospace, monospace; color: var(--primary);">{{.AuthCode}}</strong></dd>
+      </div>
+      <div>
+        <dt>Locatário</dt>
+        <dd><strong>{{.TenantName}}</strong></dd>
+      </div>
+      {{if .TenantCPF}}
+      <div>
+        <dt>CPF do Locatário</dt>
+        <dd><strong>{{.TenantCPF}}</strong></dd>
+      </div>
+      {{end}}
+      <div>
+        <dt>Locador</dt>
+        <dd>{{.LandlordName}}</dd>
+      </div>
+      <div>
+        <dt>Imóvel</dt>
+        <dd>
+          <strong>{{.PropertyName}}</strong>
+          {{if .PropertyAddress}}<div class="subtitle" style="margin: 0.15rem 0 0; font-size: 0.8rem;">{{.PropertyAddress}}</div>{{end}}
+        </dd>
+      </div>
+      {{if .Description}}
+      <div>
+        <dt>Referência</dt>
+        <dd><strong>{{.Description}}</strong></dd>
+      </div>
+      {{end}}
+      {{if eq .Type "inspection"}}
+      <div>
+        <dt>Tipo de Vistoria</dt>
+        <dd><strong>{{.KindLabel}}</strong></dd>
+      </div>
+      <div>
+        <dt>Realizada em</dt>
+        <dd><strong>{{.PerformedAt}}</strong></dd>
+      </div>
+      <div>
+        <dt>Estado Geral do Imóvel</dt>
+        <dd><strong>{{.Condition}}</strong></dd>
+      </div>
+      <div>
+        <dt>Itens Conferidos</dt>
+        <dd>{{.ItemsCount}}</dd>
+      </div>
+      <div>
+        <dt>Fotos Anexadas</dt>
+        <dd>{{.PhotosCount}}</dd>
+      </div>
+      <div>
+        <dt>Período do Contrato</dt>
+        <dd>{{.StartDate}} até {{.EndDate}}</dd>
+      </div>
+      {{else if eq .Type "deposit"}}
+      <div>
+        <dt>Valor da Caução</dt>
+        <dd><strong style="color: var(--primary); font-size: 1.05rem;">{{.Amount}}</strong></dd>
+      </div>
+      {{if .RefundedAmount}}
+      <div>
+        <dt>Valor Devolvido</dt>
+        <dd><strong style="color: #3b82f6;">{{.RefundedAmount}}</strong></dd>
+      </div>
+      {{end}}
+      {{if .RetainedAmount}}
+      <div>
+        <dt>Valor Retido</dt>
+        <dd><strong style="color: var(--danger);">{{.RetainedAmount}}</strong></dd>
+      </div>
+      {{end}}
+      <div>
+        <dt>Situação da Caução</dt>
+        <dd><span class="status-badge {{if eq .Status "refunded"}}paid{{else if eq .Status "held"}}due{{else}}partial{{end}}">{{.StatusLabel}}</span></dd>
+      </div>
+      {{if .RefundedAt}}
+      <div>
+        <dt>Devolvido em</dt>
+        <dd>{{.RefundedAt}}</dd>
+      </div>
+      {{end}}
+      {{else}}
+      <div>
+        <dt>{{if eq .Type "receipt"}}Valor Total{{else}}Valor do Aluguel{{end}}</dt>
+        <dd><strong style="color: var(--primary); font-size: 1.05rem;">{{.Amount}}</strong></dd>
+      </div>
+
+      {{if eq .Type "receipt"}}
+      {{if .IsPartial}}
+      <div>
+        <dt>Valor Pago (parcial)</dt>
+        <dd><strong style="color: #3b82f6;">{{.PaidAmount}}</strong></dd>
+      </div>
+      <div>
+        <dt>Saldo Restante</dt>
+        <dd><strong style="color: var(--danger);">{{.Balance}}</strong></dd>
+      </div>
+      {{end}}
+      <div>
+        <dt>Vencimento</dt>
+        <dd>{{.DueDate}}</dd>
+      </div>
+      <div>
+        <dt>Status da Quitação</dt>
+        <dd>
+          {{if .IsPartial}}
+          <span class="status-badge partial">Parcial{{if .PaidAt}} (pago em {{.PaidAt}}){{end}}</span>
+          {{else if .IsPaid}}
+          <span class="status-badge paid">Pago em {{.PaidAt}}</span>
+          {{else}}
+          <span class="status-badge due">Aguardando Pagamento</span>
+          {{end}}
+        </dd>
+      </div>
+      {{else}}
+      <div>
+        <dt>Vigência do Contrato</dt>
+        <dd>{{.StartDate}} até {{.EndDate}}</dd>
+      </div>
+      <div>
+        <dt>Vencimento Mensal</dt>
+        <dd>Todo dia {{.DueDay}}</dd>
+      </div>
+      <div>
+        <dt>Status de Vigência</dt>
+        <dd><span class="status-badge {{if eq .Status "active"}}paid{{else if eq .Status "suspended"}}due{{else if eq .Status "season"}}partial{{else}}overdue{{end}}">{{.StatusLabel}}</span></dd>
+      </div>
+      {{end}}
+      {{end}}
+    </dl>
+
+    <p class="subtitle" style="text-align: center; font-size: 0.8rem; border-top: 1px solid var(--border); padding-top: 1rem; margin-top: 1.25rem;">
+      Consulta realizada em <strong>{{.VerifiedAt}}</strong>.
+    </p>
+
+    {{if and .ID .Token}}
+    <div style="text-align: center; margin-top: 1rem;">
+      <a class="btn btn-primary" href="{{.DownloadURL}}" target="_blank" rel="noreferrer" style="width: 100%; max-width: 360px; padding: 0.75rem 1.5rem;">
+        {{if eq .Type "receipt"}}Visualizar / Baixar Recibo (PDF){{else if eq .Type "lease"}}Visualizar / Baixar Contrato (PDF){{else if eq .Type "inspection"}}Visualizar / Baixar Auto de Vistoria (PDF){{else}}Visualizar / Baixar Recibo de Devolução (PDF){{end}}
+      </a>
+    </div>
+    {{end}}
+    {{else}}
+    <div class="card" style="background: var(--danger-tint); border-color: var(--danger-border); text-align: center; margin-bottom: 1.5rem;">
+      <span class="history-badge failure" style="font-size: 0.8rem;">✕ Documento não autenticado</span>
+      <h2 style="color: var(--danger); font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0;">
+        DOCUMENTO NÃO AUTENTICADO
+      </h2>
+      <p style="margin: 0.5rem 0 0; font-size: 0.9rem;">
+        {{if .Error}}{{.Error}}{{else}}A chave de verificação informada é inválida ou o documento não consta nos registros oficiais do sistema.{{end}}
+      </p>
+    </div>
+
+    <p class="subtitle" style="text-align: center; font-size: 0.85rem;">
+      Se você acredita que isso é um erro, solicite uma nova via diretamente ao locador.
+    </p>
+    {{end}}
+    {{end}}
+
+    <div style="text-align: center; margin-top: 1.5rem;">
+      <a href="/login" class="btn btn-sm btn-secondary">Ir para a página inicial</a>
+    </div>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

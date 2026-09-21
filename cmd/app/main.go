@@ -10,17 +10,21 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/passoz/aluxen/internal/application"
+	"github.com/passoz/aluxen/internal/infrastructure/authz"
 	"github.com/passoz/aluxen/internal/infrastructure/buildinfo"
 	"github.com/passoz/aluxen/internal/infrastructure/config"
 	"github.com/passoz/aluxen/internal/infrastructure/db"
 	"github.com/passoz/aluxen/internal/infrastructure/logging"
 	"github.com/passoz/aluxen/internal/infrastructure/platform"
+	"github.com/passoz/aluxen/internal/infrastructure/storage"
 	"github.com/passoz/aluxen/internal/infrastructure/web"
+	"github.com/passoz/aluxen/internal/infrastructure/whatsapp"
 )
 
 func main() {
@@ -62,17 +66,20 @@ func run() error {
 
 	deps := application.Deps{
 		Repos: application.Repositories{
-			Users:      store.Users,
-			Tenants:    store.Tenants,
-			Properties: store.Properties,
-			Leases:     store.Leases,
-			Receipts:   store.Receipts,
-			Settings:   store.Settings,
-			Audit:      store.Audit,
+			Users:       store.Users,
+			Tenants:     store.Tenants,
+			Properties:  store.Properties,
+			Leases:      store.Leases,
+			Receipts:    store.Receipts,
+			Settings:    store.Settings,
+			Audit:       store.Audit,
+			WhatsApp:    store.WhatsApp,
+			Inspections: store.Inspections,
 		},
 		Clock:  platform.SystemClock{},
 		IDs:    platform.UUIDv7{},
 		Hasher: platform.BcryptHasher{},
+		Signer: authz.NewTokenGenerator(cfg.SessionSecret),
 		Log:    logger,
 		Opts: application.Options{
 			PublicBaseURL:      firstNonEmpty(cfg.AppURL, cfg.BaseURL),
@@ -87,6 +94,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
+
+	attachments, err := storage.NewFileSystem(resolveStorageDir(cfg))
+	if err != nil {
+		return fmt.Errorf("preparar armazenamento de anexos: %w", err)
+	}
+	deps.Attachments = attachments
+
+	whatsappRuntime := whatsapp.NewRuntime(
+		whatsapp.ClientConfig{BaseURL: cfg.WahaAPIURL, APIKey: cfg.WahaAPIKey, Session: cfg.WahaSession},
+		deps.Clock, deps.IDs, logger, whatsapp.LoginConfig{},
+	)
+	deps.Messages = whatsapp.Messages{}
 
 	started := time.Now()
 	gate := application.NewLoginGate(deps.Clock, cfg.RateLimitMax, cfg.RateLimitGlobalMax, cfg.LoginLockThreshold)
@@ -107,6 +126,7 @@ func run() error {
 			return application.AdminMustChangePassword(ctx, deps, userID)
 		},
 		LoginGate: gate,
+		WhatsApp:  whatsappRuntime,
 	}
 
 	server := &http.Server{
@@ -137,6 +157,18 @@ func run() error {
 	}
 	logger.Info("servidor encerrado")
 	return nil
+}
+
+// resolveStorageDir decide onde ficam os anexos: STORAGE_DIR quando informado,
+// senão <DB_DIR>/storage (volume da instância), senão ./storage.
+func resolveStorageDir(cfg *config.Config) string {
+	if cfg.StorageDir != "" {
+		return cfg.StorageDir
+	}
+	if cfg.DBDir != "" {
+		return filepath.Join(cfg.DBDir, "storage")
+	}
+	return "storage"
 }
 
 func firstNonEmpty(values ...string) string {

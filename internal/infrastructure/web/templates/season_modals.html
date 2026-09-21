@@ -1,0 +1,120 @@
+{{define "modal_deposit"}}
+<div class="modal-backdrop" id="modal-deposit" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 style="margin: 0; font-size: 1.05rem;">Caução do contrato</h2>
+      <button type="button" class="btn btn-sm btn-outline" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard/deposit" class="stack">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="intent" value="deposit.set">
+      <input type="hidden" name="lease_id">
+      <div class="form-group">
+        <label for="deposit_amount">Valor da caução</label>
+        <input id="deposit_amount" name="deposit_amount" type="text" inputmode="decimal" data-mask="money" required>
+      </div>
+      <div class="form-group">
+        <label for="deposit_received_at">Recebida em</label>
+        <input id="deposit_received_at" name="deposit_received_at" type="text" data-datetime placeholder="dd/mm/aaaa hh:mm">
+      </div>
+      <div class="form-group">
+        <label for="deposit_notes">Observações</label>
+        <textarea id="deposit_notes" name="deposit_notes" rows="3"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Salvar caução</button>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "modal_refund"}}
+<div class="modal-backdrop" id="modal-refund" hidden>
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2 style="margin: 0; font-size: 1.05rem;">Devolver caução</h2>
+      <button type="button" class="btn btn-sm btn-outline" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard/deposit" class="stack">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="intent" value="deposit.refund">
+      <input type="hidden" name="lease_id">
+      <p class="subtitle" style="margin: 0;">
+        Deixe o valor integral para devolver tudo. Valor menor registra devolução parcial; zero registra retenção total.
+        A devolução entra na trilha financeira e o recibo sai em PDF com chave de autenticidade.
+      </p>
+      <div class="form-group">
+        <label for="refund_amount">Valor devolvido</label>
+        <input id="refund_amount" name="refund_amount" type="text" inputmode="decimal" data-mask="money" required>
+      </div>
+      <div class="form-group">
+        <label for="refund_notes">Observações</label>
+        <textarea id="refund_notes" name="refund_notes" rows="3"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Registrar devolução</button>
+    </form>
+  </div>
+</div>
+{{end}}
+
+{{define "modal_inspection"}}
+<div class="modal-backdrop" id="modal-inspection" hidden>
+  <div class="modal-card modal-card-wide">
+    <div class="modal-header">
+      <h2 style="margin: 0; font-size: 1.05rem;">Auto de vistoria</h2>
+      <button type="button" class="btn btn-sm btn-outline" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard/inspection" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="intent" value="inspection.create">
+      <input type="hidden" name="lease_id">
+      <div class="stack" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
+        <div class="form-group">
+          <label for="inspection_kind">Tipo</label>
+          <select id="inspection_kind" name="kind">
+            <option value="checkin">Vistoria de entrada</option>
+            <option value="checkout">Vistoria de saída</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="inspection_condition">Estado geral</label>
+          <select id="inspection_condition" name="condition">
+            <option value="otima">Ótima</option>
+            <option value="boa" selected>Boa</option>
+            <option value="regular">Regular</option>
+            <option value="ruim">Ruim</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="performed_at">Realizada em</label>
+          <input id="performed_at" name="performed_at" type="text" data-datetime required placeholder="dd/mm/aaaa hh:mm">
+        </div>
+      </div>
+
+      <fieldset style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem;">
+        <legend class="metric-label">Itens conferidos</legend>
+        <div class="stack" data-inspection-items>
+          <div class="stack" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.5rem;">
+            <input name="item_area" type="text" placeholder="Ambiente" aria-label="Ambiente">
+            <input name="item_name" type="text" placeholder="Item" aria-label="Item">
+            <input name="item_state" type="text" placeholder="Estado" aria-label="Estado">
+            <input name="item_notes" type="text" placeholder="Observação" aria-label="Observação">
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" data-inspection-add-item style="margin-top: 0.5rem;">Adicionar item</button>
+      </fieldset>
+
+      <div class="form-group">
+        <label for="inspection_notes">Observações gerais</label>
+        <textarea id="inspection_notes" name="notes" rows="3"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="inspection_photos">Fotos (JPG, PNG ou WEBP, até 10)</label>
+        <input id="inspection_photos" name="photos" type="file" accept="image/*" multiple>
+      </div>
+
+      <button type="submit" class="btn btn-primary">Salvar vistoria</button>
+    </form>
+  </div>
+</div>
+{{end}}

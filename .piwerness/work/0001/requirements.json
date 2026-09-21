@@ -177,6 +177,17 @@
         "A imagem Docker passa a ser multi-stage Go e sobe o binário estático",
         "A CI antiga baseada em Bun é substituída pela CI Go"
       ]
+    },
+    {
+      "id": "FR-017",
+      "title": "Migrações por dialeto e adoção de base legada",
+      "user_story": "Como operador, quero que o boot migre a base do dialeto resolvido sem perder dados, para atualizar a instância em produção.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go test ./...` cobre base vazia, base já migrada e base legada adotada sem perda",
+        "Rodar o boot duas vezes não falha nem duplica",
+        "A base de produção com `__drizzle_migrations` é adotada"
+      ]
     }
   ]
 }

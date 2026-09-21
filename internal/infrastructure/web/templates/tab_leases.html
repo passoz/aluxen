@@ -1,0 +1,270 @@
+{{define "tab_leases"}}
+{{$status := $.Status}}
+{{$rows := $.LeaseRows}}
+<section class="card stack-lg" id="leases-section" data-table-group>
+  <div class="section-header">
+    <h2>Gerenciar Contratos</h2>
+    <button type="button" class="btn btn-primary" data-modal-open="lease-create-modal">Novo contrato</button>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="lease-filter">Buscar</label>
+      <input
+        id="lease-filter"
+        type="search"
+        data-filter="leases"
+        placeholder="Buscar por inquilino, imóvel ou período"
+        aria-label="Buscar por inquilino, imóvel ou período"
+      >
+    </div>
+    <div class="filter-field">
+      <span class="filter-label">Situação</span>
+      <div class="auth-actions">
+        <a class="btn btn-sm {{if or (eq $status "") (eq $status "all")}}btn-primary{{else}}btn-outline{{end}}" href="/dashboard?tab=leases">Todos</a>
+        <a class="btn btn-sm {{if eq $status "active"}}btn-primary{{else}}btn-outline{{end}}" href="/dashboard?tab=leases&amp;status=active">Ativos</a>
+        <a class="btn btn-sm {{if eq $status "suspended"}}btn-primary{{else}}btn-outline{{end}}" href="/dashboard?tab=leases&amp;status=suspended">Suspensos</a>
+        <a class="btn btn-sm {{if eq $status "season"}}btn-primary{{else}}btn-outline{{end}}" href="/dashboard?tab=leases&amp;status=season">Temporada</a>
+        <a class="btn btn-sm {{if eq $status "terminated"}}btn-primary{{else}}btn-outline{{end}}" href="/dashboard?tab=leases&amp;status=terminated">Encerrados</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th data-sort="tenant_name">Inquilino</th>
+          <th data-sort="property_name">Imóvel</th>
+          <th>Situação</th>
+          <th data-sort="start_date">Período</th>
+          <th data-sort="due_day">Vencimento</th>
+          <th data-sort="rent_amount">Aluguel</th>
+          <th>PDF</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $rows}}
+          <tr data-search="{{.TenantName}} {{.PropertyName}} {{.StartDate}} {{.EndDate}} {{leaseStatus (printf "%s" .Status)}}"{{if eq (printf "%s" .Status) "terminated"}} style="opacity: 0.55"{{end}}>
+            <td data-label="Inquilino">{{.TenantName}}</td>
+            <td data-label="Imóvel">{{.PropertyName}}</td>
+            <td data-label="Situação">
+              <span class="status-badge {{.Tone}}">{{leaseStatus (printf "%s" .Status)}}</span>
+            </td>
+            <td data-label="Período" data-sort-value="{{.StartDate}}">{{date .StartDate}} a {{date .EndDate}}</td>
+            <td data-label="Vencimento" data-sort-value="{{.DueDay}}">Dia {{.DueDay}}</td>
+            <td data-label="Aluguel" data-sort-value="{{printf "%.2f" .RentAmount}}">{{money .RentAmount}}</td>
+            <td data-label="PDF">
+              <div class="row-actions">
+                <a class="btn btn-sm btn-secondary" href="/contract-pdf?id={{.ID}}" target="_blank" rel="noreferrer" title="Gerar PDF do contrato">Contrato</a>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline"
+                  data-whatsapp-send="lease"
+                  data-whatsapp-id="{{.ID}}"
+                  title="Enviar contrato por WhatsApp"
+                >
+                  WhatsApp
+                </button>
+              </div>
+            </td>
+            <td data-label="Ações" class="row-actions">
+              <button
+                type="button"
+                class="btn btn-sm btn-secondary"
+                data-modal-open="lease-edit-modal"
+                data-modal-fill='{{json (dict "id" .ID "tenant_id" .TenantID "property_id" .PropertyID "start_date" .StartDate "end_date" .EndDate "due_day" (printf "%d" .DueDay) "rent_amount" (printf "%.2f" .RentAmount) "status" (printf "%s" .Status))}}'
+              >
+                Editar
+              </button>
+
+              {{if eq (printf "%s" .Status) "active"}}
+                <form method="post" action="/dashboard" data-offline data-confirm="Suspender este contrato? Ele deixa de gerar cobranças automáticas.">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.suspend">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-outline">Suspender</button>
+                </form>
+                <form method="post" action="/dashboard" data-offline data-confirm="Encerrar este contrato? Ele ficará inativo.">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.terminate">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-outline">Encerrar</button>
+                </form>
+              {{else if eq (printf "%s" .Status) "season"}}
+                <form method="post" action="/dashboard" data-offline data-confirm="Suspender esta temporada? Ela deixa de gerar cobranças automáticas.">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.suspend">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-outline">Suspender</button>
+                </form>
+                <form method="post" action="/dashboard" data-offline data-confirm="Encerrar esta temporada?">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.terminate">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-outline">Encerrar temporada</button>
+                </form>
+              {{else if eq (printf "%s" .Status) "suspended"}}
+                <form method="post" action="/dashboard" data-offline data-confirm="Tornar este contrato ativo novamente?">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.reactivate">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-secondary">Ativar</button>
+                </form>
+                <form method="post" action="/dashboard" data-offline data-confirm="Encerrar este contrato suspenso?">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.terminate">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-outline">Encerrar</button>
+                </form>
+              {{else}}
+                <form method="post" action="/dashboard" data-offline data-confirm="Reativar este contrato?">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="lease.reactivate">
+                  <input type="hidden" name="tab" value="leases">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-sm btn-secondary">Reativar</button>
+                </form>
+              {{end}}
+
+              <form method="post" action="/dashboard" data-offline data-confirm="Tem certeza que deseja excluir este contrato?">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="intent" value="lease.delete">
+                <input type="hidden" name="tab" value="leases">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        {{if not $rows}}
+          <tr>
+            <td colspan="8">
+              {{if $.Snapshot.Leases}}Nenhum contrato nesta situação.{{else}}Cadastre um inquilino e um imóvel para criar contratos.{{end}}
+            </td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div data-pagination></div>
+</section>
+
+<div class="modal-backdrop" id="lease-create-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Novo Contrato">
+    <div class="modal-header">
+      <h3>Novo Contrato</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="lease.create">
+      <input type="hidden" name="tab" value="leases">
+      <div class="form-group">
+        <label for="create-lease-tenant">Inquilino</label>
+        <select id="create-lease-tenant" name="tenant_id" required>
+          <option value="">Selecione</option>
+          {{range $.Snapshot.Tenants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-property">Imóvel</label>
+        <select id="create-lease-property" name="property_id" required>
+          <option value="">Selecione</option>
+          {{range $.Snapshot.Properties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-status">Status</label>
+        <select id="create-lease-status" name="status">
+          <option value="active">Ativo</option>
+          <option value="suspended">Suspenso (sem cobrança automática)</option>
+          <option value="season">Temporada</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-start">Início</label>
+        <input id="create-lease-start" name="start_date" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-end">Fim</label>
+        <input id="create-lease-end" name="end_date" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-due-day">Dia do vencimento</label>
+        <input id="create-lease-due-day" name="due_day" type="number" min="1" max="31" value="1" required>
+      </div>
+      <div class="form-group">
+        <label for="create-lease-rent">Aluguel</label>
+        <input id="create-lease-rent" name="rent_amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Adicionar contrato</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="lease-edit-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Editar Contrato">
+    <div class="modal-header">
+      <h3>Editar Contrato</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="lease.update">
+      <input type="hidden" name="tab" value="leases">
+      <input type="hidden" name="id" value="">
+      <div class="form-group">
+        <label for="modal-lease-tenant">Inquilino</label>
+        <select id="modal-lease-tenant" name="tenant_id" required>
+          <option value="">Selecione</option>
+          {{range $.Snapshot.Tenants}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-property">Imóvel</label>
+        <select id="modal-lease-property" name="property_id" required>
+          <option value="">Selecione</option>
+          {{range $.Snapshot.Properties}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-status">Status</label>
+        <select id="modal-lease-status" name="status">
+          <option value="active">Ativo</option>
+          <option value="suspended">Suspenso (sem cobrança automática)</option>
+          <option value="season">Temporada</option>
+          <option value="terminated">Encerrado</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-start">Início</label>
+        <input id="modal-lease-start" name="start_date" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-end">Fim</label>
+        <input id="modal-lease-end" name="end_date" type="date" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-due-day">Dia do vencimento</label>
+        <input id="modal-lease-due-day" name="due_day" type="number" min="1" max="31" value="1" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-rent">Aluguel</label>
+        <input id="modal-lease-rent" name="rent_amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Salvar alterações</button>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Descartar</button>
+    </form>
+  </div>
+</div>
+
+{{end}}

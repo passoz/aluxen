@@ -1,0 +1,81 @@
+{
+  "work_id": "0004",
+  "title": "WhatsApp bidirecional, agente de cobrança e conformidade das promessas",
+  "capabilities": [
+    {
+      "id": "CAP-301",
+      "name": "Mensageria bidirecional",
+      "description": "Webhook assinado, persistência das mensagens, vínculo com o titular e tela de conversas.",
+      "rules": [
+        "BR-301"
+      ]
+    },
+    {
+      "id": "CAP-302",
+      "name": "Agente de atendimento",
+      "description": "Ferramentas tipadas e limitadas, guardrails, escalonamento humano e registro de cada resposta.",
+      "rules": [
+        "BR-302",
+        "BR-303"
+      ]
+    },
+    {
+      "id": "CAP-303",
+      "name": "Régua de cobrança",
+      "description": "Estágios determinísticos de cobrança, redação assistida e registro de envios.",
+      "rules": [
+        "BR-304"
+      ]
+    },
+    {
+      "id": "CAP-304",
+      "name": "Conformidade",
+      "description": "Assinatura visualizada, aviso de privacidade, modos de canal e documentação de risco.",
+      "rules": [
+        "BR-305"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-301",
+      "statement": "Webhook exige assinatura válida e é idempotente por identificador externo.",
+      "coverage": [
+        "CAP-301"
+      ],
+      "evidence": "go test ./internal/infrastructure/whatsapp/..."
+    },
+    {
+      "id": "BR-302",
+      "statement": "O agente nunca recebe acesso livre ao banco: cada resposta passa por ferramenta tipada limitada ao titular da conversa.",
+      "coverage": [
+        "CAP-302"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-303",
+      "statement": "Pergunta fora do escopo ou jurídica escala para humano, sem resposta inventada.",
+      "coverage": [
+        "CAP-302"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-304",
+      "statement": "Valor, vencimento e status usados na cobrança vêm sempre do recibo, nunca do modelo.",
+      "coverage": [
+        "CAP-303"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-305",
+      "statement": "Nenhuma superfície do produto promete assinatura com validade jurídica enquanto não houver integração com plataforma de assinatura.",
+      "coverage": [
+        "CAP-304"
+      ],
+      "evidence": "revisão de UI, README e PDF"
+    }
+  ]
+}

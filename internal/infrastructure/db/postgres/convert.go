@@ -7,7 +7,7 @@ import (
 )
 
 // Conversão entre as linhas geradas pelo sqlc (colunas anuláveis em
-// sql.NullString/sql.NullFloat64, contadores em int32) e as entidades de
+// sql.NullString/sql.NullFloat64, contadores em int64) e as entidades de
 // domínio (anuláveis em ponteiro, contadores em int).
 
 // nullString converte um campo anulável da entidade na coluna do banco: ponteiro
@@ -52,6 +52,24 @@ func floatPtr(value sql.NullFloat64) *float64 {
 	}
 	amount := value.Float64
 	return &amount
+}
+
+// depositStatusColumn converte a situação da caução na coluna do banco: o
+// contrato sem caução grava NULL, que é o que mantém o uso atual (locação longa)
+// idêntico ao de antes da temporada.
+func depositStatusColumn(status domain.DepositStatus) sql.NullString {
+	if status == "" || status == domain.DepositStatusNone {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: string(status), Valid: true}
+}
+
+// depositStatusFromColumn lê a situação da caução: NULL ou vazio é "sem caução".
+func depositStatusFromColumn(value sql.NullString) domain.DepositStatus {
+	if !value.Valid || value.String == "" {
+		return domain.DepositStatusNone
+	}
+	return domain.DepositStatus(value.String)
 }
 
 // categoryOrDefault preserva o default que o app atual tinha no banco

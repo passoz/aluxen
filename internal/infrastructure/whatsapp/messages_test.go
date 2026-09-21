@@ -3,6 +3,8 @@ package whatsapp
 import (
 	"strings"
 	"testing"
+
+	"github.com/passoz/aluxen/internal/application"
 )
 
 func TestSanitizePhone(t *testing.T) {
@@ -60,7 +62,7 @@ func TestChatID(t *testing.T) {
 }
 
 func TestReceiptMessagePending(t *testing.T) {
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:    "Maria Silva",
 		PropertyName:  "Casa Centro",
 		DueDate:       "10/10/2026",
@@ -97,7 +99,7 @@ Atenciosamente,
 
 func TestReceiptMessagePaid(t *testing.T) {
 	paid := 1200.0
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:    "Maria Silva",
 		PropertyName:  "Casa Centro",
 		DueDate:       "10/10/2026",
@@ -121,7 +123,7 @@ func TestReceiptMessagePaid(t *testing.T) {
 
 func TestReceiptMessagePartial(t *testing.T) {
 	partial := 600.0
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:    "Maria Silva",
 		PropertyName:  "Casa Centro",
 		DueDate:       "10/10/2026",
@@ -142,7 +144,7 @@ func TestReceiptMessagePartial(t *testing.T) {
 
 func TestReceiptMessageExtraWithoutPaymentDate(t *testing.T) {
 	partial := 100.0
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:    "Maria Silva",
 		PropertyName:  "Casa Centro",
 		DueDate:       "10/10/2026",
@@ -166,7 +168,7 @@ func TestReceiptMessageExtraWithoutPaymentDate(t *testing.T) {
 }
 
 func TestReceiptMessageExtraWithoutDescription(t *testing.T) {
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:   "Maria Silva",
 		PropertyName: "Casa Centro",
 		DueDate:      "10/10/2026",
@@ -183,7 +185,7 @@ func TestReceiptMessageExtraWithoutDescription(t *testing.T) {
 }
 
 func TestReceiptMessageExtraWithoutProperty(t *testing.T) {
-	message := ReceiptMessage(ReceiptMessageInput{
+	message := ReceiptMessage(application.WhatsAppReceiptMessage{
 		TenantName:  "Maria Silva",
 		DueDate:     "10/10/2026",
 		Amount:      "R$ 200,00",
@@ -196,7 +198,7 @@ func TestReceiptMessageExtraWithoutProperty(t *testing.T) {
 }
 
 func TestContractMessage(t *testing.T) {
-	message := ContractMessage(ContractMessageInput{
+	message := ContractMessage(application.WhatsAppContractMessage{
 		TenantName:    "Maria Silva",
 		PropertyName:  "Casa Centro",
 		StartDate:     "01/01/2026",

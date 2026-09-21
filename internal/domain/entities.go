@@ -51,20 +51,29 @@ type Property struct {
 
 // Lease é o contrato de locação (tabela `leases`). TenantName e PropertyName
 // vêm do join e são usados em listagens, PDFs e auditoria.
+//
+// Os campos de caução existem para contrato de temporada e são opcionais: nulos
+// significam contrato sem caução, exatamente como no uso atual.
 type Lease struct {
-	ID           string
-	TenantID     string
-	PropertyID   string
-	StartDate    string
-	EndDate      string
-	DueDay       int
-	RentAmount   float64
-	Status       LeaseStatus
-	AuthToken    *string
-	CreatedAt    string
-	UpdatedAt    string
-	TenantName   string
-	PropertyName string
+	ID                 string
+	TenantID           string
+	PropertyID         string
+	StartDate          string
+	EndDate            string
+	DueDay             int
+	RentAmount         float64
+	Status             LeaseStatus
+	AuthToken          *string
+	DepositAmount      *float64
+	DepositStatus      DepositStatus
+	DepositReceivedAt  *string
+	DepositRefundedAt  *string
+	DepositRefundedAmt *float64
+	DepositNotes       *string
+	CreatedAt          string
+	UpdatedAt          string
+	TenantName         string
+	PropertyName       string
 }
 
 // Receipt é o lançamento financeiro (tabela `receipts`). Recibo de aluguel tem

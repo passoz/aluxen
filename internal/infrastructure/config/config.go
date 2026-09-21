@@ -34,6 +34,10 @@ type Config struct {
 	DatabaseURL string `env:"DATABASE_URL"`
 	// DBDir é o diretório do arquivo SQLite quando DATABASE_URL não é informado.
 	DBDir string `env:"DB_DIR"`
+
+	// StorageDir guarda fotos de vistoria e documentos enviados. Vazio usa
+	// <DB_DIR>/storage quando DB_DIR existe; senão ./storage.
+	StorageDir string `env:"STORAGE_DIR"`
 	// LogLevel é o filtro do log: `debug`, `info`, `warn`, `error` ou `silent`.
 	LogLevel string `env:"LOG_LEVEL" envDefault:"info"`
 	// LogFormat força o formato da saída (`json`); vazio segue o ambiente.

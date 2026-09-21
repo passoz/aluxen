@@ -3,7 +3,9 @@ package web
 import (
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/domain"
@@ -14,7 +16,7 @@ import (
 // despacho, carregamento de dados e renderização da casca.
 
 // dashboardTabs são as abas válidas do painel.
-var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "history", "metrics"}
+var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "history", "metrics"}
 
 // tabTemplate é o template de conteúdo de cada aba. Áreas que ainda não
 // publicaram o template apenas não renderizam conteúdo (o painel não quebra).
@@ -24,6 +26,8 @@ var tabTemplate = map[string]string{
 	"properties": "tab_properties",
 	"leases":     "tab_leases",
 	"receipts":   "tab_receipts",
+	"season":     "tab_season",
+	"calendar":   "tab_calendar",
 	"history":    "tab_history",
 	"metrics":    "tab_metrics",
 }
@@ -55,7 +59,22 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tab := normalizeTab(r.URL.Query().Get("tab"))
+	seasonOverview, err := application.BuildSeasonOverview(r.Context(), h.Deps)
+	if err != nil {
+		h.mapError(w, r, err)
+		return
+	}
+
+	calendarYear, calendarMonth := parseCalendarQuery(r.URL.Query().Get("year"), r.URL.Query().Get("month"), h.Deps.Clock.Now())
+	calendar, err := application.BuildCalendar(r.Context(), h.Deps, calendarYear, calendarMonth)
+	if err != nil {
+		h.mapError(w, r, err)
+		return
+	}
+
 	content, err := h.renderTab(tab, &tabData{
+		Season:     seasonOverview,
+		Calendar:   calendar,
 		User:       user,
 		Snapshot:   snapshot,
 		Tab:        tab,
@@ -91,6 +110,8 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 type tabData struct {
 	User       *domain.User
 	Snapshot   *application.DashboardData
+	Season     *application.SeasonOverview
+	Calendar   *application.CalendarView
 	Tab        string
 	Month      string
 	Year       string
@@ -114,6 +135,19 @@ func (h *Handlers) renderTab(tab string, data *tabData) (*tabData, error) {
 	}
 	data.HTML = html
 	return data, nil
+}
+
+// parseCalendarQuery lê ano e mês do calendário, caindo para o mês corrente.
+func parseCalendarQuery(rawYear, rawMonth string, now time.Time) (int, int) {
+	year, err := strconv.Atoi(strings.TrimSpace(rawYear))
+	if err != nil || year < 1970 || year > 9999 {
+		year = now.Year()
+	}
+	month, err := strconv.Atoi(strings.TrimSpace(rawMonth))
+	if err != nil || month < 1 || month > 12 {
+		month = int(now.Month())
+	}
+	return year, month
 }
 
 func normalizeTab(tab string) string {

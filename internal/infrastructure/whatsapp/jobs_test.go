@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/passoz/aluxen/internal/application"
 )
 
 // testClock é um relógio controlado pelos testes.
@@ -46,7 +48,7 @@ func TestJobStoreCreateStartsPreparing(t *testing.T) {
 	if job.ID != "job-1" || job.UserID != "u1" {
 		t.Fatalf("job = %+v", job)
 	}
-	if job.Status != JobRunning || job.Stage != StagePreparing {
+	if job.Status != application.JobRunning || job.Stage != application.StagePreparing {
 		t.Fatalf("status/etapa = %s/%s, esperado running/preparing", job.Status, job.Stage)
 	}
 	if job.CreatedAt == 0 || job.CreatedAt != job.UpdatedAt {
@@ -64,7 +66,7 @@ func TestJobStoreTracksStagesAndCompletion(t *testing.T) {
 	store := NewJobStore(clock, &testIDs{})
 	job := store.Create("u1")
 
-	for _, stage := range []SendStage{StageConnecting, StageOpeningChat, StageSending, StageConfirming} {
+	for _, stage := range []application.WhatsAppStage{application.StageConnecting, application.StageOpeningChat, application.StageSending, application.StageConfirming} {
 		clock.advance(time.Second)
 		store.Stage(job.ID, stage)
 		updated, ok := store.Get(job.ID, "u1")
@@ -80,7 +82,7 @@ func TestJobStoreTracksStagesAndCompletion(t *testing.T) {
 	}
 
 	clock.advance(time.Second)
-	store.Complete(job.ID, SendResult{
+	store.Complete(job.ID, application.WhatsAppSendResult{
 		Success:   true,
 		To:        "5511999999999",
 		Message:   "Olá",
@@ -91,7 +93,7 @@ func TestJobStoreTracksStagesAndCompletion(t *testing.T) {
 	if !ok {
 		t.Fatal("job sumiu ao concluir")
 	}
-	if done.Status != JobDone || done.Stage != StageDone || done.Result == nil || !done.Result.Success {
+	if done.Status != application.JobDone || done.Stage != application.StageDone || done.Result == nil || !done.Result.Success {
 		t.Fatalf("job concluído = %+v", done)
 	}
 }
@@ -100,17 +102,17 @@ func TestJobStoreRecordsFailure(t *testing.T) {
 	store := NewJobStore(newTestClock(), &testIDs{})
 	job := store.Create("u1")
 
-	store.Stage(job.ID, StageConnecting)
+	store.Stage(job.ID, application.StageConnecting)
 	store.Fail(job.ID, "O número não está registrado no WhatsApp.")
 
 	failed, ok := store.Get(job.ID, "u1")
 	if !ok {
 		t.Fatal("job sumiu ao falhar")
 	}
-	if failed.Status != JobError || failed.Error == "" {
+	if failed.Status != application.JobError || failed.Error == "" {
 		t.Fatalf("job falho = %+v", failed)
 	}
-	if failed.Stage != StageConnecting {
+	if failed.Stage != application.StageConnecting {
 		t.Fatalf("etapa = %s, esperado a etapa em que falhou", failed.Stage)
 	}
 }
@@ -167,8 +169,8 @@ func TestJobStoreHidesJobFromOtherOwner(t *testing.T) {
 func TestJobStoreIgnoresUpdatesToUnknownJob(t *testing.T) {
 	store := NewJobStore(newTestClock(), &testIDs{})
 
-	store.Stage("nada", StageSending)
-	store.Complete("nada", SendResult{Success: true})
+	store.Stage("nada", application.StageSending)
+	store.Complete("nada", application.WhatsAppSendResult{Success: true})
 	store.Fail("nada", "erro")
 
 	if _, ok := store.Get("nada", "u1"); ok {

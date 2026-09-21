@@ -104,6 +104,15 @@ func (q *Queries) CountTenants(ctx context.Context) (int64, error) {
 	return total, err
 }
 
+const deleteInspection = `-- name: DeleteInspection :exec
+DELETE FROM inspections WHERE id = ?1
+`
+
+func (q *Queries) DeleteInspection(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteInspection, id)
+	return err
+}
+
 const deleteLease = `-- name: DeleteLease :exec
 DELETE FROM leases WHERE id = ?1
 `
@@ -140,8 +149,105 @@ func (q *Queries) DeleteTenant(ctx context.Context, id string) error {
 	return err
 }
 
+const getDocumentIntakeByID = `-- name: GetDocumentIntakeByID :one
+SELECT id, created_at, updated_at, kind, file_name, file_path, mime, status, extracted, confidence, created_entity, created_entity_id, raw_response, notes FROM document_intakes WHERE id = ?1
+`
+
+func (q *Queries) GetDocumentIntakeByID(ctx context.Context, id string) (DocumentIntake, error) {
+	row := q.db.QueryRowContext(ctx, getDocumentIntakeByID, id)
+	var i DocumentIntake
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.FileName,
+		&i.FilePath,
+		&i.Mime,
+		&i.Status,
+		&i.Extracted,
+		&i.Confidence,
+		&i.CreatedEntity,
+		&i.CreatedEntityID,
+		&i.RawResponse,
+		&i.Notes,
+	)
+	return i, err
+}
+
+const getInspectionByID = `-- name: GetInspectionByID :one
+SELECT i.id, i.lease_id, i.kind, i.performed_at, i.condition, i.notes, i.items, i.photos, i.auth_token, i.created_at, i.updated_at, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+WHERE i.id = ?1
+`
+
+type GetInspectionByIDRow struct {
+	ID           string         `json:"id"`
+	LeaseID      string         `json:"lease_id"`
+	Kind         string         `json:"kind"`
+	PerformedAt  string         `json:"performed_at"`
+	Condition    string         `json:"condition"`
+	Notes        sql.NullString `json:"notes"`
+	Items        sql.NullString `json:"items"`
+	Photos       sql.NullString `json:"photos"`
+	AuthToken    sql.NullString `json:"auth_token"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	TenantName   string         `json:"tenant_name"`
+	PropertyName string         `json:"property_name"`
+}
+
+func (q *Queries) GetInspectionByID(ctx context.Context, id string) (GetInspectionByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getInspectionByID, id)
+	var i GetInspectionByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.LeaseID,
+		&i.Kind,
+		&i.PerformedAt,
+		&i.Condition,
+		&i.Notes,
+		&i.Items,
+		&i.Photos,
+		&i.AuthToken,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TenantName,
+		&i.PropertyName,
+	)
+	return i, err
+}
+
+const getJobByID = `-- name: GetJobByID :one
+SELECT id, created_at, updated_at, kind, status, attempts, max_attempts, payload, result, error, scheduled_at, started_at, finished_at FROM jobs WHERE id = ?1
+`
+
+func (q *Queries) GetJobByID(ctx context.Context, id string) (Job, error) {
+	row := q.db.QueryRowContext(ctx, getJobByID, id)
+	var i Job
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Kind,
+		&i.Status,
+		&i.Attempts,
+		&i.MaxAttempts,
+		&i.Payload,
+		&i.Result,
+		&i.Error,
+		&i.ScheduledAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
 const getLeaseByID = `-- name: GetLeaseByID :one
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -149,19 +255,25 @@ WHERE l.id = ?1
 `
 
 type GetLeaseByIDRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 func (q *Queries) GetLeaseByID(ctx context.Context, id string) (GetLeaseByIDRow, error) {
@@ -179,8 +291,48 @@ func (q *Queries) GetLeaseByID(ctx context.Context, id string) (GetLeaseByIDRow,
 		&i.AuthToken,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DepositAmount,
+		&i.DepositStatus,
+		&i.DepositReceivedAt,
+		&i.DepositRefundedAt,
+		&i.DepositRefundedAmount,
+		&i.DepositNotes,
 		&i.TenantName,
 		&i.PropertyName,
+	)
+	return i, err
+}
+
+const getPaymentProofByID = `-- name: GetPaymentProofByID :one
+SELECT id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime, extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier, confidence, status, decision, decision_reason, decided_by, decided_at, raw_response FROM payment_proofs WHERE id = ?1
+`
+
+func (q *Queries) GetPaymentProofByID(ctx context.Context, id string) (PaymentProof, error) {
+	row := q.db.QueryRowContext(ctx, getPaymentProofByID, id)
+	var i PaymentProof
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Source,
+		&i.Phone,
+		&i.TenantID,
+		&i.ReceiptID,
+		&i.FileName,
+		&i.FilePath,
+		&i.Mime,
+		&i.ExtractedAmount,
+		&i.ExtractedDate,
+		&i.ExtractedPayer,
+		&i.ExtractedPayee,
+		&i.ExtractedIdentifier,
+		&i.Confidence,
+		&i.Status,
+		&i.Decision,
+		&i.DecisionReason,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.RawResponse,
 	)
 	return i, err
 }
@@ -417,25 +569,163 @@ func (q *Queries) InsertAuditLog(ctx context.Context, arg InsertAuditLogParams) 
 	return err
 }
 
+const insertDocumentIntake = `-- name: InsertDocumentIntake :exec
+
+INSERT INTO document_intakes (id, created_at, updated_at, kind, file_name, file_path, mime, status, extracted,
+                              confidence, created_entity, created_entity_id, raw_response, notes)
+VALUES (?1, ?2, ?3, ?4, ?5,
+        ?6, ?7, ?8, ?9, ?10,
+        ?11, ?12, ?13, ?14)
+`
+
+type InsertDocumentIntakeParams struct {
+	ID              string          `json:"id"`
+	CreatedAt       string          `json:"created_at"`
+	UpdatedAt       string          `json:"updated_at"`
+	Kind            string          `json:"kind"`
+	FileName        sql.NullString  `json:"file_name"`
+	FilePath        sql.NullString  `json:"file_path"`
+	Mime            sql.NullString  `json:"mime"`
+	Status          string          `json:"status"`
+	Extracted       sql.NullString  `json:"extracted"`
+	Confidence      sql.NullFloat64 `json:"confidence"`
+	CreatedEntity   sql.NullString  `json:"created_entity"`
+	CreatedEntityID sql.NullString  `json:"created_entity_id"`
+	RawResponse     sql.NullString  `json:"raw_response"`
+	Notes           sql.NullString  `json:"notes"`
+}
+
+// document_intakes -------------------------------------------------
+func (q *Queries) InsertDocumentIntake(ctx context.Context, arg InsertDocumentIntakeParams) error {
+	_, err := q.db.ExecContext(ctx, insertDocumentIntake,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Kind,
+		arg.FileName,
+		arg.FilePath,
+		arg.Mime,
+		arg.Status,
+		arg.Extracted,
+		arg.Confidence,
+		arg.CreatedEntity,
+		arg.CreatedEntityID,
+		arg.RawResponse,
+		arg.Notes,
+	)
+	return err
+}
+
+const insertInspection = `-- name: InsertInspection :exec
+INSERT INTO inspections (id, lease_id, kind, performed_at, condition, notes, items, photos, auth_token, created_at, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5,
+        ?6, ?7, ?8, ?9, ?10, ?11)
+`
+
+type InsertInspectionParams struct {
+	ID          string         `json:"id"`
+	LeaseID     string         `json:"lease_id"`
+	Kind        string         `json:"kind"`
+	PerformedAt string         `json:"performed_at"`
+	Condition   string         `json:"condition"`
+	Notes       sql.NullString `json:"notes"`
+	Items       sql.NullString `json:"items"`
+	Photos      sql.NullString `json:"photos"`
+	AuthToken   sql.NullString `json:"auth_token"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+}
+
+func (q *Queries) InsertInspection(ctx context.Context, arg InsertInspectionParams) error {
+	_, err := q.db.ExecContext(ctx, insertInspection,
+		arg.ID,
+		arg.LeaseID,
+		arg.Kind,
+		arg.PerformedAt,
+		arg.Condition,
+		arg.Notes,
+		arg.Items,
+		arg.Photos,
+		arg.AuthToken,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const insertJob = `-- name: InsertJob :exec
+
+INSERT INTO jobs (id, created_at, updated_at, kind, status, attempts, max_attempts, payload, result, error, scheduled_at, started_at, finished_at)
+VALUES (?1, ?2, ?3, ?4, ?5,
+        ?6, ?7, ?8, ?9, ?10,
+        ?11, ?12, ?13)
+`
+
+type InsertJobParams struct {
+	ID          string         `json:"id"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+	Kind        string         `json:"kind"`
+	Status      string         `json:"status"`
+	Attempts    int64          `json:"attempts"`
+	MaxAttempts int64          `json:"max_attempts"`
+	Payload     sql.NullString `json:"payload"`
+	Result      sql.NullString `json:"result"`
+	Error       sql.NullString `json:"error"`
+	ScheduledAt string         `json:"scheduled_at"`
+	StartedAt   sql.NullString `json:"started_at"`
+	FinishedAt  sql.NullString `json:"finished_at"`
+}
+
+// jobs -------------------------------------------------------------
+func (q *Queries) InsertJob(ctx context.Context, arg InsertJobParams) error {
+	_, err := q.db.ExecContext(ctx, insertJob,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Kind,
+		arg.Status,
+		arg.Attempts,
+		arg.MaxAttempts,
+		arg.Payload,
+		arg.Result,
+		arg.Error,
+		arg.ScheduledAt,
+		arg.StartedAt,
+		arg.FinishedAt,
+	)
+	return err
+}
+
 const insertLease = `-- name: InsertLease :exec
-INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, status, auth_token, created_at, updated_at)
+INSERT INTO leases (id, tenant_id, property_id, start_date, end_date, due_day, rent_amount, status, auth_token,
+                    deposit_amount, deposit_status, deposit_received_at, deposit_refunded_at,
+                    deposit_refunded_amount, deposit_notes, created_at, updated_at)
 VALUES (?1, ?2, ?3, ?4, ?5,
         ?6, ?7, ?8, ?9,
-        ?10, ?11)
+        ?10, ?11, ?12,
+        ?13, ?14, ?15,
+        ?16, ?17)
 `
 
 type InsertLeaseParams struct {
-	ID         string         `json:"id"`
-	TenantID   string         `json:"tenant_id"`
-	PropertyID string         `json:"property_id"`
-	StartDate  string         `json:"start_date"`
-	EndDate    string         `json:"end_date"`
-	DueDay     int64          `json:"due_day"`
-	RentAmount float64        `json:"rent_amount"`
-	Status     string         `json:"status"`
-	AuthToken  sql.NullString `json:"auth_token"`
-	CreatedAt  string         `json:"created_at"`
-	UpdatedAt  string         `json:"updated_at"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
 }
 
 func (q *Queries) InsertLease(ctx context.Context, arg InsertLeaseParams) error {
@@ -449,8 +739,80 @@ func (q *Queries) InsertLease(ctx context.Context, arg InsertLeaseParams) error 
 		arg.RentAmount,
 		arg.Status,
 		arg.AuthToken,
+		arg.DepositAmount,
+		arg.DepositStatus,
+		arg.DepositReceivedAt,
+		arg.DepositRefundedAt,
+		arg.DepositRefundedAmount,
+		arg.DepositNotes,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+	)
+	return err
+}
+
+const insertPaymentProof = `-- name: InsertPaymentProof :exec
+
+INSERT INTO payment_proofs (id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime,
+                            extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier,
+                            confidence, status, decision, decision_reason, decided_by, decided_at, raw_response)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6,
+        ?7, ?8, ?9, ?10, ?11,
+        ?12, ?13, ?14, ?15,
+        ?16, ?17, ?18, ?19, ?20,
+        ?21, ?22)
+`
+
+type InsertPaymentProofParams struct {
+	ID                  string          `json:"id"`
+	CreatedAt           string          `json:"created_at"`
+	UpdatedAt           string          `json:"updated_at"`
+	Source              string          `json:"source"`
+	Phone               sql.NullString  `json:"phone"`
+	TenantID            sql.NullString  `json:"tenant_id"`
+	ReceiptID           sql.NullString  `json:"receipt_id"`
+	FileName            sql.NullString  `json:"file_name"`
+	FilePath            sql.NullString  `json:"file_path"`
+	Mime                sql.NullString  `json:"mime"`
+	ExtractedAmount     sql.NullFloat64 `json:"extracted_amount"`
+	ExtractedDate       sql.NullString  `json:"extracted_date"`
+	ExtractedPayer      sql.NullString  `json:"extracted_payer"`
+	ExtractedPayee      sql.NullString  `json:"extracted_payee"`
+	ExtractedIdentifier sql.NullString  `json:"extracted_identifier"`
+	Confidence          sql.NullFloat64 `json:"confidence"`
+	Status              string          `json:"status"`
+	Decision            string          `json:"decision"`
+	DecisionReason      sql.NullString  `json:"decision_reason"`
+	DecidedBy           sql.NullString  `json:"decided_by"`
+	DecidedAt           sql.NullString  `json:"decided_at"`
+	RawResponse         sql.NullString  `json:"raw_response"`
+}
+
+// payment_proofs ---------------------------------------------------
+func (q *Queries) InsertPaymentProof(ctx context.Context, arg InsertPaymentProofParams) error {
+	_, err := q.db.ExecContext(ctx, insertPaymentProof,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Source,
+		arg.Phone,
+		arg.TenantID,
+		arg.ReceiptID,
+		arg.FileName,
+		arg.FilePath,
+		arg.Mime,
+		arg.ExtractedAmount,
+		arg.ExtractedDate,
+		arg.ExtractedPayer,
+		arg.ExtractedPayee,
+		arg.ExtractedIdentifier,
+		arg.Confidence,
+		arg.Status,
+		arg.Decision,
+		arg.DecisionReason,
+		arg.DecidedBy,
+		arg.DecidedAt,
+		arg.RawResponse,
 	)
 	return err
 }
@@ -867,9 +1229,315 @@ func (q *Queries) ListAuditLogsDesc(ctx context.Context, arg ListAuditLogsDescPa
 	return items, nil
 }
 
+const listDocumentIntakes = `-- name: ListDocumentIntakes :many
+SELECT id, created_at, updated_at, kind, file_name, file_path, mime, status, extracted, confidence, created_entity, created_entity_id, raw_response, notes FROM document_intakes ORDER BY created_at DESC LIMIT ?1
+`
+
+func (q *Queries) ListDocumentIntakes(ctx context.Context, pageLimit int64) ([]DocumentIntake, error) {
+	rows, err := q.db.QueryContext(ctx, listDocumentIntakes, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DocumentIntake{}
+	for rows.Next() {
+		var i DocumentIntake
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.FileName,
+			&i.FilePath,
+			&i.Mime,
+			&i.Status,
+			&i.Extracted,
+			&i.Confidence,
+			&i.CreatedEntity,
+			&i.CreatedEntityID,
+			&i.RawResponse,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDocumentIntakesByStatus = `-- name: ListDocumentIntakesByStatus :many
+SELECT id, created_at, updated_at, kind, file_name, file_path, mime, status, extracted, confidence, created_entity, created_entity_id, raw_response, notes FROM document_intakes WHERE status = ?1 ORDER BY created_at DESC LIMIT ?2
+`
+
+type ListDocumentIntakesByStatusParams struct {
+	Status    string `json:"status"`
+	PageLimit int64  `json:"page_limit"`
+}
+
+func (q *Queries) ListDocumentIntakesByStatus(ctx context.Context, arg ListDocumentIntakesByStatusParams) ([]DocumentIntake, error) {
+	rows, err := q.db.QueryContext(ctx, listDocumentIntakesByStatus, arg.Status, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DocumentIntake{}
+	for rows.Next() {
+		var i DocumentIntake
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.FileName,
+			&i.FilePath,
+			&i.Mime,
+			&i.Status,
+			&i.Extracted,
+			&i.Confidence,
+			&i.CreatedEntity,
+			&i.CreatedEntityID,
+			&i.RawResponse,
+			&i.Notes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInspections = `-- name: ListInspections :many
+
+SELECT i.id, i.lease_id, i.kind, i.performed_at, i.condition, i.notes, i.items, i.photos, i.auth_token, i.created_at, i.updated_at, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+ORDER BY i.performed_at DESC, i.created_at DESC
+`
+
+type ListInspectionsRow struct {
+	ID           string         `json:"id"`
+	LeaseID      string         `json:"lease_id"`
+	Kind         string         `json:"kind"`
+	PerformedAt  string         `json:"performed_at"`
+	Condition    string         `json:"condition"`
+	Notes        sql.NullString `json:"notes"`
+	Items        sql.NullString `json:"items"`
+	Photos       sql.NullString `json:"photos"`
+	AuthToken    sql.NullString `json:"auth_token"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	TenantName   string         `json:"tenant_name"`
+	PropertyName string         `json:"property_name"`
+}
+
+// inspections ------------------------------------------------------
+func (q *Queries) ListInspections(ctx context.Context) ([]ListInspectionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listInspections)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInspectionsRow{}
+	for rows.Next() {
+		var i ListInspectionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LeaseID,
+			&i.Kind,
+			&i.PerformedAt,
+			&i.Condition,
+			&i.Notes,
+			&i.Items,
+			&i.Photos,
+			&i.AuthToken,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TenantName,
+			&i.PropertyName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInspectionsByLease = `-- name: ListInspectionsByLease :many
+SELECT i.id, i.lease_id, i.kind, i.performed_at, i.condition, i.notes, i.items, i.photos, i.auth_token, i.created_at, i.updated_at, t.name AS tenant_name, p.name AS property_name
+FROM inspections i
+JOIN leases l ON l.id = i.lease_id
+JOIN tenants t ON t.id = l.tenant_id
+JOIN properties p ON p.id = l.property_id
+WHERE i.lease_id = ?1
+ORDER BY i.performed_at DESC
+`
+
+type ListInspectionsByLeaseRow struct {
+	ID           string         `json:"id"`
+	LeaseID      string         `json:"lease_id"`
+	Kind         string         `json:"kind"`
+	PerformedAt  string         `json:"performed_at"`
+	Condition    string         `json:"condition"`
+	Notes        sql.NullString `json:"notes"`
+	Items        sql.NullString `json:"items"`
+	Photos       sql.NullString `json:"photos"`
+	AuthToken    sql.NullString `json:"auth_token"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
+	TenantName   string         `json:"tenant_name"`
+	PropertyName string         `json:"property_name"`
+}
+
+func (q *Queries) ListInspectionsByLease(ctx context.Context, leaseID string) ([]ListInspectionsByLeaseRow, error) {
+	rows, err := q.db.QueryContext(ctx, listInspectionsByLease, leaseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInspectionsByLeaseRow{}
+	for rows.Next() {
+		var i ListInspectionsByLeaseRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.LeaseID,
+			&i.Kind,
+			&i.PerformedAt,
+			&i.Condition,
+			&i.Notes,
+			&i.Items,
+			&i.Photos,
+			&i.AuthToken,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TenantName,
+			&i.PropertyName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobs = `-- name: ListJobs :many
+SELECT id, created_at, updated_at, kind, status, attempts, max_attempts, payload, result, error, scheduled_at, started_at, finished_at FROM jobs ORDER BY created_at DESC LIMIT ?1
+`
+
+func (q *Queries) ListJobs(ctx context.Context, pageLimit int64) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listJobs, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Status,
+			&i.Attempts,
+			&i.MaxAttempts,
+			&i.Payload,
+			&i.Result,
+			&i.Error,
+			&i.ScheduledAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobsByStatus = `-- name: ListJobsByStatus :many
+SELECT id, created_at, updated_at, kind, status, attempts, max_attempts, payload, result, error, scheduled_at, started_at, finished_at FROM jobs
+WHERE status = ?1
+ORDER BY scheduled_at ASC, created_at ASC
+LIMIT ?2
+`
+
+type ListJobsByStatusParams struct {
+	Status    string `json:"status"`
+	PageLimit int64  `json:"page_limit"`
+}
+
+func (q *Queries) ListJobsByStatus(ctx context.Context, arg ListJobsByStatusParams) ([]Job, error) {
+	rows, err := q.db.QueryContext(ctx, listJobsByStatus, arg.Status, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Kind,
+			&i.Status,
+			&i.Attempts,
+			&i.MaxAttempts,
+			&i.Payload,
+			&i.Result,
+			&i.Error,
+			&i.ScheduledAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLeases = `-- name: ListLeases :many
 
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -877,19 +1545,25 @@ ORDER BY l.start_date DESC, t.name ASC
 `
 
 type ListLeasesRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 // -- leases ---------------------------------------
@@ -914,6 +1588,12 @@ func (q *Queries) ListLeases(ctx context.Context) ([]ListLeasesRow, error) {
 			&i.AuthToken,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DepositAmount,
+			&i.DepositStatus,
+			&i.DepositReceivedAt,
+			&i.DepositRefundedAt,
+			&i.DepositRefundedAmount,
+			&i.DepositNotes,
 			&i.TenantName,
 			&i.PropertyName,
 		); err != nil {
@@ -931,7 +1611,7 @@ func (q *Queries) ListLeases(ctx context.Context) ([]ListLeasesRow, error) {
 }
 
 const listLeasesActiveInRange = `-- name: ListLeasesActiveInRange :many
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -947,19 +1627,25 @@ type ListLeasesActiveInRangeParams struct {
 }
 
 type ListLeasesActiveInRangeRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 func (q *Queries) ListLeasesActiveInRange(ctx context.Context, arg ListLeasesActiveInRangeParams) ([]ListLeasesActiveInRangeRow, error) {
@@ -983,6 +1669,12 @@ func (q *Queries) ListLeasesActiveInRange(ctx context.Context, arg ListLeasesAct
 			&i.AuthToken,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DepositAmount,
+			&i.DepositStatus,
+			&i.DepositReceivedAt,
+			&i.DepositRefundedAt,
+			&i.DepositRefundedAmount,
+			&i.DepositNotes,
 			&i.TenantName,
 			&i.PropertyName,
 		); err != nil {
@@ -1000,7 +1692,7 @@ func (q *Queries) ListLeasesActiveInRange(ctx context.Context, arg ListLeasesAct
 }
 
 const listLeasesByProperty = `-- name: ListLeasesByProperty :many
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -1009,19 +1701,25 @@ ORDER BY l.start_date DESC
 `
 
 type ListLeasesByPropertyRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 func (q *Queries) ListLeasesByProperty(ctx context.Context, propertyID string) ([]ListLeasesByPropertyRow, error) {
@@ -1045,6 +1743,12 @@ func (q *Queries) ListLeasesByProperty(ctx context.Context, propertyID string) (
 			&i.AuthToken,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DepositAmount,
+			&i.DepositStatus,
+			&i.DepositReceivedAt,
+			&i.DepositRefundedAt,
+			&i.DepositRefundedAmount,
+			&i.DepositNotes,
 			&i.TenantName,
 			&i.PropertyName,
 		); err != nil {
@@ -1062,7 +1766,7 @@ func (q *Queries) ListLeasesByProperty(ctx context.Context, propertyID string) (
 }
 
 const listLeasesByTenant = `-- name: ListLeasesByTenant :many
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -1071,19 +1775,25 @@ ORDER BY l.start_date DESC
 `
 
 type ListLeasesByTenantRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 func (q *Queries) ListLeasesByTenant(ctx context.Context, tenantID string) ([]ListLeasesByTenantRow, error) {
@@ -1107,6 +1817,12 @@ func (q *Queries) ListLeasesByTenant(ctx context.Context, tenantID string) ([]Li
 			&i.AuthToken,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DepositAmount,
+			&i.DepositStatus,
+			&i.DepositReceivedAt,
+			&i.DepositRefundedAt,
+			&i.DepositRefundedAmount,
+			&i.DepositNotes,
 			&i.TenantName,
 			&i.PropertyName,
 		); err != nil {
@@ -1124,7 +1840,7 @@ func (q *Queries) ListLeasesByTenant(ctx context.Context, tenantID string) ([]Li
 }
 
 const listLeasesOverlapping = `-- name: ListLeasesOverlapping :many
-SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, t.name AS tenant_name, p.name AS property_name
+SELECT l.id, l.tenant_id, l.property_id, l.start_date, l.end_date, l.due_day, l.rent_amount, l.status, l.auth_token, l.created_at, l.updated_at, l.deposit_amount, l.deposit_status, l.deposit_received_at, l.deposit_refunded_at, l.deposit_refunded_amount, l.deposit_notes, t.name AS tenant_name, p.name AS property_name
 FROM leases l
 JOIN tenants t ON t.id = l.tenant_id
 JOIN properties p ON p.id = l.property_id
@@ -1143,19 +1859,25 @@ type ListLeasesOverlappingParams struct {
 }
 
 type ListLeasesOverlappingRow struct {
-	ID           string         `json:"id"`
-	TenantID     string         `json:"tenant_id"`
-	PropertyID   string         `json:"property_id"`
-	StartDate    string         `json:"start_date"`
-	EndDate      string         `json:"end_date"`
-	DueDay       int64          `json:"due_day"`
-	RentAmount   float64        `json:"rent_amount"`
-	Status       string         `json:"status"`
-	AuthToken    sql.NullString `json:"auth_token"`
-	CreatedAt    string         `json:"created_at"`
-	UpdatedAt    string         `json:"updated_at"`
-	TenantName   string         `json:"tenant_name"`
-	PropertyName string         `json:"property_name"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	TenantName            string          `json:"tenant_name"`
+	PropertyName          string          `json:"property_name"`
 }
 
 func (q *Queries) ListLeasesOverlapping(ctx context.Context, arg ListLeasesOverlappingParams) ([]ListLeasesOverlappingRow, error) {
@@ -1184,8 +1906,172 @@ func (q *Queries) ListLeasesOverlapping(ctx context.Context, arg ListLeasesOverl
 			&i.AuthToken,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DepositAmount,
+			&i.DepositStatus,
+			&i.DepositReceivedAt,
+			&i.DepositRefundedAt,
+			&i.DepositRefundedAmount,
+			&i.DepositNotes,
 			&i.TenantName,
 			&i.PropertyName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaymentProofs = `-- name: ListPaymentProofs :many
+SELECT id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime, extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier, confidence, status, decision, decision_reason, decided_by, decided_at, raw_response FROM payment_proofs ORDER BY created_at DESC LIMIT ?1
+`
+
+func (q *Queries) ListPaymentProofs(ctx context.Context, pageLimit int64) ([]PaymentProof, error) {
+	rows, err := q.db.QueryContext(ctx, listPaymentProofs, pageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentProof{}
+	for rows.Next() {
+		var i PaymentProof
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Source,
+			&i.Phone,
+			&i.TenantID,
+			&i.ReceiptID,
+			&i.FileName,
+			&i.FilePath,
+			&i.Mime,
+			&i.ExtractedAmount,
+			&i.ExtractedDate,
+			&i.ExtractedPayer,
+			&i.ExtractedPayee,
+			&i.ExtractedIdentifier,
+			&i.Confidence,
+			&i.Status,
+			&i.Decision,
+			&i.DecisionReason,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.RawResponse,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaymentProofsByReceipt = `-- name: ListPaymentProofsByReceipt :many
+SELECT id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime, extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier, confidence, status, decision, decision_reason, decided_by, decided_at, raw_response FROM payment_proofs WHERE receipt_id = ?1 ORDER BY created_at DESC
+`
+
+func (q *Queries) ListPaymentProofsByReceipt(ctx context.Context, receiptID sql.NullString) ([]PaymentProof, error) {
+	rows, err := q.db.QueryContext(ctx, listPaymentProofsByReceipt, receiptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentProof{}
+	for rows.Next() {
+		var i PaymentProof
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Source,
+			&i.Phone,
+			&i.TenantID,
+			&i.ReceiptID,
+			&i.FileName,
+			&i.FilePath,
+			&i.Mime,
+			&i.ExtractedAmount,
+			&i.ExtractedDate,
+			&i.ExtractedPayer,
+			&i.ExtractedPayee,
+			&i.ExtractedIdentifier,
+			&i.Confidence,
+			&i.Status,
+			&i.Decision,
+			&i.DecisionReason,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.RawResponse,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPaymentProofsByStatus = `-- name: ListPaymentProofsByStatus :many
+SELECT id, created_at, updated_at, source, phone, tenant_id, receipt_id, file_name, file_path, mime, extracted_amount, extracted_date, extracted_payer, extracted_payee, extracted_identifier, confidence, status, decision, decision_reason, decided_by, decided_at, raw_response FROM payment_proofs
+WHERE status = ?1
+ORDER BY created_at DESC
+LIMIT ?2
+`
+
+type ListPaymentProofsByStatusParams struct {
+	Status    string `json:"status"`
+	PageLimit int64  `json:"page_limit"`
+}
+
+func (q *Queries) ListPaymentProofsByStatus(ctx context.Context, arg ListPaymentProofsByStatusParams) ([]PaymentProof, error) {
+	rows, err := q.db.QueryContext(ctx, listPaymentProofsByStatus, arg.Status, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PaymentProof{}
+	for rows.Next() {
+		var i PaymentProof
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Source,
+			&i.Phone,
+			&i.TenantID,
+			&i.ReceiptID,
+			&i.FileName,
+			&i.FilePath,
+			&i.Mime,
+			&i.ExtractedAmount,
+			&i.ExtractedDate,
+			&i.ExtractedPayer,
+			&i.ExtractedPayee,
+			&i.ExtractedIdentifier,
+			&i.Confidence,
+			&i.Status,
+			&i.Decision,
+			&i.DecisionReason,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.RawResponse,
 		); err != nil {
 			return nil, err
 		}
@@ -1570,24 +2456,136 @@ func (q *Queries) ListWhatsAppMessagesByTenant(ctx context.Context, arg ListWhat
 	return items, nil
 }
 
+const updateDocumentIntake = `-- name: UpdateDocumentIntake :exec
+UPDATE document_intakes
+SET updated_at = ?1, status = ?2, extracted = ?3,
+    confidence = ?4, created_entity = ?5,
+    created_entity_id = ?6, raw_response = ?7, notes = ?8
+WHERE id = ?9
+`
+
+type UpdateDocumentIntakeParams struct {
+	UpdatedAt       string          `json:"updated_at"`
+	Status          string          `json:"status"`
+	Extracted       sql.NullString  `json:"extracted"`
+	Confidence      sql.NullFloat64 `json:"confidence"`
+	CreatedEntity   sql.NullString  `json:"created_entity"`
+	CreatedEntityID sql.NullString  `json:"created_entity_id"`
+	RawResponse     sql.NullString  `json:"raw_response"`
+	Notes           sql.NullString  `json:"notes"`
+	ID              string          `json:"id"`
+}
+
+func (q *Queries) UpdateDocumentIntake(ctx context.Context, arg UpdateDocumentIntakeParams) error {
+	_, err := q.db.ExecContext(ctx, updateDocumentIntake,
+		arg.UpdatedAt,
+		arg.Status,
+		arg.Extracted,
+		arg.Confidence,
+		arg.CreatedEntity,
+		arg.CreatedEntityID,
+		arg.RawResponse,
+		arg.Notes,
+		arg.ID,
+	)
+	return err
+}
+
+const updateInspection = `-- name: UpdateInspection :exec
+UPDATE inspections
+SET kind = ?1, performed_at = ?2, condition = ?3,
+    notes = ?4, items = ?5, photos = ?6, updated_at = ?7
+WHERE id = ?8
+`
+
+type UpdateInspectionParams struct {
+	Kind        string         `json:"kind"`
+	PerformedAt string         `json:"performed_at"`
+	Condition   string         `json:"condition"`
+	Notes       sql.NullString `json:"notes"`
+	Items       sql.NullString `json:"items"`
+	Photos      sql.NullString `json:"photos"`
+	UpdatedAt   string         `json:"updated_at"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) UpdateInspection(ctx context.Context, arg UpdateInspectionParams) error {
+	_, err := q.db.ExecContext(ctx, updateInspection,
+		arg.Kind,
+		arg.PerformedAt,
+		arg.Condition,
+		arg.Notes,
+		arg.Items,
+		arg.Photos,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const updateJob = `-- name: UpdateJob :exec
+UPDATE jobs
+SET updated_at = ?1, status = ?2, attempts = ?3,
+    result = ?4, error = ?5, scheduled_at = ?6,
+    started_at = ?7, finished_at = ?8
+WHERE id = ?9
+`
+
+type UpdateJobParams struct {
+	UpdatedAt   string         `json:"updated_at"`
+	Status      string         `json:"status"`
+	Attempts    int64          `json:"attempts"`
+	Result      sql.NullString `json:"result"`
+	Error       sql.NullString `json:"error"`
+	ScheduledAt string         `json:"scheduled_at"`
+	StartedAt   sql.NullString `json:"started_at"`
+	FinishedAt  sql.NullString `json:"finished_at"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) error {
+	_, err := q.db.ExecContext(ctx, updateJob,
+		arg.UpdatedAt,
+		arg.Status,
+		arg.Attempts,
+		arg.Result,
+		arg.Error,
+		arg.ScheduledAt,
+		arg.StartedAt,
+		arg.FinishedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateLease = `-- name: UpdateLease :exec
 UPDATE leases
 SET tenant_id = ?1, property_id = ?2, start_date = ?3,
     end_date = ?4, due_day = ?5, rent_amount = ?6,
-    status = ?7, updated_at = ?8
-WHERE id = ?9
+    status = ?7,
+    deposit_amount = ?8, deposit_status = ?9,
+    deposit_received_at = ?10, deposit_refunded_at = ?11,
+    deposit_refunded_amount = ?12, deposit_notes = ?13,
+    updated_at = ?14
+WHERE id = ?15
 `
 
 type UpdateLeaseParams struct {
-	TenantID   string  `json:"tenant_id"`
-	PropertyID string  `json:"property_id"`
-	StartDate  string  `json:"start_date"`
-	EndDate    string  `json:"end_date"`
-	DueDay     int64   `json:"due_day"`
-	RentAmount float64 `json:"rent_amount"`
-	Status     string  `json:"status"`
-	UpdatedAt  string  `json:"updated_at"`
-	ID         string  `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+	UpdatedAt             string          `json:"updated_at"`
+	ID                    string          `json:"id"`
 }
 
 func (q *Queries) UpdateLease(ctx context.Context, arg UpdateLeaseParams) error {
@@ -1599,6 +2597,12 @@ func (q *Queries) UpdateLease(ctx context.Context, arg UpdateLeaseParams) error 
 		arg.DueDay,
 		arg.RentAmount,
 		arg.Status,
+		arg.DepositAmount,
+		arg.DepositStatus,
+		arg.DepositReceivedAt,
+		arg.DepositRefundedAt,
+		arg.DepositRefundedAmount,
+		arg.DepositNotes,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -1617,6 +2621,39 @@ type UpdateLeaseStatusParams struct {
 
 func (q *Queries) UpdateLeaseStatus(ctx context.Context, arg UpdateLeaseStatusParams) error {
 	_, err := q.db.ExecContext(ctx, updateLeaseStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updatePaymentProofDecision = `-- name: UpdatePaymentProofDecision :exec
+UPDATE payment_proofs
+SET updated_at = ?1, status = ?2, decision = ?3,
+    decision_reason = ?4, decided_by = ?5, decided_at = ?6,
+    receipt_id = ?7
+WHERE id = ?8
+`
+
+type UpdatePaymentProofDecisionParams struct {
+	UpdatedAt      string         `json:"updated_at"`
+	Status         string         `json:"status"`
+	Decision       string         `json:"decision"`
+	DecisionReason sql.NullString `json:"decision_reason"`
+	DecidedBy      sql.NullString `json:"decided_by"`
+	DecidedAt      sql.NullString `json:"decided_at"`
+	ReceiptID      sql.NullString `json:"receipt_id"`
+	ID             string         `json:"id"`
+}
+
+func (q *Queries) UpdatePaymentProofDecision(ctx context.Context, arg UpdatePaymentProofDecisionParams) error {
+	_, err := q.db.ExecContext(ctx, updatePaymentProofDecision,
+		arg.UpdatedAt,
+		arg.Status,
+		arg.Decision,
+		arg.DecisionReason,
+		arg.DecidedBy,
+		arg.DecidedAt,
+		arg.ReceiptID,
+		arg.ID,
+	)
 	return err
 }
 

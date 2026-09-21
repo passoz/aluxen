@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"path"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -15,10 +18,6 @@ import (
 
 	"github.com/passoz/aluxen/migrations"
 )
-
-// initialMigrationVersion é a versão da migração consolidada (00001_init.sql),
-// que descreve o schema final do app atual.
-const initialMigrationVersion int64 = 1
 
 // gooseMu serializa o estado global do goose (SetBaseFS/SetDialect), que é
 // compartilhado por todas as conexões do processo.
@@ -127,16 +126,19 @@ func adoptSQLiteLegacy(ctx context.Context, sqlDB *sql.DB) error {
 		}
 	}
 
+	// O schema final é lido da própria migração embutida, num banco descartável:
+	// assim a expectativa nunca diverge do SQL que o goose aplicaria.
+	reference, err := readSQLiteSchemaFromMigration(ctx)
+	if err != nil {
+		return err
+	}
+
 	if existing.columns["receipts"]["lease_id"] {
 		required, err := sqliteColumnRequired(ctx, sqlDB, "receipts", "lease_id")
 		if err != nil {
 			return err
 		}
 		if required {
-			reference, err := readSQLiteSchemaFromMigration(ctx)
-			if err != nil {
-				return err
-			}
 			if err := rebuildReceipts(ctx, sqlDB, existing.columns["receipts"], reference.ddl["receipts"]); err != nil {
 				return err
 			}
@@ -147,14 +149,50 @@ func adoptSQLiteLegacy(ctx context.Context, sqlDB *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	reference, err := readSQLiteSchemaFromMigration(ctx)
+	if !reference.coveredBy(actual) {
+		return nil
+	}
+	// A base já está no schema final (produção adotada ou banco criado a partir
+	// do DDL canônico): registra TODAS as migrações como aplicadas. Reaplicar o
+	// SQL falharia — o SQLite não tem `ADD COLUMN IF NOT EXISTS`, e recriar
+	// tabelas seria destrutivo.
+	versions, err := embeddedVersions(DialectSQLite)
 	if err != nil {
 		return err
 	}
-	if reference.coveredBy(actual) {
-		return markInitialVersionApplied(ctx, sqlDB)
+	return markAppliedVersions(ctx, sqlDB, versions)
+}
+
+// embeddedVersions devolve, em ordem, as versões das migrações embutidas do
+// dialeto (o prefixo numérico do nome do arquivo).
+func embeddedVersions(dialect Dialect) ([]int64, error) {
+	dir := "sqlite"
+	if dialect == DialectPostgres {
+		dir = "postgres"
 	}
-	return nil
+	embedded, err := fs.Sub(migrations.FS, dir)
+	if err != nil {
+		return nil, fmt.Errorf("abrir migrações embutidas de %s: %w", dir, err)
+	}
+	names, err := fs.Glob(embedded, "*.sql")
+	if err != nil {
+		return nil, fmt.Errorf("listar migrações embutidas de %s: %w", dir, err)
+	}
+
+	versions := make([]int64, 0, len(names))
+	for _, name := range names {
+		prefix, _, found := strings.Cut(path.Base(name), "_")
+		if !found {
+			return nil, fmt.Errorf("migração %q sem versão no nome", name)
+		}
+		version, err := strconv.ParseInt(prefix, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("migração %q com versão inválida: %w", name, err)
+		}
+		versions = append(versions, version)
+	}
+	sort.Slice(versions, func(i, j int) bool { return versions[i] < versions[j] })
+	return versions, nil
 }
 
 // addLegacyColumn acrescenta a coluna, ignorando a falha: uma base viva pode
@@ -236,9 +274,12 @@ func receiptCopyColumns(source map[string]bool) (target, selection []string) {
 	return target, selection
 }
 
-// markInitialVersionApplied registra a migração inicial como aplicada sem
-// executá-la: a base já tem o schema final e recriar tabelas seria destrutivo.
-func markInitialVersionApplied(ctx context.Context, sqlDB *sql.DB) error {
+// markAppliedVersions registra as migrações embutidas como aplicadas sem
+// executá-las: a base já tem o schema final e recriar tabelas seria destrutivo.
+func markAppliedVersions(ctx context.Context, sqlDB *sql.DB, versions []int64) error {
+	if len(versions) == 0 {
+		return nil
+	}
 	store, err := database.NewStore(database.DialectSQLite3, goose.TableName())
 	if err != nil {
 		return fmt.Errorf("abrir controle de versão do goose: %w", err)
@@ -258,13 +299,15 @@ func markInitialVersionApplied(ctx context.Context, sqlDB *sql.DB) error {
 	if err != nil && !errors.Is(err, database.ErrVersionNotFound) {
 		return fmt.Errorf("ler versão do schema: %w", err)
 	}
-	if current >= initialMigrationVersion {
-		return nil
+	for _, version := range versions {
+		if version <= current {
+			continue
+		}
+		if err := store.Insert(ctx, sqlDB, database.InsertRequest{Version: version}); err != nil {
+			return fmt.Errorf("registrar migração %d: %w", version, err)
+		}
 	}
-	if err := store.Insert(ctx, sqlDB, database.InsertRequest{Version: initialMigrationVersion}); err != nil {
-		return fmt.Errorf("registrar migração inicial: %w", err)
-	}
-	slog.Info("schema existente adotado", "scope", "db.migrate", "version", initialMigrationVersion)
+	slog.Info("schema existente adotado", "scope", "db.migrate", "versions", versions)
 	return nil
 }
 

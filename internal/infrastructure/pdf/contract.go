@@ -373,11 +373,11 @@ func prepositionPrefix(address string) string {
 func contractTerm(input ContractInput, usesExplicitRange bool) string {
 	startYear, startMonth, startDay := contractDateParts(input.StartDate, 2026)
 	endYear, endMonth, endDay := contractDateParts(input.EndDate, 2027)
-	start := fmt.Sprintf("o dia %d, do mês %s no ano de %d", startDay, monthNamesInWords[startMonth-1], startYear)
-	end := fmt.Sprintf("o dia %d do mês %s no ano de %d", endDay, monthNamesInWords[endMonth-1], endYear)
+	start := fmt.Sprintf("%d, do mês %s no ano de %d", startDay, monthNamesInWords[startMonth-1], startYear)
+	end := fmt.Sprintf("%d do mês %s no ano de %d", endDay, monthNamesInWords[endMonth-1], endYear)
 	closing := ", data a qual o imóvel deverá ser devolvido nas condições previstas na Cláusula 5ª, efetivando-se com a entrega das chaves, independentemente de aviso ou qualquer outra medida judicial ou extrajudicial."
 	if usesExplicitRange {
-		return "A presente locação terá o lapso temporal de validade compreendido entre " + start + " e " + end + closing
+		return "A presente locação terá o lapso temporal de validade compreendido entre o dia " + start + " e o dia " + end + closing
 	}
 	return "A presente locação terá o lapso temporal de validade de 12 meses, a iniciar-se no dia " +
 		start + " e findar-se no dia " + end + closing

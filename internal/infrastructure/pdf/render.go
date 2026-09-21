@@ -44,6 +44,20 @@ var (
 	sealAccent   = rgb{33, 115, 97}
 )
 
+// metricsPerRow é o número máximo de células do resumo lado a lado (o app atual
+// usa três no pagamento integral e quatro no parcial).
+const metricsPerRow = 4
+
+// metricRowMaxHeight é a altura reservada ao abrir uma linha de métricas: o
+// suficiente para o maior valor usado nos documentos (corpo 20).
+const metricRowMaxHeight = 10*1.5 + 20*1.4 + 6
+
+// metricRowState é a linha de métricas acumulada antes de desenhar.
+type metricRowState struct {
+	top    float64
+	blocks []Block
+}
+
 // signatureRowState é a linha de assinatura já aberta pela metade esquerda.
 type signatureRowState struct {
 	top    float64
@@ -60,6 +74,8 @@ type renderer struct {
 	// signatureRow é a linha de assinatura já aberta pela metade esquerda, para
 	// que a metade direita saia na mesma linha da página.
 	signatureRow *signatureRowState
+	// metricRow é a linha de métricas do resumo acumulada antes do desenho.
+	metricRow *metricRowState
 }
 
 // Render desenha o documento em PDF A4 e devolve os bytes.
@@ -85,12 +101,28 @@ func Render(document Document) ([]byte, error) {
 		if err := draw.startPage(); err != nil {
 			return nil, err
 		}
-		for _, block := range page.Blocks {
+		blocks := page.Blocks
+		// O selo de autenticidade é o último bloco do documento e sai ancorado no
+		// rodapé da última página, como o rodapé do recibo no app atual.
+		var seal *Block
+		if last := len(blocks) - 1; last >= 0 && blocks[last].Kind == BlockAuth {
+			anchored := blocks[last]
+			seal = &anchored
+			blocks = blocks[:last]
+		}
+		for _, block := range blocks {
 			if err := draw.block(block); err != nil {
 				return nil, err
 			}
 		}
-		draw.flushSignatureRow()
+		if err := draw.flushRows(); err != nil {
+			return nil, err
+		}
+		if seal != nil {
+			if err := draw.footerSeal(*seal); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	var output bytes.Buffer
@@ -102,9 +134,15 @@ func Render(document Document) ([]byte, error) {
 
 // block desenha um bloco do modelo.
 func (r *renderer) block(block Block) error {
-	// Um bloco que não é de assinatura fecha a linha de assinatura aberta.
+	// Um bloco que não pertence a uma linha fecha as linhas abertas (assinaturas
+	// lado a lado e métricas lado a lado).
 	if block.Kind != BlockSignature && block.Kind != BlockSignatureNote {
 		r.flushSignatureRow()
+	}
+	if block.Kind != BlockMetric {
+		if err := r.flushMetricRow(); err != nil {
+			return err
+		}
 	}
 
 	switch block.Kind {
@@ -133,9 +171,14 @@ func (r *renderer) block(block Block) error {
 		return nil
 	case BlockImage:
 		return r.image(block)
+	case BlockTable:
+		return r.table(block)
 	case BlockSignature, BlockSignatureNote:
 		return r.signature(block)
 	case BlockAuth:
+		if err := r.ensure(authBoxHeight(block) + 20); err != nil {
+			return err
+		}
 		return r.auth(block)
 	case BlockQR:
 		return r.standaloneQR(block)
@@ -154,6 +197,7 @@ func (r *renderer) startPage() error {
 	r.doc.Rect(0, 0, r.width, r.height, "F")
 	r.cursorY = topMargin
 	r.signatureRow = nil
+	r.metricRow = nil
 	return nil
 }
 
@@ -214,8 +258,9 @@ func (r *renderer) lineWidth(value string) float64 {
 	return r.doc.GetStringWidth(r.translate(value))
 }
 
-// brand desenha a marca: a imagem da logomarca quando existe e o wordmark ao
-// lado (ou sozinho, quando não há imagem).
+// brand desenha a marca: a imagem da logomarca, quando existe, ou o wordmark
+// escrito — a logomarca do Aluxen já traz o nome, então com a imagem o texto
+// seria uma repetição.
 func (r *renderer) brand(block Block) error {
 	size := defaultFloat(block.Size, 12)
 	colour := r.tone(defaultString(block.Tone, ToneAccent))
@@ -243,11 +288,6 @@ func (r *renderer) brand(block Block) error {
 	}
 	if err := r.drawImage(block.ImagePNG, pageMargin, r.cursorY, width, height); err != nil {
 		return err
-	}
-	if wordmark != "" {
-		r.font(block.Bold, size)
-		baseline := r.cursorY + height/2 + size*0.35
-		r.text(pageMargin+width+10, baseline, wordmark, colour)
 	}
 	r.cursorY += height + 12
 	return nil
@@ -322,20 +362,47 @@ func (r *renderer) label(block Block) error {
 	return nil
 }
 
-// metric desenha uma célula do resumo: rótulo pequeno sobre o valor.
+// metric acumula a célula do resumo na linha aberta. As métricas saem lado a
+// lado (até quatro por linha, como o resumo do app atual); a linha é desenhada
+// quando cheia ou quando chega um bloco de outro tipo.
 func (r *renderer) metric(block Block) error {
-	labelSize := 10.0
-	valueSize := defaultFloat(block.Size, 14)
-	height := labelSize*1.5 + valueSize*1.4 + 6
-	if err := r.ensure(height); err != nil {
-		return err
+	if r.metricRow == nil {
+		if err := r.ensure(metricRowMaxHeight); err != nil {
+			return err
+		}
+		r.metricRow = &metricRowState{top: r.cursorY}
 	}
-	r.font(true, labelSize)
-	r.text(pageMargin, r.cursorY+labelSize, block.Text, mutedColour)
-	r.cursorY += labelSize * 1.5
-	r.font(true, valueSize)
-	r.text(pageMargin, r.cursorY+valueSize, block.Value, r.tone(defaultString(block.Tone, ToneInk)))
-	r.cursorY += valueSize*1.4 + 6
+	r.metricRow.blocks = append(r.metricRow.blocks, block)
+	if len(r.metricRow.blocks) < metricsPerRow {
+		return nil
+	}
+	return r.flushMetricRow()
+}
+
+// flushMetricRow desenha a linha de métricas aberta e avança o cursor.
+func (r *renderer) flushMetricRow() error {
+	if r.metricRow == nil {
+		return nil
+	}
+	row := r.metricRow
+	r.metricRow = nil
+
+	columnWidth := r.contentWidth() / metricsPerRow
+	height := 0.0
+	for index, block := range row.blocks {
+		labelSize := 10.0
+		valueSize := defaultFloat(block.Size, 14)
+		cellHeight := labelSize*1.5 + valueSize*1.4 + 6
+		if cellHeight > height {
+			height = cellHeight
+		}
+		x := pageMargin + float64(index)*columnWidth
+		r.font(true, labelSize)
+		r.text(x, row.top+labelSize, block.Text, mutedColour)
+		r.font(true, valueSize)
+		r.text(x, row.top+labelSize*1.5+valueSize, block.Value, r.tone(defaultString(block.Tone, ToneInk)))
+	}
+	r.cursorY = row.top + height
 	return nil
 }
 
@@ -377,6 +444,124 @@ func (r *renderer) image(block Block) error {
 	}
 	r.cursorY += height + 10
 	return nil
+}
+
+// Medidas da tabela: recuo interno das células e avanço entre as linhas de uma
+// célula.
+const (
+	tableCellPaddingH = 5.0
+	tableCellPaddingV = 4.0
+	tableLineSpacing  = 1.35
+)
+
+// table desenha a tabela do bloco: o cabeçalho e as linhas de dados, com as
+// colunas nas frações pedidas (ou todas iguais) e a grade em tom de borda. As
+// linhas seguem o fluxo da página, quebrando quando não cabem.
+func (r *renderer) table(block Block) error {
+	columns := block.Columns
+	if len(columns) == 0 && len(block.Rows) > 0 {
+		columns = make([]string, len(block.Rows[0]))
+	}
+	if len(columns) == 0 {
+		return fmt.Errorf("bloco de tabela sem colunas")
+	}
+	for index, row := range block.Rows {
+		if len(row) != len(columns) {
+			return fmt.Errorf("linha %d da tabela com %d células, esperado %d", index+1, len(row), len(columns))
+		}
+	}
+
+	size := defaultFloat(block.Size, 9.5)
+	widths := tableWidths(block.ColumnWidths, len(columns))
+	if err := r.tableRow(columns, widths, size, true); err != nil {
+		return err
+	}
+	for _, row := range block.Rows {
+		if err := r.tableRow(row, widths, size, false); err != nil {
+			return err
+		}
+	}
+	r.cursorY += 4
+	return nil
+}
+
+// tableRow desenha uma linha da tabela (cabeçalho ou dados) e avança o cursor.
+func (r *renderer) tableRow(cells []string, widths []float64, size float64, header bool) error {
+	width := r.contentWidth()
+	lines := make([][]string, len(cells))
+	height := 0.0
+	for index, cell := range cells {
+		columnWidth := width * widths[index]
+		lines[index] = r.wrap(cell, size, header, columnWidth-2*tableCellPaddingH)
+		cellHeight := float64(len(lines[index]))*size*tableLineSpacing + 2*tableCellPaddingV
+		if cellHeight > height {
+			height = cellHeight
+		}
+	}
+	if err := r.ensure(height + 2); err != nil {
+		return err
+	}
+
+	top := r.cursorY
+	if header {
+		r.doc.SetFillColor(sealColour.r, sealColour.g, sealColour.b)
+		r.doc.Rect(pageMargin, top, width, height, "F")
+	}
+
+	x := pageMargin
+	for index, cellLines := range lines {
+		colour := inkColour
+		if header {
+			colour = sealAccent
+		}
+		r.font(header, size)
+		for lineIndex, line := range cellLines {
+			r.text(x+tableCellPaddingH, top+tableCellPaddingV+size+float64(lineIndex)*size*tableLineSpacing, line, colour)
+		}
+		r.doc.SetDrawColor(borderColour.r, borderColour.g, borderColour.b)
+		r.doc.SetLineWidth(0.5)
+		r.doc.Line(x, top, x, top+height)
+		x += width * widths[index]
+	}
+	r.doc.SetDrawColor(borderColour.r, borderColour.g, borderColour.b)
+	r.doc.SetLineWidth(0.5)
+	r.doc.Line(x, top, x, top+height)
+	// A grade fecha em cima no cabeçalho e embaixo em todas as linhas.
+	if header {
+		r.doc.Line(pageMargin, top, pageMargin+width, top)
+	}
+	r.doc.Line(pageMargin, top+height, pageMargin+width, top+height)
+
+	r.cursorY = top + height
+	return nil
+}
+
+// tableWidths devolve as frações de largura das colunas: as pedidas, quando
+// somam 1 e batem com o número de colunas; a mesma largura para todas, caso
+// contrário.
+func tableWidths(widths []float64, columns int) []float64 {
+	if len(widths) == columns {
+		total := 0.0
+		for _, width := range widths {
+			if width <= 0 {
+				total = 0
+				break
+			}
+			total += width
+		}
+		if total > 0 {
+			normalized := make([]float64, columns)
+			for index, width := range widths {
+				normalized[index] = width / total
+			}
+			return normalized
+		}
+	}
+	equal := make([]float64, columns)
+	for index := range equal {
+		equal[index] = 1 / float64(columns)
+	}
+	return equal
 }
 
 // signature desenha uma linha de assinatura com o rótulo do signatário. As
@@ -426,6 +611,25 @@ func (r *renderer) signature(block Block) error {
 	return nil
 }
 
+// flushRows desenha as linhas abertas que dependem do próximo bloco.
+func (r *renderer) flushRows() error {
+	r.flushSignatureRow()
+	return r.flushMetricRow()
+}
+
+// footerSeal desenha o selo de autenticidade ancorado no rodapé da página. Se o
+// conteúdo já alcançou o rodapé, o selo segue para uma página nova.
+func (r *renderer) footerSeal(block Block) error {
+	sealTop := r.height - bottomMargin - authBoxHeight(block)
+	if r.cursorY+12 > sealTop {
+		if err := r.startPage(); err != nil {
+			return err
+		}
+	}
+	r.cursorY = sealTop
+	return r.auth(block)
+}
+
 // flushSignatureRow fecha uma linha de assinatura que ficou só com a metade
 // esquerda antes de outro bloco.
 func (r *renderer) flushSignatureRow() {
@@ -452,10 +656,7 @@ func (r *renderer) auth(block Block) error {
 	if err != nil {
 		return err
 	}
-	boxHeight := size + 16
-	if err := r.ensure(boxHeight + 20); err != nil {
-		return err
-	}
+	boxHeight := authBoxHeight(block)
 	top := r.cursorY
 	r.doc.SetFillColor(sealColour.r, sealColour.g, sealColour.b)
 	r.doc.SetDrawColor(borderColour.r, borderColour.g, borderColour.b)
@@ -487,6 +688,11 @@ func (r *renderer) auth(block Block) error {
 
 	r.cursorY = top + boxHeight + 14
 	return nil
+}
+
+// authBoxHeight é a altura do selo de autenticidade (QR Code e moldura).
+func authBoxHeight(block Block) float64 {
+	return defaultFloat(block.Size, contractQRSize) + 16
 }
 
 // standaloneQR desenha um QR Code isolado e centralizado.

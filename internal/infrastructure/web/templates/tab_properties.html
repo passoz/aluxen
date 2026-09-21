@@ -1,0 +1,158 @@
+{{define "tab_properties"}}
+{{$properties := $.Data.Snapshot.Properties}}
+<section class="card stack-lg" data-table-group>
+  <div class="section-header">
+    <h2>Gerenciar Imóveis</h2>
+    <button type="button" class="btn btn-primary" data-modal-open="property-create-modal">Novo imóvel</button>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="property-filter">Buscar</label>
+      <input
+        id="property-filter"
+        type="search"
+        data-filter="properties"
+        placeholder="Buscar por nome, cidade, estado ou endereço"
+        aria-label="Buscar por nome, cidade, estado ou endereço"
+      >
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th data-sort="name">Nome</th>
+          <th data-sort="address">Endereço</th>
+          <th data-sort="city">Cidade/UF</th>
+          <th data-sort="zip">CEP</th>
+          <th>Contratos</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $properties}}
+          <tr data-search="{{.Name}} {{.Address}} {{.City}} {{.State}} {{deref .Zip}}">
+            <td data-label="Nome">{{.Name}}</td>
+            <td data-label="Endereço">{{.Address}}</td>
+            <td data-label="Cidade/UF">{{.City}}/{{.State}}</td>
+            <td data-label="CEP">{{if .Zip}}{{deref .Zip}}{{else}}-{{end}}</td>
+            <td data-label="Contratos">{{$.Data.PropertyLeaseCount .ID}}</td>
+            <td class="row-actions">
+              <button
+                type="button"
+                class="btn btn-sm btn-secondary"
+                data-modal-open="property-edit-modal"
+                data-modal-fill='{{json (dict "id" .ID "name" .Name "address" .Address "city" .City "state" .State "zip" (deref .Zip))}}'
+              >
+                Editar
+              </button>
+              <form method="post" action="/dashboard" data-offline data-confirm="Excluir o imóvel {{.Name}}?">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="intent" value="property.delete">
+                <input type="hidden" name="tab" value="properties">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="btn btn-sm btn-outline">Excluir</button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        {{if not $properties}}
+          <tr>
+            <td colspan="6">Nenhum imóvel cadastrado.</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div data-pagination></div>
+</section>
+
+<div class="modal-backdrop" id="property-create-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Novo Imóvel">
+    <div class="modal-header">
+      <h3>Novo Imóvel</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="property.create">
+      <input type="hidden" name="tab" value="properties">
+      <div class="form-group">
+        <label for="create-property-name">Nome</label>
+        <input id="create-property-name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="create-property-zip">CEP</label>
+        <input
+          id="create-property-zip"
+          name="zip"
+          type="text"
+          inputmode="numeric"
+          data-mask="cep"
+          placeholder="00000-000"
+        >
+      </div>
+      <div class="form-group">
+        <label for="create-property-address">Endereço</label>
+        <input id="create-property-address" name="address" placeholder="Rua, número e complemento" required>
+      </div>
+      <div class="form-group">
+        <label for="create-property-city">Cidade</label>
+        <input id="create-property-city" name="city" required>
+      </div>
+      <div class="form-group">
+        <label for="create-property-state">Estado</label>
+        <input id="create-property-state" name="state" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Adicionar imóvel</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="property-edit-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Editar Imóvel">
+    <div class="modal-header">
+      <h3>Editar Imóvel</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="property.update">
+      <input type="hidden" name="tab" value="properties">
+      <input type="hidden" name="id" value="">
+      <div class="form-group">
+        <label for="modal-property-name">Nome</label>
+        <input id="modal-property-name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-property-zip">CEP</label>
+        <input
+          id="modal-property-zip"
+          name="zip"
+          type="text"
+          inputmode="numeric"
+          data-mask="cep"
+          placeholder="00000-000"
+        >
+      </div>
+      <div class="form-group">
+        <label for="modal-property-address">Endereço</label>
+        <input id="modal-property-address" name="address" placeholder="Rua, número e complemento" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-property-city">Cidade</label>
+        <input id="modal-property-city" name="city" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-property-state">Estado</label>
+        <input id="modal-property-state" name="state" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Salvar alterações</button>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Descartar</button>
+    </form>
+  </div>
+</div>
+{{end}}

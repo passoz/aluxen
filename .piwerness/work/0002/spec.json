@@ -1,0 +1,81 @@
+{
+  "work_id": "0002",
+  "title": "Funcionalidades de temporada: caução, vistoria, calendário e taxas",
+  "capabilities": [
+    {
+      "id": "CAP-101",
+      "name": "Caução",
+      "description": "Campos de caução no contrato, casos de uso de entrada e devolução, lançamento na trilha financeira e recibo de devolução em PDF.",
+      "rules": [
+        "BR-101",
+        "BR-102"
+      ]
+    },
+    {
+      "id": "CAP-102",
+      "name": "Vistoria",
+      "description": "Tabela de vistorias com itens e fotos, PDF com QR/HMAC, anexo na Área do Cliente e auditoria própria.",
+      "rules": [
+        "BR-103"
+      ]
+    },
+    {
+      "id": "CAP-103",
+      "name": "Calendário de ocupação",
+      "description": "Visão de leitura dos contratos por imóvel e mês, com marcação por situação.",
+      "rules": [
+        "BR-104"
+      ]
+    },
+    {
+      "id": "CAP-104",
+      "name": "Categorias de temporada",
+      "description": "Categorias de lançamento para limpeza e consumíveis, com rótulos e filtros.",
+      "rules": [
+        "BR-105"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-101",
+      "statement": "Caução só é devolvida se houver valor retido e o contrato existir; devolução nunca excede o valor retido.",
+      "coverage": [
+        "CAP-101"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-102",
+      "statement": "A devolução de caução registra lançamento e recibo com token HMAC, mantendo a prova de autenticidade dos demais documentos.",
+      "coverage": [
+        "CAP-101"
+      ],
+      "evidence": "go test ./internal/infrastructure/pdf/..."
+    },
+    {
+      "id": "BR-103",
+      "statement": "Vistoria pertence a um contrato e o PDF só é acessível ao administrador, ao token válido ou ao locatário titular.",
+      "coverage": [
+        "CAP-102"
+      ],
+      "evidence": "go test ./internal/infrastructure/web/..."
+    },
+    {
+      "id": "BR-104",
+      "statement": "O calendário não escreve nada: é derivado dos contratos existentes.",
+      "coverage": [
+        "CAP-103"
+      ],
+      "evidence": "revisão de código"
+    },
+    {
+      "id": "BR-105",
+      "statement": "Categorias novas são aditivas: rent e extra continuam com o mesmo significado e comportamento.",
+      "coverage": [
+        "CAP-104"
+      ],
+      "evidence": "go test ./internal/domain/..."
+    }
+  ]
+}

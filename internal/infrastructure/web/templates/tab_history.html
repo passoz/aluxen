@@ -1,0 +1,541 @@
+{{define "tab_history"}}
+<section class="card stack-lg history-section" id="history-section">
+  <div class="section-header">
+    <div>
+      <h2>Histórico e Auditoria</h2>
+      <p class="subtitle">Trilha de auditoria</p>
+    </div>
+    <div class="auth-actions">
+      <span class="status-badge paid" id="history-total">0 evento(s)</span>
+      <a class="btn btn-secondary" id="history-export" href="/audit/export" download>Exportar CSV</a>
+    </div>
+  </div>
+
+  <div
+    id="history-labels"
+    hidden
+    data-origins='{"web":"Painel","public":"Link público","client":"Área do Cliente","job":"Rotina automática"}'
+    data-metadata='{"month":"Mês de referência","count":"Quantidade","batch":"Itens no lote","channel":"Canal","signature":"Com assinatura","phone":"Telefone","jobId":"Protocolo de envio","kind":"Tipo","reason":"Motivo","username":"Usuário","tenants":"Inquilinos","properties":"Imóveis","leases":"Contratos","receipts":"Pagamentos","fileName":"Arquivo","confidence":"Confiança","extracted":"Valor lido","receiptId":"Pagamento","amount":"Valor","stage":"Etapa"}'
+  ></div>
+
+  <div class="filter-bar">
+    <label class="filter-field filter-field-grow">
+      <span class="filter-label">Buscar</span>
+      <input type="search" id="history-search" placeholder="Buscar por resumo, registro ou usuário" autocomplete="off">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Área</span>
+      <select id="history-entity">
+        <option value="">Todas as áreas</option>
+        <option value="tenant">Inquilino</option>
+        <option value="property">Imóvel</option>
+        <option value="lease">Contrato</option>
+        <option value="receipt">Pagamento</option>
+        <option value="setting">Configuração</option>
+        <option value="user">Usuário</option>
+        <option value="document">Documento</option>
+        <option value="whatsapp">WhatsApp</option>
+        <option value="backup">Backup</option>
+        <option value="deposit">Caução</option>
+        <option value="inspection">Vistoria</option>
+        <option value="payment-proof">Comprovante</option>
+        <option value="document-intake">Cadastro por documento</option>
+        <option value="collection">Cobrança</option>
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Ação</span>
+      <select id="history-action">
+        <option value="">Todas as ações</option>
+        <option value="tenant.create" data-entity="tenant" data-tone="create">Inquilino cadastrado</option>
+        <option value="tenant.update" data-entity="tenant" data-tone="update">Inquilino alterado</option>
+        <option value="tenant.delete" data-entity="tenant" data-tone="delete">Inquilino excluído</option>
+        <option value="property.create" data-entity="property" data-tone="create">Imóvel cadastrado</option>
+        <option value="property.update" data-entity="property" data-tone="update">Imóvel alterado</option>
+        <option value="property.delete" data-entity="property" data-tone="delete">Imóvel excluído</option>
+        <option value="lease.create" data-entity="lease" data-tone="create">Contrato criado</option>
+        <option value="lease.update" data-entity="lease" data-tone="update">Contrato alterado</option>
+        <option value="lease.terminate" data-entity="lease" data-tone="update">Contrato encerrado</option>
+        <option value="lease.suspend" data-entity="lease" data-tone="update">Contrato suspenso</option>
+        <option value="lease.reactivate" data-entity="lease" data-tone="update">Contrato reativado</option>
+        <option value="lease.delete" data-entity="lease" data-tone="delete">Contrato excluído</option>
+        <option value="receipt.create" data-entity="receipt" data-tone="create">Pagamento lançado</option>
+        <option value="receipt.update" data-entity="receipt" data-tone="update">Pagamento alterado</option>
+        <option value="receipt.pay" data-entity="receipt" data-tone="update">Baixa registrada</option>
+        <option value="receipt.batch-pay" data-entity="receipt" data-tone="update">Baixa em lote</option>
+        <option value="receipt.generate-monthly" data-entity="receipt" data-tone="create">Pagamentos do mês gerados</option>
+        <option value="receipt.delete" data-entity="receipt" data-tone="delete">Pagamento excluído</option>
+        <option value="receipt.batch-delete" data-entity="receipt" data-tone="delete">Pagamentos excluídos em lote</option>
+        <option value="setting.landlord" data-entity="setting" data-tone="update">Dados do locador alterados</option>
+        <option value="setting.app-url" data-entity="setting" data-tone="update">URL pública alterada</option>
+        <option value="user.password" data-entity="user" data-tone="update">Senha alterada</option>
+        <option value="auth.client-login" data-entity="tenant" data-tone="access">Acesso do locatário</option>
+        <option value="auth.client-login-failed" data-entity="tenant" data-tone="failure">Acesso do locatário negado</option>
+        <option value="auth.client-logout" data-entity="tenant" data-tone="access">Saída do locatário</option>
+        <option value="auth.client-password" data-entity="tenant" data-tone="update">Senha do locatário alterada</option>
+        <option value="auth.login" data-entity="user" data-tone="access">Acesso ao sistema</option>
+        <option value="auth.login-failed" data-entity="user" data-tone="failure">Tentativa de acesso negada</option>
+        <option value="auth.logout" data-entity="user" data-tone="access">Saída do sistema</option>
+        <option value="document.receipt" data-entity="document" data-tone="issue">Recibo emitido</option>
+        <option value="document.contract" data-entity="document" data-tone="issue">Contrato emitido</option>
+        <option value="whatsapp.send" data-entity="whatsapp" data-tone="issue">Envio por WhatsApp</option>
+        <option value="whatsapp.send-failed" data-entity="whatsapp" data-tone="failure">Falha no envio por WhatsApp</option>
+        <option value="whatsapp.logout" data-entity="whatsapp" data-tone="access">WhatsApp desconectado</option>
+        <option value="whatsapp.message-received" data-entity="whatsapp" data-tone="access">Mensagem recebida pelo WhatsApp</option>
+        <option value="backup.export" data-entity="backup" data-tone="access">Backup exportado</option>
+        <option value="backup.import" data-entity="backup" data-tone="create">Backup importado</option>
+        <option value="history.export" data-entity="backup" data-tone="access">Histórico exportado (CSV)</option>
+        <option value="deposit.refund" data-entity="deposit" data-tone="issue">Caução devolvida</option>
+        <option value="inspection.create" data-entity="inspection" data-tone="create">Vistoria registrada</option>
+        <option value="inspection.update" data-entity="inspection" data-tone="update">Vistoria alterada</option>
+        <option value="inspection.delete" data-entity="inspection" data-tone="delete">Vistoria excluída</option>
+        <option value="payment-proof.accepted" data-entity="payment-proof" data-tone="create">Comprovante aceito</option>
+        <option value="payment-proof.review" data-entity="payment-proof" data-tone="update">Comprovante em revisão</option>
+        <option value="payment-proof.rejected" data-entity="payment-proof" data-tone="failure">Comprovante recusado</option>
+        <option value="document-intake.created" data-entity="document-intake" data-tone="create">Cadastro criado por documento</option>
+        <option value="collection.sent" data-entity="collection" data-tone="issue">Cobrança enviada</option>
+        <option value="adjustment.applied" data-entity="lease" data-tone="update">Reajuste aplicado</option>
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Usuário</span>
+      <select id="history-actor">
+        <option value="">Todos os usuários</option>
+      </select>
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">De</span>
+      <input type="date" id="history-from">
+    </label>
+    <label class="filter-field">
+      <span class="filter-label">Até</span>
+      <input type="date" id="history-to">
+    </label>
+  </div>
+
+  <div class="error" id="history-error" hidden></div>
+
+  <div class="table-wrap">
+    <table class="history-table">
+      <thead>
+        <tr>
+          <th style="width: 11rem;">
+            <button type="button" class="sort-header" id="history-order" aria-label="Ordenar por data e hora">
+              Data e hora
+              <span class="sort-arrows">
+                <svg class="sort-arrow asc" width="8" height="5" viewBox="0 0 8 5" fill="none"><path d="M4 0L7.5 5H0.5L4 0Z" /></svg>
+                <svg class="sort-arrow desc active" width="8" height="5" viewBox="0 0 8 5" fill="none"><path d="M4 5L0.5 0H7.5L4 5Z" /></svg>
+              </span>
+            </button>
+          </th>
+          <th style="width: 10rem;">Usuário</th>
+          <th style="width: 12rem;">Ação</th>
+          <th>Registro e resumo</th>
+          <th style="width: 9rem;"></th>
+        </tr>
+      </thead>
+      <tbody id="history-rows">
+        <tr><td colSpan="5" style="text-align: center; color: var(--text-muted);">Carregando histórico...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pagination" id="history-pagination">
+    <div class="pagination-nav">
+      <button type="button" class="btn btn-sm btn-outline" id="history-prev">Anterior</button>
+      <span class="pagination-label" id="history-page-label">Página 1 de 1</span>
+      <button type="button" class="btn btn-sm btn-outline" id="history-next">Próxima</button>
+    </div>
+    <div class="pagination-size">
+      <span class="pagination-label">Itens por página</span>
+      <select id="history-pagesize">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="100">100</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="history-detail" hidden>
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <h3 id="history-detail-title">Detalhes do evento</h3>
+        <button type="button" class="btn btn-sm btn-outline" data-modal-close>Fechar</button>
+      </div>
+      <div class="history-detail">
+        <p class="history-summary" id="history-detail-summary"></p>
+        <dl class="history-meta" id="history-detail-meta"></dl>
+        <div class="table-wrap">
+          <table class="history-changes">
+            <thead>
+              <tr><th>Campo</th><th>Antes</th><th>Depois</th></tr>
+            </thead>
+            <tbody id="history-detail-changes"></tbody>
+          </table>
+        </div>
+        <dl class="history-meta" id="history-detail-metadata"></dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  (function () {
+    'use strict';
+
+    var root = document.getElementById('history-section');
+    if (!root) return;
+
+    var labelHost = document.getElementById('history-labels');
+    var ORIGIN_LABELS = labelHost ? JSON.parse(labelHost.getAttribute('data-origins') || '{}') : {};
+    var METADATA_LABELS = labelHost ? JSON.parse(labelHost.getAttribute('data-metadata') || '{}') : {};
+
+    var ENTITY_LABELS = {};
+    Array.prototype.forEach.call(root.querySelectorAll('#history-entity option'), function (option) {
+      if (option.value) ENTITY_LABELS[option.value] = option.textContent.trim();
+    });
+    var ACTION_META = {};
+    Array.prototype.forEach.call(root.querySelectorAll('#history-action option'), function (option) {
+      if (!option.value) return;
+      ACTION_META[option.value] = {
+        label: option.textContent.trim(),
+        entity: option.getAttribute('data-entity') || '',
+        tone: option.getAttribute('data-tone') || 'update'
+      };
+    });
+
+    var els = {
+      search: document.getElementById('history-search'),
+      entity: document.getElementById('history-entity'),
+      action: document.getElementById('history-action'),
+      actor: document.getElementById('history-actor'),
+      from: document.getElementById('history-from'),
+      to: document.getElementById('history-to'),
+      order: document.getElementById('history-order'),
+      rows: document.getElementById('history-rows'),
+      total: document.getElementById('history-total'),
+      error: document.getElementById('history-error'),
+      exportLink: document.getElementById('history-export'),
+      prev: document.getElementById('history-prev'),
+      next: document.getElementById('history-next'),
+      pageLabel: document.getElementById('history-page-label'),
+      pageSize: document.getElementById('history-pagesize'),
+      modal: document.getElementById('history-detail'),
+      modalTitle: document.getElementById('history-detail-title'),
+      modalSummary: document.getElementById('history-detail-summary'),
+      modalMeta: document.getElementById('history-detail-meta'),
+      modalChanges: document.getElementById('history-detail-changes'),
+      modalMetadata: document.getElementById('history-detail-metadata')
+    };
+
+    var state = {
+      page: 1,
+      pageSize: Number(els.pageSize.value) || 25,
+      entity: '',
+      action: '',
+      actor: '',
+      from: '',
+      to: '',
+      search: '',
+      order: 'desc'
+    };
+    var requestSeq = 0;
+    var searchTimer = null;
+
+    function params() {
+      var query = new URLSearchParams();
+      query.set('page', String(state.page));
+      query.set('pageSize', String(state.pageSize));
+      query.set('order', state.order);
+      if (state.entity) query.set('entity', state.entity);
+      if (state.action) query.set('action', state.action);
+      if (state.actor) query.set('actor', state.actor);
+      if (state.from) query.set('from', state.from);
+      if (state.to) query.set('to', state.to);
+      if (state.search) query.set('search', state.search);
+      return query;
+    }
+
+    function exportParams() {
+      var query = params();
+      query.set('page', '1');
+      return query;
+    }
+
+    function showError(message) {
+      if (!message) {
+        els.error.hidden = true;
+        els.error.textContent = '';
+        return;
+      }
+      els.error.hidden = false;
+      els.error.textContent = message;
+    }
+
+    function formatDateTime(value) {
+      var match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(value || '');
+      if (!match) return value || '—';
+      return match[3] + '/' + match[2] + '/' + match[1] + ' ' + match[4] + ':' + match[5];
+    }
+
+    function displayValue(value) {
+      if (value === null || value === undefined || value === '') return '—';
+      return String(value);
+    }
+
+    function actionLabel(action) {
+      return ACTION_META[action] ? ACTION_META[action].label : action;
+    }
+
+    function actionTone(action) {
+      return ACTION_META[action] ? ACTION_META[action].tone : 'update';
+    }
+
+    function entityLabel(entity) {
+      return ENTITY_LABELS[entity] || entity;
+    }
+
+    function cell(text, className) {
+      var td = document.createElement('td');
+      if (className) td.className = className;
+      td.textContent = text;
+      return td;
+    }
+
+    function renderRows(items) {
+      els.rows.textContent = '';
+      if (!items.length) {
+        var empty = document.createElement('tr');
+        var td = document.createElement('td');
+        td.colSpan = 5;
+        td.style.textAlign = 'center';
+        td.style.color = 'var(--text-muted)';
+        td.textContent = 'Nenhum evento encontrado com os filtros atuais.';
+        empty.appendChild(td);
+        els.rows.appendChild(empty);
+        return;
+      }
+
+      items.forEach(function (entry) {
+        var row = document.createElement('tr');
+
+        row.appendChild(cell(formatDateTime(entry.createdAt), 'history-when'));
+
+        var actor = entry.actorName || 'Sistema';
+        row.appendChild(cell(actor));
+
+        var badgeCell = document.createElement('td');
+        var badge = document.createElement('span');
+        badge.className = 'history-badge ' + actionTone(entry.action);
+        badge.textContent = actionLabel(entry.action);
+        badgeCell.appendChild(badge);
+        row.appendChild(badgeCell);
+
+        var recordCell = document.createElement('td');
+        var record = document.createElement('div');
+        record.className = 'history-record';
+        var entity = document.createElement('span');
+        entity.className = 'history-entity';
+        entity.textContent = entityLabel(entry.entity);
+        var strong = document.createElement('strong');
+        strong.textContent = entry.entityLabel || entry.entityId || '—';
+        record.appendChild(entity);
+        record.appendChild(strong);
+        var summary = document.createElement('div');
+        summary.className = 'history-summary';
+        var changed = (entry.changes || []).length;
+        summary.textContent = entry.summary + (changed !== 0 ? ' · ' + changed + ' campo(s) alterado(s)' : '');
+        recordCell.appendChild(record);
+        recordCell.appendChild(summary);
+        row.appendChild(recordCell);
+
+        var actions = document.createElement('td');
+        actions.className = 'row-actions';
+        var details = document.createElement('button');
+        details.type = 'button';
+        details.className = 'btn btn-sm btn-secondary';
+        details.textContent = 'Detalhes';
+        details.setAttribute('aria-label', 'Detalhes do evento: ' + entry.summary);
+        details.addEventListener('click', function () { openDetail(entry); });
+        actions.appendChild(details);
+        row.appendChild(actions);
+
+        els.rows.appendChild(row);
+      });
+    }
+
+    function metaItem(term, value) {
+      var wrap = document.createElement('div');
+      var dt = document.createElement('dt');
+      dt.textContent = term;
+      var dd = document.createElement('dd');
+      dd.textContent = displayValue(value);
+      wrap.appendChild(dt);
+      wrap.appendChild(dd);
+      return wrap;
+    }
+
+    function openDetail(entry) {
+      els.modalTitle.textContent = actionLabel(entry.action);
+      els.modalSummary.textContent = entry.summary;
+
+      els.modalMeta.textContent = '';
+      els.modalMeta.appendChild(metaItem('Data e hora', formatDateTime(entry.createdAt)));
+      els.modalMeta.appendChild(metaItem('Usuário', entry.actorName || 'Sistema'));
+      els.modalMeta.appendChild(metaItem('Área', entityLabel(entry.entity)));
+      els.modalMeta.appendChild(metaItem('Registro', entry.entityLabel || entry.entityId));
+      els.modalMeta.appendChild(metaItem('Origem', ORIGIN_LABELS[entry.origin] || entry.origin));
+      els.modalMeta.appendChild(metaItem('IP', entry.ip));
+      els.modalMeta.appendChild(metaItem('Protocolo', entry.requestId));
+      els.modalMeta.appendChild(metaItem('Identificador', entry.entityId));
+
+      els.modalChanges.textContent = '';
+      var changes = entry.changes || [];
+      if (!changes.length) {
+        var row = document.createElement('tr');
+        var td = document.createElement('td');
+        td.colSpan = 3;
+        td.textContent = 'Este evento não alterou valores de campos.';
+        row.appendChild(td);
+        els.modalChanges.appendChild(row);
+      } else {
+        changes.forEach(function (change) {
+          var row = document.createElement('tr');
+          var field = document.createElement('td');
+          var strong = document.createElement('strong');
+          strong.textContent = change.label || change.field;
+          field.appendChild(strong);
+          row.appendChild(field);
+          row.appendChild(cell(displayValue(change.from), 'history-old'));
+          row.appendChild(cell(displayValue(change.to), 'history-new'));
+          els.modalChanges.appendChild(row);
+        });
+      }
+
+      els.modalMetadata.textContent = '';
+      var keys = Object.keys(entry.metadata || {});
+      keys.forEach(function (key) {
+        var value = entry.metadata[key];
+        if (value === null || value === undefined || value === '') return;
+        els.modalMetadata.appendChild(metaItem(METADATA_LABELS[key] || key, value));
+      });
+
+      els.modal.hidden = false;
+    }
+
+    function renderActors(actors) {
+      var current = state.actor;
+      els.actor.textContent = '';
+      var all = document.createElement('option');
+      all.value = '';
+      all.textContent = 'Todos os usuários';
+      els.actor.appendChild(all);
+
+      var found = false;
+      (actors || []).forEach(function (actor) {
+        var option = document.createElement('option');
+        option.value = actor;
+        option.textContent = actor;
+        if (actor === current) found = true;
+        els.actor.appendChild(option);
+      });
+      if (current && !found) {
+        var extra = document.createElement('option');
+        extra.value = current;
+        extra.textContent = current;
+        els.actor.appendChild(extra);
+      }
+      els.actor.value = current;
+    }
+
+    function filterActionOptions() {
+      Array.prototype.forEach.call(els.action.querySelectorAll('option'), function (option) {
+        if (!option.value) return;
+        option.hidden = Boolean(state.entity) && option.getAttribute('data-entity') !== state.entity;
+      });
+      var selected = els.action.options[els.action.selectedIndex];
+      if (selected && selected.hidden) {
+        els.action.value = '';
+        state.action = '';
+      }
+    }
+
+    function renderPagination(page) {
+      var pageSize = page.pageSize || state.pageSize;
+      var totalPages = Math.max(1, Math.ceil((page.total || 0) / Math.max(1, pageSize)));
+      els.pageLabel.textContent = 'Página ' + page.page + ' de ' + totalPages;
+      els.prev.disabled = page.page === 1;
+      els.next.disabled = page.page === totalPages;
+    }
+
+    function load() {
+      var seq = requestSeq + 1;
+      requestSeq = seq;
+      els.exportLink.setAttribute('href', '/audit/export?' + exportParams().toString());
+
+      fetch('/audit?' + params().toString(), { headers: { accept: 'application/json' } })
+        .then(function (response) {
+          if (!response.ok) throw new Error('Não foi possível carregar o histórico.');
+          return response.json();
+        })
+        .then(function (page) {
+          if (requestSeq !== seq) return;
+          showError('');
+          els.total.textContent = (page.total || 0) + ' evento(s)';
+          renderRows(page.items || []);
+          renderActors(page.actors);
+          renderPagination(page);
+        })
+        .catch(function (error) {
+          if (requestSeq !== seq) return;
+          showError(error && error.message ? error.message : 'Não foi possível carregar o histórico.');
+        });
+    }
+
+    function reset(patch) {
+      for (var key in patch) {
+        if (Object.prototype.hasOwnProperty.call(patch, key)) state[key] = patch[key];
+      }
+      if (!Object.prototype.hasOwnProperty.call(patch, 'page')) state.page = 1;
+      load();
+    }
+
+    els.search.addEventListener('input', function () {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(function () {
+        var value = els.search.value.trim();
+        if (state.search === value) return;
+        reset({ search: value, page: 1 });
+      }, 300);
+    });
+    els.entity.addEventListener('change', function () {
+      state.entity = els.entity.value;
+      filterActionOptions();
+      reset({ entity: els.entity.value, action: els.action.value, page: 1 });
+    });
+    els.action.addEventListener('change', function () { reset({ action: els.action.value, page: 1 }); });
+    els.actor.addEventListener('change', function () { reset({ actor: els.actor.value, page: 1 }); });
+    els.from.addEventListener('change', function () { reset({ from: els.from.value, page: 1 }); });
+    els.to.addEventListener('change', function () { reset({ to: els.to.value, page: 1 }); });
+    els.pageSize.addEventListener('change', function () {
+      state.pageSize = Number(els.pageSize.value) || 25;
+      reset({ page: 1 });
+    });
+    els.order.addEventListener('click', function () {
+      state.order = state.order === 'desc' ? 'asc' : 'desc';
+      els.order.querySelector('.sort-arrow.asc').classList.toggle('active', state.order === 'asc');
+      els.order.querySelector('.sort-arrow.desc').classList.toggle('active', state.order === 'desc');
+      reset({ page: 1 });
+    });
+    els.prev.addEventListener('click', function () { if (state.page !== 1) reset({ page: state.page - 1 }); });
+    els.next.addEventListener('click', function () { reset({ page: state.page + 1 }); });
+
+    state.entity = els.entity.value;
+    state.action = els.action.value;
+    state.actor = els.actor.value;
+    filterActionOptions();
+    load();
+  })();
+</script>
+{{end}}

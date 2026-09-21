@@ -167,9 +167,10 @@ func newTestServer(t *testing.T, users ...*domain.User) *testServer {
 
 	deps := application.Deps{
 		Repos: application.Repositories{
-			Users:    userRepo,
-			Settings: newFakeSettings(),
-			Audit:    auditRepo,
+			Users:       userRepo,
+			Settings:    newFakeSettings(),
+			Audit:       auditRepo,
+			Inspections: &emptyInspections{},
 		},
 		Clock:  clock,
 		IDs:    &fakeIDs{},

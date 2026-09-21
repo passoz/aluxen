@@ -1,0 +1,173 @@
+{{define "tab_tenants"}}
+{{$tenants := $.Data.Snapshot.Tenants}}
+<section class="card stack-lg" data-table-group>
+  <div class="section-header">
+    <h2>Gerenciar Inquilinos</h2>
+    <button type="button" class="btn btn-primary" data-modal-open="tenant-create-modal">Novo inquilino</button>
+  </div>
+
+  <div class="filter-bar">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="tenant-filter">Buscar</label>
+      <input
+        id="tenant-filter"
+        type="search"
+        data-filter="tenants"
+        placeholder="Buscar por nome, email ou telefone"
+        aria-label="Buscar por nome, email ou telefone"
+      >
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table data-table data-page-size="25">
+      <thead>
+        <tr>
+          <th data-sort="name">Nome</th>
+          <th data-sort="email">Email</th>
+          <th data-sort="cpf">CPF</th>
+          <th data-sort="phone">Telefone</th>
+          <th>Contratos</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $tenants}}
+          <tr data-search="{{.Name}} {{.Email}} {{deref .CPF}} {{deref .Phone}}">
+            <td data-label="Nome">
+              {{.Name}}
+              {{if $.Data.TenantHasActiveLease .ID}}<span class="status-badge paid">Em contrato</span>{{end}}
+            </td>
+            <td data-label="Email">{{.Email}}</td>
+            <td data-label="CPF">{{if .CPF}}{{deref .CPF}}{{else}}-{{end}}</td>
+            <td data-label="Telefone">{{if .Phone}}{{deref .Phone}}{{else}}-{{end}}</td>
+            <td data-label="Contratos">{{$.Data.TenantLeaseCount .ID}}</td>
+            <td class="row-actions">
+              <button
+                type="button"
+                class="btn btn-sm btn-secondary"
+                data-modal-open="tenant-edit-modal"
+                data-modal-fill='{{json (dict "id" .ID "name" .Name "email" .Email "cpf" (deref .CPF) "phone" (deref .Phone))}}'
+              >
+                Editar
+              </button>
+              <form method="post" action="/dashboard" data-offline data-confirm="Excluir o inquilino {{.Name}}?">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="intent" value="tenant.delete">
+                <input type="hidden" name="tab" value="tenants">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-outline"
+                  {{if $.Data.TenantHasActiveLease .ID}}disabled title="Possui contrato ativo"{{end}}
+                >
+                  Excluir
+                </button>
+              </form>
+            </td>
+          </tr>
+        {{end}}
+        {{if not $tenants}}
+          <tr>
+            <td colspan="6">Nenhum inquilino cadastrado.</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+
+  <div data-pagination></div>
+</section>
+
+<div class="modal-backdrop" id="tenant-create-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Novo Inquilino">
+    <div class="modal-header">
+      <h3>Novo Inquilino</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="tenant.create">
+      <input type="hidden" name="tab" value="tenants">
+      <div class="form-group">
+        <label for="create-tenant-name">Nome</label>
+        <input id="create-tenant-name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="create-tenant-email">Email</label>
+        <input id="create-tenant-email" name="email" type="email" required>
+      </div>
+      <div class="form-group">
+        <label for="create-tenant-cpf">CPF</label>
+        <input
+          id="create-tenant-cpf"
+          name="cpf"
+          type="text"
+          inputmode="numeric"
+          data-mask="cpf"
+          placeholder="000.000.000-00"
+        >
+      </div>
+      <div class="form-group">
+        <label for="create-tenant-phone">Telefone</label>
+        <input
+          id="create-tenant-phone"
+          name="phone"
+          type="text"
+          inputmode="tel"
+          data-mask="phone"
+          placeholder="(22) 99999-9999"
+        >
+      </div>
+      <button type="submit" class="btn btn-primary">Adicionar inquilino</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="tenant-edit-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Editar Inquilino">
+    <div class="modal-header">
+      <h3>Editar Inquilino</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="tenant.update">
+      <input type="hidden" name="tab" value="tenants">
+      <input type="hidden" name="id" value="">
+      <div class="form-group">
+        <label for="modal-tenant-name">Nome</label>
+        <input id="modal-tenant-name" name="name" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-tenant-email">Email</label>
+        <input id="modal-tenant-email" name="email" type="email" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-tenant-cpf">CPF</label>
+        <input
+          id="modal-tenant-cpf"
+          name="cpf"
+          type="text"
+          inputmode="numeric"
+          data-mask="cpf"
+          placeholder="000.000.000-00"
+        >
+      </div>
+      <div class="form-group">
+        <label for="modal-tenant-phone">Telefone</label>
+        <input
+          id="modal-tenant-phone"
+          name="phone"
+          type="text"
+          inputmode="tel"
+          data-mask="phone"
+          placeholder="(22) 99999-9999"
+        >
+      </div>
+      <button type="submit" class="btn btn-primary">Salvar alterações</button>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Descartar</button>
+    </form>
+  </div>
+</div>
+{{end}}

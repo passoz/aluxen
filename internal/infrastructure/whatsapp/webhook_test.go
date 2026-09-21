@@ -129,8 +129,8 @@ func TestParseWebhookExtractsMessage(t *testing.T) {
 	if message.ChatID != "5511999999999@c.us" || message.Phone != "5511999999999" {
 		t.Fatalf("remetente = %q / %q", message.ChatID, message.Phone)
 	}
-	if message.Text != "Já paguei o aluguel" {
-		t.Fatalf("texto = %q", message.Text)
+	if message.Body != "Já paguei o aluguel" {
+		t.Fatalf("texto = %q", message.Body)
 	}
 	if message.FromMe || message.HasMedia {
 		t.Fatalf("sinalizadores inesperados: %+v", message)

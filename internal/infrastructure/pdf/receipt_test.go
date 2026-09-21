@@ -235,7 +235,10 @@ func TestBuildReceiptDescribesExtraCharge(t *testing.T) {
 	input.Category = "extra"
 	input.Description = "Limpeza"
 	input.Amount = 250
-	input.PropertyName = ""
+	// Lançamento avulso vinculado só ao nome do imóvel: a referência sai com o
+	// rótulo "Referência/Imóvel" e a declaração abre parênteses com o nome.
+	input.PropertyName = "Casa da Praia"
+	input.PropertyAddress = ""
 
 	receipt, err := pdf.BuildReceipt(input)
 	if err != nil {
@@ -246,7 +249,7 @@ func TestBuildReceiptDescribesExtraCharge(t *testing.T) {
 	if !strings.Contains(text, "Recibo - Limpeza") {
 		t.Fatalf("título do lançamento avulso ausente\n---\n%s", text)
 	}
-	if !strings.Contains(text, "Declaro, para os devidos fins, o recebimento do valor de R$ 250,00 (duzentos e cinquenta reais) referente a Limpeza, vinculado a Maria Silva.") {
+	if !strings.Contains(text, "Declaro, para os devidos fins, o recebimento do valor de R$ 250,00 (duzentos e cinquenta reais) referente a Limpeza, vinculado a Maria Silva (Casa da Praia).") {
 		t.Fatalf("declaração do lançamento avulso ausente\n---\n%s", text)
 	}
 	if !strings.Contains(text, "Referência/Imóvel: ") {
@@ -259,6 +262,7 @@ func TestBuildReceiptWithoutDescriptionUsesTheGenericTitle(t *testing.T) {
 	input.Category = "extra"
 	input.Description = ""
 	input.PropertyName = ""
+	input.PropertyAddress = ""
 
 	receipt, err := pdf.BuildReceipt(input)
 	if err != nil {
@@ -303,7 +307,7 @@ func assertPDF(t *testing.T, rendered []byte) {
 		t.Fatalf("documento não começa com %%PDF-: %q", rendered[:min(16, len(rendered))])
 	}
 	if !bytes.Contains(rendered, []byte("%%EOF")) {
-		t.Fatal("documento sem marcador %%EOF")
+		t.Fatalf("documento sem marcador %s", "%%EOF")
 	}
 	if !bytes.Contains(rendered, []byte("/Helvetica")) {
 		t.Fatal("documento não usa a fonte Helvetica")

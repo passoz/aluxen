@@ -1,0 +1,294 @@
+{
+  "$schema": "../../../schemas/plan.schema.json",
+  "work_id": "0005",
+  "title": "Deploy por instância, migração de dialeto e tier 2 assistido",
+  "components": [
+    {
+      "name": "ops",
+      "purpose": "Provisionamento, ciclo de vida e migração"
+    },
+    {
+      "name": "application",
+      "purpose": "Reajuste assistido e consulta em linguagem natural"
+    },
+    {
+      "name": "docs",
+      "purpose": "Roteiro de operação e documentação"
+    },
+    {
+      "name": "web",
+      "purpose": "Tela de reajuste e relatórios"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "tasks": [
+    {
+      "id": "5.1",
+      "title": "Provisionamento de instância no Easypanel",
+      "requirement_id": "FR-401",
+      "spec_reference": "CAP-401",
+      "contract_id": "CTR-001",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "um comando cria a instância com imagem, volume, variáveis, domínio e seed",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/infrastructure/easypanel/",
+        "cmd/provision/main.go"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/easypanel/**",
+        "cmd/provision/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/easypanel/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"um comando cria a instância com imagem, volume, variáveis, domínio e seed\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes com servidor falso para cada chamada da API",
+        "Implementar o cliente e o comando de provisionamento com seed de demonstração"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "cliente e comando cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "5.2",
+      "title": "Ciclo de vida das demos",
+      "requirement_id": "FR-402",
+      "spec_reference": "CAP-402",
+      "contract_id": "CTR-002",
+      "complexity": "standard",
+      "depends_on": [
+        "5.1"
+      ],
+      "behavior": "o comando lista instâncias por expiração e remove app e volume sem resíduo",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "cmd/provision/main.go",
+        "internal/infrastructure/easypanel/"
+      ],
+      "implementation_files": [
+        "cmd/**",
+        "internal/infrastructure/easypanel/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/easypanel/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o comando lista instâncias por expiração e remove app e volume sem resíduo\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de listagem e remoção",
+        "Implementar os subcomandos de expiração e remoção"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "ciclo de vida coberto por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "5.3",
+      "title": "CLI de migração SQLite para Postgres",
+      "requirement_id": "FR-403",
+      "spec_reference": "CAP-403",
+      "contract_id": "CTR-003",
+      "complexity": "standard",
+      "depends_on": [
+        "5.1"
+      ],
+      "behavior": "a migração faz pré-checagem, dry-run, cópia em transação, verificação e relata o resultado",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "cmd/migrate/main.go",
+        "internal/application/migrate.go"
+      ],
+      "implementation_files": [
+        "cmd/migrate/**",
+        "internal/application/**"
+      ],
+      "test_files": [
+        "cmd/migrate/",
+        "internal/application/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"a migração faz pré-checagem, dry-run, cópia em transação, verificação e relata o resultado\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de dry-run, cópia, verificação e falha no meio",
+        "Implementar a CLI com ordem de dependência e checksum"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "migração coberta por teste, incluindo rollback"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "5.4",
+      "title": "Reajuste anual assistido",
+      "requirement_id": "FR-404",
+      "spec_reference": "CAP-404",
+      "contract_id": "CTR-004",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "o índice é aplicado ao contrato com cálculo determinístico e a notificação é gerada para envio",
+      "components": [
+        "application",
+        "web"
+      ],
+      "files": [
+        "internal/application/adjustment.go",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o índice é aplicado ao contrato com cálculo determinístico e a notificação é gerada para envio\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de cálculo, aplicação, auditoria e texto",
+        "Implementar o caso de uso e a tela de reajuste"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "reajuste coberto por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "5.5",
+      "title": "Relatório mensal e consulta em linguagem natural",
+      "requirement_id": "FR-405",
+      "spec_reference": "CAP-404",
+      "contract_id": "CTR-005",
+      "complexity": "standard",
+      "depends_on": [
+        "5.4"
+      ],
+      "behavior": "o relatório é montado pelos casos de uso e as perguntas são respondidas por ferramentas tipadas",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/report.go",
+        "internal/application/ask.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o relatório é montado pelos casos de uso e as perguntas são respondidas por ferramentas tipadas\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de relatório e de perguntas com ferramenta e sem ferramenta",
+        "Implementar as ferramentas tipadas e a resposta"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "relatório e consulta cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "5.6",
+      "title": "Documentação de operação",
+      "requirement_id": "FR-406",
+      "spec_reference": "CAP-401",
+      "contract_id": "CTR-006",
+      "complexity": "standard",
+      "depends_on": [
+        "5.1",
+        "5.2",
+        "5.3",
+        "5.4",
+        "5.5"
+      ],
+      "behavior": "o roteiro de operação cobre provisionamento, expiração, migração, atualização canário e backup",
+      "components": [
+        "docs"
+      ],
+      "files": [
+        "docs/",
+        "README.md"
+      ],
+      "implementation_files": [
+        "docs/**",
+        "README.md"
+      ],
+      "test_files": [
+        "internal/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o roteiro de operação cobre provisionamento, expiração, migração, atualização canário e backup\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever o roteiro de operação",
+        "Atualizar o README com a operação por instância"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "REQUIRED",
+      "status": "pending"
+    }
+  ]
+}

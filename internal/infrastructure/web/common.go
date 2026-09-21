@@ -13,6 +13,7 @@ import (
 	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/infrastructure/buildinfo"
 	"github.com/passoz/aluxen/internal/infrastructure/config"
+	"github.com/passoz/aluxen/internal/infrastructure/whatsapp"
 )
 
 // Common reúne tudo que todo handler precisa. É construído uma vez no
@@ -42,6 +43,10 @@ type Common struct {
 
 	// LoginGate aplica o rate limit e o bloqueio progressivo do login.
 	LoginGate *application.LoginGate
+
+	// WhatsApp é o canal de mensagens da instância (WAHA): cliente, pareamento e
+	// fila de envio. É construído uma vez no composition root.
+	WhatsApp *whatsapp.Runtime
 }
 
 // Handlers expõe os métodos HTTP. Cada área tem seu arquivo (handlers_*.go).

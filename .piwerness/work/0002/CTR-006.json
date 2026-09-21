@@ -1,0 +1,122 @@
+{
+  "contract_version": "4.0",
+  "task_id": "2.6",
+  "work_id": "0002",
+  "title": "Verificação final de temporada",
+  "risk": {
+    "level": "L1",
+    "reasons": [
+      "Task 2.6 classificada como L1 na especificação do Work"
+    ]
+  },
+  "validation_strategy": "tdd-strict",
+  "behavioral_contract": {
+    "scenarios": [
+      {
+        "id": "SCENARIO-2.6-01",
+        "given": "Dado o Work 0002 (\"Funcionalidades de temporada: caução, vistoria, calendário e taxas\") e a task 2.6 (\"Verificação final de temporada\")",
+        "when": "Quando o executor implementa a task 2.6",
+        "then": "Então a suíte completa passa com cobertura >= 90% e a base de produção migra sem perda"
+      },
+      {
+        "id": "SCENARIO-2.6-02",
+        "given": "Dado que os critérios de aceite da task 2.6 são `go test ./...`, `go vet ./...`",
+        "when": "Quando os comandos de aceite são executados no sandbox",
+        "then": "Então todos saem com exit 0 e nenhum arquivo fora da write_allow é modificado"
+      },
+      {
+        "id": "SCENARIO-2.6-REQ-1",
+        "given": "Dado o requisito FR-105 (\"Aditividade garantida\")",
+        "when": "Quando o comportamento descrito em \"Nenhum campo existente renomeado ou tornado obrigatório\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-2.6-REQ-2",
+        "given": "Dado o requisito FR-105 (\"Aditividade garantida\")",
+        "when": "Quando o comportamento descrito em \"Base SQLite de produção migra sem perda de dados (teste de migração)\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-2.6-REQ-3",
+        "given": "Dado o requisito FR-105 (\"Aditividade garantida\")",
+        "when": "Quando o comportamento descrito em \"Paridade de schema entre SQLite e Postgres mantida\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      }
+    ]
+  },
+  "change_contract": {
+    "target_files": [
+      "internal/**",
+      "docs/**"
+    ],
+    "affected_components": [
+      "ops"
+    ]
+  },
+  "architecture_contract": {
+    "invariants": [
+      "domain não importa application/infrastructure; infrastructure importa domain",
+      "Nenhum handler contém regra de negócio; nenhum acesso a dados monta SQL em runtime",
+      "O uso atual (contrato residencial, recibo mensal, baixa) permanece idêntico — toda mudança é aditiva"
+    ]
+  },
+  "acceptance_contract": {
+    "commands": [
+      "go test ./...",
+      "go vet ./...",
+      "go build ./..."
+    ],
+    "required_evidence": [
+      "evidence.json"
+    ]
+  },
+  "scope_contract": {
+    "write_allow": [
+      "cmd/**",
+      "internal/**",
+      "web/**",
+      "migrations/**",
+      "schema/**",
+      "queries/**",
+      "scripts/**",
+      "docs/**",
+      "test/**",
+      ".github/**",
+      "Dockerfile",
+      "README.md",
+      "go.mod",
+      "go.sum",
+      "sqlc*.yaml",
+      "*.go",
+      "*.sql",
+      "*.yaml",
+      "*.yml",
+      "*.json",
+      "*.md"
+    ],
+    "write_deny": [
+      ".git/**",
+      ".env",
+      ".env.*",
+      "!.env.example"
+    ],
+    "out_of_scope": [
+      "Mudanças fora dos arquivos declarados na write_allow",
+      "Alterações destrutivas em dados de produção"
+    ]
+  },
+  "budget_contract": {
+    "max_tokens": 200000,
+    "max_cost_usd": 4,
+    "max_duration_minutes": 120,
+    "max_agent_attempts": 3,
+    "max_llm_calls": 80,
+    "max_tool_calls": 200,
+    "max_shell_executions": 40
+  },
+  "escalation_contract": {
+    "on_write_violation": "block_and_escalate",
+    "on_budget_exceeded": "escalate_to_strong_agent",
+    "on_attempt_failed": "retry_with_strong"
+  }
+}

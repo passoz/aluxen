@@ -1,0 +1,108 @@
+{{define "tab_season"}}
+{{$overview := .Season}}
+<div class="stack-lg">
+  <div class="metrics-grid">
+    <div class="card metric-card">
+      <div class="metric-label">Contratos de temporada</div>
+      <div class="metric-value">{{$overview.SeasonCount}}</div>
+      <div class="metric-sub">status temporada</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Cauções retidas</div>
+      <div class="metric-value">{{money $overview.DepositsHeld}}</div>
+      <div class="metric-sub">{{$overview.WithDeposit}} contrato(s) com caução</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Cauções já devolvidas</div>
+      <div class="metric-value">{{money $overview.DepositsReturned}}</div>
+      <div class="metric-sub">devolução total ou parcial</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Saídas sem vistoria</div>
+      <div class="metric-value">{{$overview.PendingCheckOut}}</div>
+      <div class="metric-sub">temporada sem vistoria de saída</div>
+    </div>
+  </div>
+
+  <section class="card" style="padding: 1.25rem;">
+    <div class="section-header">
+      <h2 style="font-size: 1.05rem; margin: 0;">Caução e vistoria por contrato</h2>
+      <p class="subtitle" style="margin: 0.25rem 0 0;">
+        A caução é opcional: contrato sem caução segue exatamente como na locação longa.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table data-table data-page-size="25">
+        <thead>
+          <tr>
+            <th data-sort="tenant">Inquilino</th>
+            <th data-sort="property">Imóvel</th>
+            <th data-sort="period">Período</th>
+            <th data-sort="deposit">Caução</th>
+            <th data-sort="depositStatus">Situação da caução</th>
+            <th data-sort="inspections">Vistorias</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $overview.Rows}}
+            <tr>
+              <td data-sort-value="{{.Lease.TenantName}}">{{.Lease.TenantName}}</td>
+              <td data-sort-value="{{.Lease.PropertyName}}">
+                {{.Lease.PropertyName}}
+                {{if .IsSeason}}<span class="status-badge partial">Temporada</span>{{end}}
+              </td>
+              <td data-sort-value="{{.Lease.StartDate}}">{{date .Lease.StartDate}} – {{date .Lease.EndDate}}</td>
+              <td data-sort-value="{{moneyValue .Deposit.Amount}}">{{money .Deposit.Amount}}</td>
+              <td data-sort-value="{{.Deposit.Status}}">
+                <span class="status-badge {{if eq .Deposit.Status "held"}}due{{else if eq .Deposit.Status "none"}}paid{{else}}partial{{end}}">
+                  {{depositStatus .Deposit.Status}}
+                </span>
+                {{if gt .Deposit.Refunded 0.0}}
+                  <span class="cell-muted">devolvido {{money .Deposit.Refunded}}</span>
+                {{end}}
+              </td>
+              <td data-sort-value="{{len .Inspections}}">
+                {{if .CheckIn}}<span class="status-badge paid">Entrada</span>{{end}}
+                {{if .CheckOut}}<span class="status-badge paid">Saída</span>{{else}}<span class="cell-muted">sem saída</span>{{end}}
+              </td>
+              <td class="cell-nowrap">
+                <div class="table-actions">
+                  <button type="button" class="btn btn-sm btn-outline"
+                          data-modal-open="modal-deposit"
+                          data-modal-fill='{"lease_id":"{{.Lease.ID}}","deposit_amount":"{{moneyValue .Deposit.Amount}}","deposit_notes":"{{.Deposit.Notes}}"}'>
+                    Caução
+                  </button>
+                  {{if eq .Deposit.Status "held"}}
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            data-modal-open="modal-refund"
+                            data-modal-fill='{"lease_id":"{{.Lease.ID}}","refund_amount":"{{moneyValue .Deposit.Outstanding}}"}'>
+                      Devolver
+                    </button>
+                    <a class="btn btn-sm btn-outline" href="/deposit-pdf?id={{.Lease.ID}}">Recibo</a>
+                  {{end}}
+                  <button type="button" class="btn btn-sm btn-outline"
+                          data-modal-open="modal-inspection"
+                          data-modal-fill='{"lease_id":"{{.Lease.ID}}","kind":"checkin","performed_at":"{{date .Lease.StartDate}}"}'>
+                    Vistoria
+                  </button>
+                  {{if .CheckIn}}<a class="btn btn-sm btn-outline" href="/inspection-pdf?id={{.CheckIn.ID}}">Auto entrada</a>{{end}}
+                  {{if .CheckOut}}<a class="btn btn-sm btn-outline" href="/inspection-pdf?id={{.CheckOut.ID}}">Auto saída</a>{{end}}
+                </div>
+              </td>
+            </tr>
+          {{else}}
+            <tr><td colspan="7" class="empty-state">Nenhum contrato vigente.</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+      <div data-pagination></div>
+    </div>
+  </section>
+</div>
+
+{{template "modal_deposit" .}}
+{{template "modal_refund" .}}
+{{template "modal_inspection" .}}
+{{end}}

@@ -1,0 +1,431 @@
+{
+  "work_id": "0004",
+  "title": "WhatsApp bidirecional, agente de cobrança e conformidade das promessas",
+  "scenario": "brownfield",
+  "problem": "O WhatsApp do Aluxen é mão única: envia recibo e contrato, mas não lê resposta. Isso deixa de fora as três perguntas que dominam a rotina do locador ('já paguei', 'posso pagar dia 10?', 'o chuveiro quebrou') e impede qualquer cobrança automática, porque não há leitura do outro lado. Ao mesmo tempo, duas promessas do produto precisam ser ajustadas à realidade: 'assinatura digital' hoje é imagem de assinatura, e o robô não-oficial viola os termos da Meta — serve para demo, não para cliente pagante.",
+  "solution": "Transformar o canal em bidirecional sobre o WAHA (webhook assinado, mensagens persistidas e vinculadas ao inquilino pelo telefone), com um agente que responde usando ferramentas tipadas e limitadas — consultar recibos do titular, consultar contrato, abrir solicitação de manutenção — sem acesso livre ao banco e com escalonamento para humano. Sobre isso, uma régua de cobrança adaptativa (lembrete amigável, tom firme, proposta de parcelamento) que só envia o que o dado do banco sustenta. Em paralelo, conformidade: renomear a promessa de assinatura para 'assinatura visualizada', publicar o aviso de privacidade e separar explicitamente modo demo (não-oficial) de modo cliente (Cloud API oficial).",
+  "actors": [
+    {
+      "id": "ACT-001",
+      "name": "Locador (administrador)",
+      "description": "Acompanha as conversas, responde o que o agente escalou e dispara a régua de cobrança."
+    },
+    {
+      "id": "ACT-002",
+      "name": "Locatário",
+      "description": "Pergunta pelo WhatsApp e recebe resposta com dado real do banco ou escalonamento para o locador."
+    },
+    {
+      "id": "ACT-004",
+      "name": "Operador de instância",
+      "description": "Escolhe o modo do canal (demo ou cliente), configura o segredo do webhook e responde pelo cumprimento da LGPD."
+    }
+  ],
+  "constraints": [
+    "Nenhuma orientação jurídica ao locatário; dúvida jurídica escala para humano.",
+    "Nenhum acesso livre ao banco pelo agente: apenas ferramentas tipadas e limitadas ao titular da conversa.",
+    "Cobrança só envia o que o dado do banco sustenta; valor, vencimento e status vêm do recibo, nunca do modelo.",
+    "WhatsApp não-oficial é explicitamente modo demo; cliente pagante usa Cloud API oficial.",
+    "Fora de escopo: chatbot de perguntas livres sobre contratos e agente com escrita irrestrita."
+  ],
+  "objectives": [
+    "Mensagens recebidas persistidas, vinculadas ao inquilino pelo telefone e visíveis no painel.",
+    "Agente que responde com dado real do banco usando ferramentas tipadas, com guardrails e escalonamento.",
+    "Régua de cobrança adaptativa em três estágios, com registro de cada envio.",
+    "Promessa de assinatura ajustada em UI, README e PDF.",
+    "Aviso de privacidade e registro do provedor de IA como operador.",
+    "Modos de canal separados (demo e cliente) com documentação do risco de cada um."
+  ],
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "O agente só age por ferramentas tipadas e limitadas ao titular da conversa; sem ferramenta que sirva, escala para humano.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-002",
+      "statement": "A régua de cobrança é determinística (estágio por atraso e histórico) e o modelo, quando usado, apenas redige o texto já decidido.",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-003",
+      "statement": "Assinatura no PDF passa a ser apresentada como 'assinatura visualizada' até existir integração com plataforma de assinatura com validade jurídica.",
+      "status": "accepted",
+      "made_by": "operator"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "FR-301",
+      "title": "Canal bidirecional",
+      "user_story": "Como locador, quero ler o que o locatário responde no WhatsApp, para não perder pedido nem justificativa de atraso.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre webhook assinado, reentrega idempotente, número desconhecido e mensagem sem texto",
+        "Mensagem de número conhecido é vinculada ao inquilino; número desconhecido fica registrado sem vínculo",
+        "As conversas aparecem no painel, com o histórico do titular"
+      ]
+    },
+    {
+      "id": "FR-302",
+      "title": "Agente com ferramentas tipadas",
+      "user_story": "Como locatário, quero perguntar quanto devo e receber o número do banco, não um número inventado.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre pergunta respondida com dado real, pergunta fora de escopo e tentativa de acesso a dado de outro titular",
+        "Toda resposta usa ferramenta tipada; sem ferramenta aplicável, escala para humano",
+        "Pergunta jurídica é recusada com encaminhamento ao locador"
+      ]
+    },
+    {
+      "id": "FR-303",
+      "title": "Régua de cobrança adaptativa",
+      "user_story": "Como locador, quero cobrar em estágios crescentes, para não desgastar o inquilino adimplente.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre estágio 1 (amigável), 2 (firme) e 3 (parcelamento) por atraso e histórico",
+        "Cada envio é registrado na trilha com estágio, canal e recibo",
+        "Recibo pago interrompe a régua imediatamente"
+      ]
+    },
+    {
+      "id": "FR-304",
+      "title": "Conformidade das promessas",
+      "user_story": "Como locador, quero que o sistema não prometa o que não cumpre, para não me expor jurídicamente.",
+      "acceptance_criteria": [
+        "UI, README e PDF dizem 'assinatura visualizada' e explicam o que ela é",
+        "Aviso de privacidade publicado, citando o provedor de IA como operador e o tratamento de comprovantes",
+        "Documentação separa modo demo (não-oficial, risco de ban) de modo cliente (Cloud API oficial)"
+      ]
+    },
+    {
+      "id": "FR-305",
+      "title": "Canal verificado de ponta a ponta",
+      "user_story": "Como operador, quero o canal exercitado com servidor falso, para confiar no comportamento antes de ligar o WhatsApp real.",
+      "acceptance_criteria": [
+        "`go test ./...` cobre conversa completa (recebida, respondida, escalada) com servidor falso",
+        "A régua é exercitada em todos os estágios com o canal falso",
+        "A documentação de operação do canal está publicada"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-301",
+      "name": "Mensageria bidirecional",
+      "description": "Webhook assinado, persistência das mensagens, vínculo com o titular e tela de conversas.",
+      "rules": [
+        "BR-301"
+      ]
+    },
+    {
+      "id": "CAP-302",
+      "name": "Agente de atendimento",
+      "description": "Ferramentas tipadas e limitadas, guardrails, escalonamento humano e registro de cada resposta.",
+      "rules": [
+        "BR-302",
+        "BR-303"
+      ]
+    },
+    {
+      "id": "CAP-303",
+      "name": "Régua de cobrança",
+      "description": "Estágios determinísticos de cobrança, redação assistida e registro de envios.",
+      "rules": [
+        "BR-304"
+      ]
+    },
+    {
+      "id": "CAP-304",
+      "name": "Conformidade",
+      "description": "Assinatura visualizada, aviso de privacidade, modos de canal e documentação de risco.",
+      "rules": [
+        "BR-305"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-301",
+      "statement": "Webhook exige assinatura válida e é idempotente por identificador externo.",
+      "coverage": [
+        "CAP-301"
+      ],
+      "evidence": "go test ./internal/infrastructure/whatsapp/..."
+    },
+    {
+      "id": "BR-302",
+      "statement": "O agente nunca recebe acesso livre ao banco: cada resposta passa por ferramenta tipada limitada ao titular da conversa.",
+      "coverage": [
+        "CAP-302"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-303",
+      "statement": "Pergunta fora do escopo ou jurídica escala para humano, sem resposta inventada.",
+      "coverage": [
+        "CAP-302"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-304",
+      "statement": "Valor, vencimento e status usados na cobrança vêm sempre do recibo, nunca do modelo.",
+      "coverage": [
+        "CAP-303"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-305",
+      "statement": "Nenhuma superfície do produto promete assinatura com validade jurídica enquanto não houver integração com plataforma de assinatura.",
+      "coverage": [
+        "CAP-304"
+      ],
+      "evidence": "revisão de UI, README e PDF"
+    }
+  ],
+  "components": [
+    {
+      "name": "application",
+      "purpose": "Ferramentas do agente, régua de cobrança e escalonamento"
+    },
+    {
+      "name": "messaging",
+      "purpose": "Webhook, persistência e envio pelo WAHA"
+    },
+    {
+      "name": "web",
+      "purpose": "Tela de conversas, disparo da régua e textos de conformidade"
+    },
+    {
+      "name": "docs",
+      "purpose": "Aviso de privacidade, modos de canal e ajuste da promessa de assinatura"
+    },
+    {
+      "name": "ops",
+      "purpose": "Verificação do canal, documentação e operação"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "acceptance": [
+    {
+      "command": "go build ./...",
+      "description": "compilação de todos os pacotes"
+    },
+    {
+      "command": "go vet ./...",
+      "description": "análise estática do vet"
+    },
+    {
+      "command": "go test ./...",
+      "description": "suíte completa de testes"
+    }
+  ],
+  "default_write_allow": [
+    "cmd/**",
+    "internal/**",
+    "web/**",
+    "migrations/**",
+    "schema/**",
+    "queries/**",
+    "docs/**",
+    "README.md",
+    "*.go",
+    "*.sql",
+    "*.yaml",
+    "*.yml",
+    "*.json",
+    "*.md"
+  ],
+  "default_write_deny": [
+    ".git/**",
+    ".env",
+    ".env.*",
+    "!.env.example"
+  ],
+  "tasks": [
+    {
+      "id": "4.1",
+      "title": "Conversas persistidas e tela de atendimento",
+      "requirement_id": "FR-301",
+      "spec_reference": "CAP-301",
+      "behavior": "as mensagens recebidas ficam guardadas, vinculadas ao titular e visíveis no painel por inquilino",
+      "components": [
+        "application",
+        "messaging",
+        "web"
+      ],
+      "files": [
+        "internal/application/whatsapp_conversation.go",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/whatsapp/",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de webhook, vínculo por telefone, número desconhecido e histórico",
+        "Implementar a consulta de conversas e a tela no painel"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "conversas cobertas por teste"
+        }
+      ],
+      "risk": "L2"
+    },
+    {
+      "id": "4.2",
+      "title": "Ferramentas tipadas do agente",
+      "requirement_id": "FR-302",
+      "spec_reference": "CAP-302",
+      "behavior": "o agente responde com dado real do banco por ferramentas limitadas ao titular e escala quando não tem ferramenta",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes de cada ferramenta, do limite por titular e do escalonamento",
+        "Implementar as ferramentas tipadas (recibos do titular, contrato do titular, abertura de solicitação) e o laço de decisão"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "ferramentas e guardrails cobertos por teste"
+        }
+      ],
+      "risk": "L3"
+    },
+    {
+      "id": "4.3",
+      "title": "Régua de cobrança adaptativa",
+      "requirement_id": "FR-303",
+      "spec_reference": "CAP-303",
+      "behavior": "a régua decide o estágio pelo atraso e pelo histórico, envia pelo canal e registra o envio",
+      "components": [
+        "application",
+        "messaging"
+      ],
+      "files": [
+        "internal/application/collection.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "implementation_steps": [
+        "Escrever os testes dos três estágios, da interrupção por pagamento e do registro",
+        "Implementar a régua com textos determinísticos e redação assistida opcional"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "régua coberta por teste"
+        }
+      ],
+      "risk": "L2"
+    },
+    {
+      "id": "4.4",
+      "title": "Conformidade das promessas",
+      "requirement_id": "FR-304",
+      "spec_reference": "CAP-304",
+      "behavior": "UI, README e PDF apresentam assinatura visualizada, publicam o aviso de privacidade e separam os modos do canal",
+      "components": [
+        "web",
+        "docs"
+      ],
+      "files": [
+        "docs/",
+        "README.md",
+        "internal/infrastructure/pdf/",
+        "internal/infrastructure/web/templates/"
+      ],
+      "implementation_files": [
+        "docs/**",
+        "README.md",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/pdf/"
+      ],
+      "implementation_steps": [
+        "Ajustar os textos de UI e do PDF do recibo",
+        "Escrever o aviso de privacidade e a documentação dos modos do canal",
+        "Cobrir por teste o texto do PDF"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "texto do PDF coberto por teste"
+        }
+      ],
+      "risk": "L1"
+    },
+    {
+      "id": "4.5",
+      "title": "Verificação de WhatsApp e conformidade",
+      "requirement_id": "FR-305",
+      "spec_reference": "CAP-301",
+      "behavior": "o canal bidirecional funciona de ponta a ponta com servidor falso e a documentação está coerente",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/",
+        "docs/"
+      ],
+      "implementation_files": [
+        "internal/**",
+        "docs/**"
+      ],
+      "test_files": [
+        "internal/"
+      ],
+      "implementation_steps": [
+        "Rodar os gates completos",
+        "Exercitar o fluxo de conversa e a régua com o canal falso",
+        "Revisar a documentação"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "risk": "L1",
+      "depends_on": [
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4"
+      ]
+    }
+  ]
+}

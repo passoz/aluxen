@@ -60,8 +60,11 @@ var canonicalTypes = map[string]string{
 	"double precision": "real",
 }
 
-// ParseSQL lê o schema descrito por um texto SQL. Instruções que não sejam
-// CREATE TABLE ou CREATE INDEX são ignoradas (o projeto não usa outras).
+// ParseSQL lê o schema descrito por um texto SQL. Entende CREATE TABLE,
+// CREATE INDEX e ALTER TABLE ... ADD COLUMN (as migrações acrescentam colunas
+// assim); qualquer outra instrução é ignorada, e tudo a partir do marcador
+// `-- +goose Down` é descartado — o que precisa casar com o schema canônico é o
+// caminho de subida.
 func ParseSQL(source string) (Schema, error) {
 	var schema Schema
 	for _, statement := range splitStatements(source) {
@@ -78,10 +81,36 @@ func ParseSQL(source string) (Schema, error) {
 				return Schema{}, err
 			}
 			schema.Indexes = append(schema.Indexes, index)
+		case alterAddColumnPattern.MatchString(statement):
+			if err := applyAddColumn(&schema, statement); err != nil {
+				return Schema{}, err
+			}
 		}
 	}
 	sortSchema(&schema)
 	return schema, nil
+}
+
+// applyAddColumn acrescenta a coluna ao modelo da tabela alterada. Coluna
+// adicionada depois é sempre a última da tabela, exatamente como o banco faz.
+func applyAddColumn(schema *Schema, statement string) error {
+	matches := alterAddColumnPattern.FindStringSubmatch(statement)
+	if matches == nil {
+		return fmt.Errorf("não foi possível ler o ALTER TABLE: %s", statement)
+	}
+	tableName := normalizeIdentifier(matches[1])
+	// Grupo 2 é o `COLUMN` opcional; grupo 3 é a definição da coluna.
+	column, err := parseColumn(strings.TrimSpace(matches[3]))
+	if err != nil {
+		return err
+	}
+	for index := range schema.Tables {
+		if schema.Tables[index].Name == tableName {
+			schema.Tables[index].Columns = append(schema.Tables[index].Columns, column)
+			return nil
+		}
+	}
+	return fmt.Errorf("ALTER TABLE em tabela ausente do schema: %s", tableName)
 }
 
 // LoadSQLite monta o schema efetivamente presente num banco SQLite, lendo o DDL
@@ -289,13 +318,36 @@ var (
 	foreignKeyPattern  = regexp.MustCompile(`(?is)^foreign\s+key\s*\(([^)]*)\)\s*references\s+("[^"]+"|` + "`[^`]+`" + `|\w+)\s*\(([^)]*)\)(.*)$`)
 	onDeletePattern    = regexp.MustCompile(`(?is)on\s+delete\s+(no\s+action|set\s+null|set\s+default|cascade|restrict)`)
 	primaryKeyPattern  = regexp.MustCompile(`(?is)^primary\s+key\s*\(([^)]*)\)`)
+	// ALTER TABLE ... ADD COLUMN é como as migrações acrescentam coluna a tabela
+	// existente; o parâmetro [^;]* casa a definição da coluna até o fim da
+	// instrução (a coluna é a última da tabela, como o banco a guarda).
+	alterAddColumnPattern = regexp.MustCompile(`(?is)^alter\s+table\s+("[^"]+"|` + "`[^`]+`" + `|\w+)\s+add\s+(column\s+)?([^;]*)$`)
+	gooseDownPattern      = regexp.MustCompile(`(?i)^\s*--\s*\+goose\s+down\b`)
+	gooseUpPattern        = regexp.MustCompile(`(?i)^\s*--\s*\+goose\s+up\b`)
 )
 
 // splitStatements quebra o texto em instruções, descartando comentários de
 // linha e instruções vazias.
 func splitStatements(source string) []string {
+	// Só o caminho de subida descreve o schema final: o Down desfaz o que o Up
+	// fez e, se fosse lido, cancelaria as colunas recém-acrescentadas. Os
+	// marcadores são tratados por linha, porque vários arquivos de migração são
+	// concatenados antes da leitura (o Down de um não pode esconder o Up do
+	// seguinte).
 	var withoutComments strings.Builder
+	skipping := false
 	for _, line := range strings.Split(source, "\n") {
+		if gooseDownPattern.MatchString(line) {
+			skipping = true
+			continue
+		}
+		if gooseUpPattern.MatchString(line) {
+			skipping = false
+			continue
+		}
+		if skipping {
+			continue
+		}
 		if index := strings.Index(line, "--"); index >= 0 {
 			line = line[:index]
 		}

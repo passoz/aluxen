@@ -25,11 +25,7 @@ func (r *Receipts) List(ctx context.Context) ([]domain.Receipt, error) {
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	receipts := make([]domain.Receipt, 0, len(rows))
-	for _, row := range rows {
-		receipts = append(receipts, receiptFromListRow(row))
-	}
-	return receipts, nil
+	return receiptsFromRows(rows), nil
 }
 
 func (r *Receipts) ByID(ctx context.Context, id string) (*domain.Receipt, error) {
@@ -37,7 +33,7 @@ func (r *Receipts) ByID(ctx context.Context, id string) (*domain.Receipt, error)
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	receipt := receiptFromGetRow(row)
+	receipt := receiptFromRow(sqlcgen.ListReceiptsRow(row))
 	return &receipt, nil
 }
 
@@ -48,7 +44,7 @@ func (r *Receipts) ByTenant(ctx context.Context, tenantID string) ([]domain.Rece
 	}
 	receipts := make([]domain.Receipt, 0, len(rows))
 	for _, row := range rows {
-		receipts = append(receipts, receiptFromTenantRow(row))
+		receipts = append(receipts, receiptFromRow(sqlcgen.ListReceiptsRow(row)))
 	}
 	return receipts, nil
 }
@@ -60,7 +56,7 @@ func (r *Receipts) ByLease(ctx context.Context, leaseID string) ([]domain.Receip
 	}
 	receipts := make([]domain.Receipt, 0, len(rows))
 	for _, row := range rows {
-		receipts = append(receipts, receiptFromLeaseRow(row))
+		receipts = append(receipts, receiptFromRow(sqlcgen.ListReceiptsRow(row)))
 	}
 	return receipts, nil
 }
@@ -135,73 +131,18 @@ func insertReceiptParams(receipt *domain.Receipt) sqlcgen.InsertReceiptParams {
 	}
 }
 
-func receiptFromListRow(row sqlcgen.ListReceiptsRow) domain.Receipt {
-	return domain.Receipt{
-		ID:           row.ID,
-		LeaseID:      stringPtr(row.LeaseID),
-		TenantID:     stringPtr(row.TenantID),
-		PropertyID:   stringPtr(row.PropertyID),
-		Category:     domain.ReceiptCategory(row.Category),
-		Description:  stringPtr(row.Description),
-		DueDate:      row.DueDate,
-		PaidAt:       stringPtr(row.PaidAt),
-		Amount:       row.Amount,
-		PaidAmount:   floatPtr(row.PaidAmount),
-		PdfPath:      stringPtr(row.PdfPath),
-		GeneratedKey: stringPtr(row.GeneratedKey),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    stringPtr(row.UpdatedAt),
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
+func receiptsFromRows(rows []sqlcgen.ListReceiptsRow) []domain.Receipt {
+	receipts := make([]domain.Receipt, 0, len(rows))
+	for _, row := range rows {
+		receipts = append(receipts, receiptFromRow(row))
 	}
+	return receipts
 }
 
-func receiptFromGetRow(row sqlcgen.GetReceiptByIDRow) domain.Receipt {
-	return domain.Receipt{
-		ID:           row.ID,
-		LeaseID:      stringPtr(row.LeaseID),
-		TenantID:     stringPtr(row.TenantID),
-		PropertyID:   stringPtr(row.PropertyID),
-		Category:     domain.ReceiptCategory(row.Category),
-		Description:  stringPtr(row.Description),
-		DueDate:      row.DueDate,
-		PaidAt:       stringPtr(row.PaidAt),
-		Amount:       row.Amount,
-		PaidAmount:   floatPtr(row.PaidAmount),
-		PdfPath:      stringPtr(row.PdfPath),
-		GeneratedKey: stringPtr(row.GeneratedKey),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    stringPtr(row.UpdatedAt),
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func receiptFromTenantRow(row sqlcgen.ListReceiptsByTenantRow) domain.Receipt {
-	return domain.Receipt{
-		ID:           row.ID,
-		LeaseID:      stringPtr(row.LeaseID),
-		TenantID:     stringPtr(row.TenantID),
-		PropertyID:   stringPtr(row.PropertyID),
-		Category:     domain.ReceiptCategory(row.Category),
-		Description:  stringPtr(row.Description),
-		DueDate:      row.DueDate,
-		PaidAt:       stringPtr(row.PaidAt),
-		Amount:       row.Amount,
-		PaidAmount:   floatPtr(row.PaidAmount),
-		PdfPath:      stringPtr(row.PdfPath),
-		GeneratedKey: stringPtr(row.GeneratedKey),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    stringPtr(row.UpdatedAt),
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func receiptFromLeaseRow(row sqlcgen.ListReceiptsByLeaseRow) domain.Receipt {
+// receiptFromRow converte a linha do banco na entidade de domínio. Todas as
+// consultas de lançamento devolvem as mesmas colunas, então este conversor serve
+// para todas e as demais linhas são convertidas para este tipo.
+func receiptFromRow(row sqlcgen.ListReceiptsRow) domain.Receipt {
 	return domain.Receipt{
 		ID:           row.ID,
 		LeaseID:      stringPtr(row.LeaseID),

@@ -26,18 +26,96 @@ type AuditLog struct {
 	RequestID   sql.NullString `json:"request_id"`
 }
 
+type DocumentIntake struct {
+	ID              string          `json:"id"`
+	CreatedAt       string          `json:"created_at"`
+	UpdatedAt       string          `json:"updated_at"`
+	Kind            string          `json:"kind"`
+	FileName        sql.NullString  `json:"file_name"`
+	FilePath        sql.NullString  `json:"file_path"`
+	Mime            sql.NullString  `json:"mime"`
+	Status          string          `json:"status"`
+	Extracted       sql.NullString  `json:"extracted"`
+	Confidence      sql.NullFloat64 `json:"confidence"`
+	CreatedEntity   sql.NullString  `json:"created_entity"`
+	CreatedEntityID sql.NullString  `json:"created_entity_id"`
+	RawResponse     sql.NullString  `json:"raw_response"`
+	Notes           sql.NullString  `json:"notes"`
+}
+
+type Inspection struct {
+	ID          string         `json:"id"`
+	LeaseID     string         `json:"lease_id"`
+	Kind        string         `json:"kind"`
+	PerformedAt string         `json:"performed_at"`
+	Condition   string         `json:"condition"`
+	Notes       sql.NullString `json:"notes"`
+	Items       sql.NullString `json:"items"`
+	Photos      sql.NullString `json:"photos"`
+	AuthToken   sql.NullString `json:"auth_token"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+}
+
+type Job struct {
+	ID          string         `json:"id"`
+	CreatedAt   string         `json:"created_at"`
+	UpdatedAt   string         `json:"updated_at"`
+	Kind        string         `json:"kind"`
+	Status      string         `json:"status"`
+	Attempts    int64          `json:"attempts"`
+	MaxAttempts int64          `json:"max_attempts"`
+	Payload     sql.NullString `json:"payload"`
+	Result      sql.NullString `json:"result"`
+	Error       sql.NullString `json:"error"`
+	ScheduledAt string         `json:"scheduled_at"`
+	StartedAt   sql.NullString `json:"started_at"`
+	FinishedAt  sql.NullString `json:"finished_at"`
+}
+
 type Lease struct {
-	ID         string         `json:"id"`
-	TenantID   string         `json:"tenant_id"`
-	PropertyID string         `json:"property_id"`
-	StartDate  string         `json:"start_date"`
-	EndDate    string         `json:"end_date"`
-	DueDay     int64          `json:"due_day"`
-	RentAmount float64        `json:"rent_amount"`
-	Status     string         `json:"status"`
-	AuthToken  sql.NullString `json:"auth_token"`
-	CreatedAt  string         `json:"created_at"`
-	UpdatedAt  string         `json:"updated_at"`
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id"`
+	PropertyID            string          `json:"property_id"`
+	StartDate             string          `json:"start_date"`
+	EndDate               string          `json:"end_date"`
+	DueDay                int64           `json:"due_day"`
+	RentAmount            float64         `json:"rent_amount"`
+	Status                string          `json:"status"`
+	AuthToken             sql.NullString  `json:"auth_token"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+	DepositAmount         sql.NullFloat64 `json:"deposit_amount"`
+	DepositStatus         sql.NullString  `json:"deposit_status"`
+	DepositReceivedAt     sql.NullString  `json:"deposit_received_at"`
+	DepositRefundedAt     sql.NullString  `json:"deposit_refunded_at"`
+	DepositRefundedAmount sql.NullFloat64 `json:"deposit_refunded_amount"`
+	DepositNotes          sql.NullString  `json:"deposit_notes"`
+}
+
+type PaymentProof struct {
+	ID                  string          `json:"id"`
+	CreatedAt           string          `json:"created_at"`
+	UpdatedAt           string          `json:"updated_at"`
+	Source              string          `json:"source"`
+	Phone               sql.NullString  `json:"phone"`
+	TenantID            sql.NullString  `json:"tenant_id"`
+	ReceiptID           sql.NullString  `json:"receipt_id"`
+	FileName            sql.NullString  `json:"file_name"`
+	FilePath            sql.NullString  `json:"file_path"`
+	Mime                sql.NullString  `json:"mime"`
+	ExtractedAmount     sql.NullFloat64 `json:"extracted_amount"`
+	ExtractedDate       sql.NullString  `json:"extracted_date"`
+	ExtractedPayer      sql.NullString  `json:"extracted_payer"`
+	ExtractedPayee      sql.NullString  `json:"extracted_payee"`
+	ExtractedIdentifier sql.NullString  `json:"extracted_identifier"`
+	Confidence          sql.NullFloat64 `json:"confidence"`
+	Status              string          `json:"status"`
+	Decision            string          `json:"decision"`
+	DecisionReason      sql.NullString  `json:"decision_reason"`
+	DecidedBy           sql.NullString  `json:"decided_by"`
+	DecidedAt           sql.NullString  `json:"decided_at"`
+	RawResponse         sql.NullString  `json:"raw_response"`
 }
 
 type Property struct {

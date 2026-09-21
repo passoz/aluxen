@@ -1,0 +1,97 @@
+{{define "portal.html"}}{{template "head" .}}
+{{with .Data}}
+<div class="settings-page" style="align-items: flex-start;">
+  <div class="card stack-lg" style="width: 100%; max-width: 880px;">
+    <header class="stack" style="gap: 0.75rem;">
+      <div class="brand-lockup" style="margin-bottom: 0;">
+        <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
+        <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
+      </div>
+      <div class="page-header" style="margin-bottom: 0;">
+        <div class="page-header-text">
+          <h1>Área do Cliente</h1>
+          <p>{{.Tenant.Name}}{{with deref .Tenant.CPF}} &bull; CPF {{.}}{{end}}</p>
+        </div>
+        <div class="auth-actions">
+          <a class="btn btn-outline" href="/portal/password">Trocar senha</a>
+          <form method="post" action="/portal/logout" data-native>
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" class="btn btn-secondary">Sair</button>
+          </form>
+        </div>
+      </div>
+    </header>
+
+    {{if .Message}}<div class="success">{{.Message}}</div>{{end}}
+
+    <section class="stack">
+      <div class="section-header">
+        <h2 style="font-size: 1.1rem; margin: 0;">Meus contratos</h2>
+      </div>
+      {{if not .Area.Leases}}
+        <p class="subtitle" style="margin: 0;">Nenhum contrato vinculado ao seu cadastro.</p>
+      {{else}}
+        {{range .Area.Leases}}
+          <div class="card stack" style="padding: 1rem 1.25rem; gap: 0.35rem;">
+            <div class="section-header" style="margin-bottom: 0;">
+              <strong style="font-size: 1rem;">{{.PropertyName}}</strong>
+              <span class="status-badge {{.StatusClass}}">{{.StatusLabel}}</span>
+            </div>
+            {{if .PropertyAddress}}<span class="subtitle" style="margin: 0;">{{.PropertyAddress}}</span>{{end}}
+            <span class="subtitle" style="margin: 0;">
+              Vigência: {{.Period}} &bull; Vencimento todo dia {{.DueDay}} &bull; Aluguel {{.RentAmount}}
+            </span>
+            <div class="auth-actions" style="margin-top: 0.5rem;">
+              <a class="btn btn-sm btn-outline" href="{{.PDFURL}}" target="_blank" rel="noreferrer">Ver contrato (PDF)</a>
+              <a class="btn btn-sm btn-outline" href="{{.ValidationURL}}" target="_blank" rel="noreferrer">Autenticidade</a>
+            </div>
+          </div>
+        {{end}}
+      {{end}}
+    </section>
+
+    <section class="stack">
+      <div class="section-header">
+        <h2 style="font-size: 1.1rem; margin: 0;">Meus recibos quitados</h2>
+      </div>
+      {{if not .Area.Receipts}}
+        <p class="subtitle" style="margin: 0;">Nenhum recibo quitado até o momento.</p>
+      {{else}}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Referência</th>
+                <th>Imóvel</th>
+                <th>Vencimento</th>
+                <th>Pago em</th>
+                <th>Valor pago</th>
+                <th style="text-align: right;">Documento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Area.Receipts}}
+                <tr>
+                  <td>
+                    {{.Reference}}
+                    {{if .IsPartial}}<span class="status-badge partial" style="margin-left: 0.5rem;">Parcial</span>{{end}}
+                  </td>
+                  <td>{{if .PropertyName}}{{.PropertyName}}{{else}}&mdash;{{end}}</td>
+                  <td class="cell-nowrap">{{.DueDate}}</td>
+                  <td class="cell-nowrap">{{.PaidAt}}</td>
+                  <td class="cell-nowrap">{{.AmountPaid}}</td>
+                  <td style="text-align: right; white-space: nowrap;">
+                    <a class="btn btn-sm btn-outline" href="{{.PDFURL}}" target="_blank" rel="noreferrer">PDF</a>
+                    <a class="btn btn-sm btn-outline" href="{{.ValidationURL}}" target="_blank" rel="noreferrer">Autenticidade</a>
+                  </td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      {{end}}
+    </section>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

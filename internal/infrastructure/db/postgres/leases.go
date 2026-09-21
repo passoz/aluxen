@@ -24,11 +24,7 @@ func (r *Leases) List(ctx context.Context) ([]domain.Lease, error) {
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	leases := make([]domain.Lease, 0, len(rows))
-	for _, row := range rows {
-		leases = append(leases, leaseFromListRow(row))
-	}
-	return leases, nil
+	return leasesFromRows(rows), nil
 }
 
 func (r *Leases) ByID(ctx context.Context, id string) (*domain.Lease, error) {
@@ -36,7 +32,7 @@ func (r *Leases) ByID(ctx context.Context, id string) (*domain.Lease, error) {
 	if err != nil {
 		return nil, wrapError(err)
 	}
-	lease := leaseFromGetRow(row)
+	lease := leaseFromRow(sqlcgen.ListLeasesRow(row))
 	return &lease, nil
 }
 
@@ -47,7 +43,7 @@ func (r *Leases) ByTenant(ctx context.Context, tenantID string) ([]domain.Lease,
 	}
 	leases := make([]domain.Lease, 0, len(rows))
 	for _, row := range rows {
-		leases = append(leases, leaseFromTenantRow(row))
+		leases = append(leases, leaseFromRow(sqlcgen.ListLeasesRow(row)))
 	}
 	return leases, nil
 }
@@ -59,7 +55,7 @@ func (r *Leases) ByProperty(ctx context.Context, propertyID string) ([]domain.Le
 	}
 	leases := make([]domain.Lease, 0, len(rows))
 	for _, row := range rows {
-		leases = append(leases, leaseFromPropertyRow(row))
+		leases = append(leases, leaseFromRow(sqlcgen.ListLeasesRow(row)))
 	}
 	return leases, nil
 }
@@ -76,7 +72,7 @@ func (r *Leases) Overlapping(ctx context.Context, propertyID, excludeID, startDa
 	}
 	leases := make([]domain.Lease, 0, len(rows))
 	for _, row := range rows {
-		leases = append(leases, leaseFromOverlapRow(row))
+		leases = append(leases, leaseFromRow(sqlcgen.ListLeasesRow(row)))
 	}
 	return leases, nil
 }
@@ -91,38 +87,50 @@ func (r *Leases) ActiveInRange(ctx context.Context, startDate, endDate string) (
 	}
 	leases := make([]domain.Lease, 0, len(rows))
 	for _, row := range rows {
-		leases = append(leases, leaseFromRangeRow(row))
+		leases = append(leases, leaseFromRow(sqlcgen.ListLeasesRow(row)))
 	}
 	return leases, nil
 }
 
 func (r *Leases) Create(ctx context.Context, lease *domain.Lease) error {
 	return wrapError(r.queries.InsertLease(ctx, sqlcgen.InsertLeaseParams{
-		ID:         lease.ID,
-		TenantID:   lease.TenantID,
-		PropertyID: lease.PropertyID,
-		StartDate:  lease.StartDate,
-		EndDate:    lease.EndDate,
-		DueDay:     int32(dueDayOrDefault(lease.DueDay)),
-		RentAmount: lease.RentAmount,
-		Status:     leaseStatusOrDefault(lease.Status),
-		AuthToken:  nullString(lease.AuthToken),
-		CreatedAt:  lease.CreatedAt,
-		UpdatedAt:  lease.UpdatedAt,
+		ID:                    lease.ID,
+		TenantID:              lease.TenantID,
+		PropertyID:            lease.PropertyID,
+		StartDate:             lease.StartDate,
+		EndDate:               lease.EndDate,
+		DueDay:                int32(dueDayOrDefault(lease.DueDay)),
+		RentAmount:            lease.RentAmount,
+		Status:                leaseStatusOrDefault(lease.Status),
+		AuthToken:             nullString(lease.AuthToken),
+		DepositAmount:         nullFloat(lease.DepositAmount),
+		DepositStatus:         depositStatusColumn(lease.DepositStatus),
+		DepositReceivedAt:     nullString(lease.DepositReceivedAt),
+		DepositRefundedAt:     nullString(lease.DepositRefundedAt),
+		DepositRefundedAmount: nullFloat(lease.DepositRefundedAmt),
+		DepositNotes:          nullString(lease.DepositNotes),
+		CreatedAt:             lease.CreatedAt,
+		UpdatedAt:             lease.UpdatedAt,
 	}))
 }
 
 func (r *Leases) Update(ctx context.Context, lease *domain.Lease) error {
 	return wrapError(r.queries.UpdateLease(ctx, sqlcgen.UpdateLeaseParams{
-		TenantID:   lease.TenantID,
-		PropertyID: lease.PropertyID,
-		StartDate:  lease.StartDate,
-		EndDate:    lease.EndDate,
-		DueDay:     int32(dueDayOrDefault(lease.DueDay)),
-		RentAmount: lease.RentAmount,
-		Status:     leaseStatusOrDefault(lease.Status),
-		UpdatedAt:  lease.UpdatedAt,
-		ID:         lease.ID,
+		TenantID:              lease.TenantID,
+		PropertyID:            lease.PropertyID,
+		StartDate:             lease.StartDate,
+		EndDate:               lease.EndDate,
+		DueDay:                int32(dueDayOrDefault(lease.DueDay)),
+		RentAmount:            lease.RentAmount,
+		Status:                leaseStatusOrDefault(lease.Status),
+		DepositAmount:         nullFloat(lease.DepositAmount),
+		DepositStatus:         depositStatusColumn(lease.DepositStatus),
+		DepositReceivedAt:     nullString(lease.DepositReceivedAt),
+		DepositRefundedAt:     nullString(lease.DepositRefundedAt),
+		DepositRefundedAmount: nullFloat(lease.DepositRefundedAmt),
+		DepositNotes:          nullString(lease.DepositNotes),
+		UpdatedAt:             lease.UpdatedAt,
+		ID:                    lease.ID,
 	}))
 }
 
@@ -154,110 +162,38 @@ func (r *Leases) CountByStatus(ctx context.Context, status domain.LeaseStatus) (
 	return int(total), nil
 }
 
-func leaseFromListRow(row sqlcgen.ListLeasesRow) domain.Lease {
-	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
+func leasesFromRows(rows []sqlcgen.ListLeasesRow) []domain.Lease {
+	leases := make([]domain.Lease, 0, len(rows))
+	for _, row := range rows {
+		leases = append(leases, leaseFromRow(row))
 	}
+	return leases
 }
 
-func leaseFromGetRow(row sqlcgen.GetLeaseByIDRow) domain.Lease {
+// leaseFromRow converte a linha do banco na entidade de domínio. Todas as
+// consultas de contrato devolvem as mesmas colunas (`l.*` mais os nomes do
+// join), então este conversor serve para todas e as demais linhas são
+// convertidas para este tipo.
+func leaseFromRow(row sqlcgen.ListLeasesRow) domain.Lease {
 	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func leaseFromTenantRow(row sqlcgen.ListLeasesByTenantRow) domain.Lease {
-	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func leaseFromPropertyRow(row sqlcgen.ListLeasesByPropertyRow) domain.Lease {
-	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func leaseFromOverlapRow(row sqlcgen.ListLeasesOverlappingRow) domain.Lease {
-	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
-	}
-}
-
-func leaseFromRangeRow(row sqlcgen.ListLeasesActiveInRangeRow) domain.Lease {
-	return domain.Lease{
-		ID:           row.ID,
-		TenantID:     row.TenantID,
-		PropertyID:   row.PropertyID,
-		StartDate:    row.StartDate,
-		EndDate:      row.EndDate,
-		DueDay:       int(row.DueDay),
-		RentAmount:   row.RentAmount,
-		Status:       domain.LeaseStatus(row.Status),
-		AuthToken:    stringPtr(row.AuthToken),
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-		TenantName:   row.TenantName,
-		PropertyName: row.PropertyName,
+		ID:                 row.ID,
+		TenantID:           row.TenantID,
+		PropertyID:         row.PropertyID,
+		StartDate:          row.StartDate,
+		EndDate:            row.EndDate,
+		DueDay:             int(row.DueDay),
+		RentAmount:         row.RentAmount,
+		Status:             domain.LeaseStatus(row.Status),
+		AuthToken:          stringPtr(row.AuthToken),
+		DepositAmount:      floatPtr(row.DepositAmount),
+		DepositStatus:      depositStatusFromColumn(row.DepositStatus),
+		DepositReceivedAt:  stringPtr(row.DepositReceivedAt),
+		DepositRefundedAt:  stringPtr(row.DepositRefundedAt),
+		DepositRefundedAmt: floatPtr(row.DepositRefundedAmount),
+		DepositNotes:       stringPtr(row.DepositNotes),
+		CreatedAt:          row.CreatedAt,
+		UpdatedAt:          row.UpdatedAt,
+		TenantName:         row.TenantName,
+		PropertyName:       row.PropertyName,
 	}
 }

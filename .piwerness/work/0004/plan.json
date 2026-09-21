@@ -1,0 +1,256 @@
+{
+  "$schema": "../../../schemas/plan.schema.json",
+  "work_id": "0004",
+  "title": "WhatsApp bidirecional, agente de cobrança e conformidade das promessas",
+  "components": [
+    {
+      "name": "application",
+      "purpose": "Ferramentas do agente, régua de cobrança e escalonamento"
+    },
+    {
+      "name": "messaging",
+      "purpose": "Webhook, persistência e envio pelo WAHA"
+    },
+    {
+      "name": "web",
+      "purpose": "Tela de conversas, disparo da régua e textos de conformidade"
+    },
+    {
+      "name": "docs",
+      "purpose": "Aviso de privacidade, modos de canal e ajuste da promessa de assinatura"
+    },
+    {
+      "name": "ops",
+      "purpose": "Verificação do canal, documentação e operação"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "tasks": [
+    {
+      "id": "4.1",
+      "title": "Conversas persistidas e tela de atendimento",
+      "requirement_id": "FR-301",
+      "spec_reference": "CAP-301",
+      "contract_id": "CTR-001",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "as mensagens recebidas ficam guardadas, vinculadas ao titular e visíveis no painel por inquilino",
+      "components": [
+        "application",
+        "messaging",
+        "web"
+      ],
+      "files": [
+        "internal/application/whatsapp_conversation.go",
+        "internal/infrastructure/web/"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/",
+        "internal/infrastructure/whatsapp/",
+        "internal/infrastructure/web/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as mensagens recebidas ficam guardadas, vinculadas ao titular e visíveis no painel por inquilino\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de webhook, vínculo por telefone, número desconhecido e histórico",
+        "Implementar a consulta de conversas e a tela no painel"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "conversas cobertas por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "4.2",
+      "title": "Ferramentas tipadas do agente",
+      "requirement_id": "FR-302",
+      "spec_reference": "CAP-302",
+      "contract_id": "CTR-002",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "o agente responde com dado real do banco por ferramentas limitadas ao titular e escala quando não tem ferramenta",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o agente responde com dado real do banco por ferramentas limitadas ao titular e escala quando não tem ferramenta\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de cada ferramenta, do limite por titular e do escalonamento",
+        "Implementar as ferramentas tipadas (recibos do titular, contrato do titular, abertura de solicitação) e o laço de decisão"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "ferramentas e guardrails cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "4.3",
+      "title": "Régua de cobrança adaptativa",
+      "requirement_id": "FR-303",
+      "spec_reference": "CAP-303",
+      "contract_id": "CTR-003",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "a régua decide o estágio pelo atraso e pelo histórico, envia pelo canal e registra o envio",
+      "components": [
+        "application",
+        "messaging"
+      ],
+      "files": [
+        "internal/application/collection.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"a régua decide o estágio pelo atraso e pelo histórico, envia pelo canal e registra o envio\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes dos três estágios, da interrupção por pagamento e do registro",
+        "Implementar a régua com textos determinísticos e redação assistida opcional"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "régua coberta por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "4.4",
+      "title": "Conformidade das promessas",
+      "requirement_id": "FR-304",
+      "spec_reference": "CAP-304",
+      "contract_id": "CTR-004",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "UI, README e PDF apresentam assinatura visualizada, publicam o aviso de privacidade e separam os modos do canal",
+      "components": [
+        "web",
+        "docs"
+      ],
+      "files": [
+        "docs/",
+        "README.md",
+        "internal/infrastructure/pdf/",
+        "internal/infrastructure/web/templates/"
+      ],
+      "implementation_files": [
+        "docs/**",
+        "README.md",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/pdf/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"UI, README e PDF apresentam assinatura visualizada, publicam o aviso de privacidade e separam os modos do canal\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Ajustar os textos de UI e do PDF do recibo",
+        "Escrever o aviso de privacidade e a documentação dos modos do canal",
+        "Cobrir por teste o texto do PDF"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "texto do PDF coberto por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "4.5",
+      "title": "Verificação de WhatsApp e conformidade",
+      "requirement_id": "FR-305",
+      "spec_reference": "CAP-301",
+      "contract_id": "CTR-005",
+      "complexity": "standard",
+      "depends_on": [
+        "4.1",
+        "4.2",
+        "4.3",
+        "4.4"
+      ],
+      "behavior": "o canal bidirecional funciona de ponta a ponta com servidor falso e a documentação está coerente",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/",
+        "docs/"
+      ],
+      "implementation_files": [
+        "internal/**",
+        "docs/**"
+      ],
+      "test_files": [
+        "internal/"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o canal bidirecional funciona de ponta a ponta com servidor falso e a documentação está coerente\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Rodar os gates completos",
+        "Exercitar o fluxo de conversa e a régua com o canal falso",
+        "Revisar a documentação"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    }
+  ]
+}
