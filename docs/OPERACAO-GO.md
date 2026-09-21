@@ -281,6 +281,15 @@ Postgres nesse intervalo não voltam — por isso a janela de teste é curta.
   Para o porte atual (uma instalação, poucos milhares de linhas) é irrelevante.
 - Para ensaiar contra um Postgres de teste, o mesmo comando serve; a suíte de
   testes da migração usa `TEST_DATABASE_URL` quando quiser exercitar o dialeto real.
+- Postgres descartável para a suíte inteira (os testes que exigem o dialeto real
+  pulam sozinhos sem `TEST_DATABASE_URL`):
+
+  ```sh
+  docker run -d --rm --name aluxen-pg -p 5432:5432 \
+    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aluxen postgres:17
+  TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/aluxen?sslmode=disable' \
+    go test ./... -count=1 -coverpkg=./... -coverprofile=coverage.out
+  ```
 
 ---
 
