@@ -48,7 +48,10 @@ const (
 	agentReasonUngrounded = "nenhuma ferramenta aplicável"
 )
 
-// Tipos de evento do atendimento registrados na trilha.
+// Tipos de evento do atendimento, gravados no metadado `kind` da trilha. O
+// catálogo de ações é fechado (audit_catalog.go) e a resposta do atendimento é,
+// de fato, uma mensagem que sai pelo WhatsApp: o desfecho fica registrado na
+// ação de envio, com o tipo distinguindo o que aconteceu.
 const (
 	agentKindAnswer     = "agent-answer"
 	agentKindEscalation = "agent-escalation"
@@ -224,7 +227,7 @@ func HandleIncomingMessage(ctx context.Context, deps Deps, actx AuditContext, ms
 			reply.Reply = text
 			reply.Tools = usedTools
 			reply.Rounds = round
-			if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionAgentAnswered,
+			if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionWhatsAppSend,
 				fmt.Sprintf("Resposta do atendimento automático para %s", tenant.Name),
 				map[string]any{"phone": maskedPhone(msg.Phone), "kind": agentKindAnswer}); err != nil {
 				return nil, err
@@ -290,6 +293,11 @@ func ConversationReply(ctx context.Context, deps Deps, channel WhatsAppChannel, 
 
 // EscalateConversation registra que o locador assumiu a conversa — o mesmo
 // evento do encaminhamento automático, agora com o locador como autor.
+//
+// O evento vai na ação do canal (`whatsapp.send`), que é a única do catálogo
+// fechado que cobre o assunto; o tipo `manual-escalation` distingue o
+// escalonamento feito à mão. Nada é enviado aqui: quem responde ao locatário é
+// `ConversationReply`, quando o locador escrever.
 func EscalateConversation(ctx context.Context, deps Deps, actx AuditContext, tenantID, reason string) error {
 	tenant, err := conversationTenantByID(ctx, deps, tenantID)
 	if err != nil {
@@ -301,7 +309,7 @@ func EscalateConversation(ctx context.Context, deps Deps, actx AuditContext, ten
 		reason = "escalonamento manual do locador"
 	}
 	return Record(ctx, deps, actx, AuditEntry{
-		Action:      domain.ActionAgentEscalated,
+		Action:      domain.ActionWhatsAppSend,
 		Entity:      domain.EntityWhatsApp,
 		EntityID:    tenant.ID,
 		EntityLabel: tenant.Name,
@@ -369,7 +377,7 @@ func escalateToHuman(ctx context.Context, deps Deps, actx AuditContext, msg doma
 		label = fmt.Sprintf("Conversa de %s encaminhada ao locador", tenant.Name)
 	}
 
-	if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionAgentEscalated, label,
+	if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionWhatsAppSend, label,
 		map[string]any{
 			"phone":  maskedPhone(msg.Phone),
 			"kind":   agentKindEscalation,
@@ -378,7 +386,7 @@ func escalateToHuman(ctx context.Context, deps Deps, actx AuditContext, msg doma
 		return nil, err
 	}
 	deps.Log.Info("conversa escalonada para o locador",
-		"scope", "agent", "tenant", domain.Str(msg.TenantID), "reason", reason)
+		"scope", "agent", "tenant", domain.Str(msg.TenantID), "message", msg.ID)
 	return reply, nil
 }
 

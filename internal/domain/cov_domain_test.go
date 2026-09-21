@@ -746,7 +746,7 @@ func TestCovDomPayeeMatchesLandlord(t *testing.T) {
 		{"nome igual completo", "LOCADOR SILVA", "Locador Silva", "", true},
 		{"nome sem acento casa", "Jose Antonio", "José Antônio", "", true},
 		{"nome composto por primeiro e último", "Recebedor: Jose Silva ME", "José Carlos da Silva", "", true},
-		{"só o primeiro nome não basta", "Jose", "José Carlos da Silva", "", true},
+		{"primeiro nome do locador contido no pagador", "Jose", "José Carlos da Silva", "", true},
 		{"nome estranho não casa", "Maria Souza", "José Carlos da Silva", "", false},
 		{"locador de um nome só não casa", "Maria Souza", "José", "", false},
 		{"sem nome cadastrado não casa", "Qualquer Um", "", "", false},

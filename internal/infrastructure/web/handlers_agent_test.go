@@ -392,12 +392,33 @@ func TestConversationEscalateRegistersTheEvent(t *testing.T) {
 	}), http.StatusOK)
 	assert.Equal(t, true, body["ok"])
 
-	entries := panel.auditFor(t, domain.ActionAgentEscalated)
+	entries := panel.auditFor(t, domain.ActionWhatsAppSend)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "Maria Souza", domain.Str(entries[0].EntityLabel))
 	assert.Equal(t, "passoz", domain.Str(entries[0].ActorName))
 	assert.Contains(t, domain.Str(entries[0].Metadata), "manual-escalation")
+	assert.Contains(t, entries[0].Summary, "assumida pelo locador")
 	assert.Empty(t, panel.waha.sentMessages(), "escalonar não é enviar")
+}
+
+func TestConversationMutationRequiresAdmin(t *testing.T) {
+	panel := newAgentPanel(t)
+
+	// Sem a sessão do administrador, com o CSRF do formulário.
+	form := url.Values{
+		"intent":      {conversationIntentReply},
+		"tenant_id":   {agentTenantID},
+		"message":     {"Oi"},
+		csrfFieldName: {panel.csrfToken},
+	}
+	request := httptest.NewRequest(http.MethodPost, "/dashboard/conversation", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Accept", "application/json")
+	request.AddCookie(panel.csrf)
+	requireAgentJSON(t, panel.do(request), http.StatusUnauthorized)
+
+	assert.Empty(t, panel.waha.sentMessages())
+	assert.Empty(t, panel.auditFor(t, domain.ActionWhatsAppSend))
 }
 
 func TestConversationMutationRejectsUnknownIntent(t *testing.T) {

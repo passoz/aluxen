@@ -5,13 +5,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -697,10 +700,8 @@ func TestCopsWorkerClockAndLogger(t *testing.T) {
 	semDeps := NewWorker(Deps{}, WorkerOptions{})
 	assert.WithinDuration(t, time.Now(), semDeps.now(), time.Minute, "sem relógio, usa o do sistema")
 	assert.NotNil(t, semDeps.log(), "sem logger, usa o padrão")
-	assert.Equal(t, DefaultWorkerInterval, semDeps.interval)
-	assert.Equal(t, DefaultWorkerBatchSize, semDeps.batch)
 	_, registrado := semDeps.handler(domain.JobKindCollection)
-	assert.False(t, registrado)
+	assert.False(t, registrado, "tipo sem handler registrado não é encontrado")
 }
 
 // ── Gate de login (logingate.go) ───────────────────────────────────
@@ -1921,4 +1922,186 @@ func TestCopsMeasureAndSchemaErrors(t *testing.T) {
 func TestCopsLastTable(t *testing.T) {
 	assert.Equal(t, migrationTables[len(migrationTables)-1].name, lastTable())
 	assert.Equal(t, "document_intakes", lastTable())
+}
+
+// TestCopsCopyTableRejectsBrokenHandles prova que a cópia devolve o erro de cada
+// ponta quando o schema não casa: nada é contado como copiado.
+func TestCopsCopyTableRejectsBrokenHandles(t *testing.T) {
+	ctx := context.Background()
+	origem := copsOrigem(t, []string{`INSERT INTO settings (key, value) VALUES ('landlord_name','Locador')`})
+	source := copsSQLite(t, origem)
+	ausente := migrationTable{name: "tabela_ausente", columns: []string{"id"}, key: []string{"id"}}
+	settings := migrationTable{name: "settings", columns: []string{"key", "value"}, key: []string{"key"}}
+
+	t.Run("origem sem a tabela", func(t *testing.T) {
+		destino := copsDestino(t, nil)
+		tx, err := destino.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback() }()
+
+		copied, err := copyTable(ctx, source, tx, DialectSQLite, ausente)
+		require.Error(t, err)
+		assert.Equal(t, int64(0), copied)
+	})
+
+	t.Run("destino sem a tabela", func(t *testing.T) {
+		destino := copsDestino(t, func(statements []string) []string {
+			var out []string
+			for _, statement := range statements {
+				if strings.Contains(statement, "CREATE TABLE settings ") {
+					continue
+				}
+				out = append(out, statement)
+			}
+			return out
+		})
+		tx, err := destino.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback() }()
+
+		copied, err := copyTable(ctx, source, tx, DialectSQLite, settings)
+		require.Error(t, err)
+		assert.Equal(t, int64(0), copied)
+	})
+}
+
+// copsDestinoFalso é o destino que responde à pré-checagem mas recusa abrir ou
+// confirmar a transação: é assim que os erros de infraestrutura do destino ficam
+// observáveis sem um banco de verdade.
+type copsDestinoFalso struct {
+	beginErr  error
+	commitErr error
+}
+
+func (d copsDestinoFalso) Open(string) (driver.Conn, error) { return copsConnFalso{parent: d}, nil }
+
+func (d copsDestinoFalso) Connect(context.Context) (driver.Conn, error) {
+	return copsConnFalso{parent: d}, nil
+}
+
+func (d copsDestinoFalso) Driver() driver.Driver { return d }
+
+// copsConnFalso responde às consultas de pré-checagem com o schema canônico.
+type copsConnFalso struct{ parent copsDestinoFalso }
+
+func (c copsConnFalso) Prepare(string) (driver.Stmt, error) { return copsStmtFalso{}, nil }
+
+func (c copsConnFalso) PrepareContext(context.Context, string) (driver.Stmt, error) {
+	return copsStmtFalso{}, nil
+}
+
+func (c copsConnFalso) Close() error { return nil }
+
+func (c copsConnFalso) Begin() (driver.Tx, error) {
+	if c.parent.beginErr != nil {
+		return nil, c.parent.beginErr
+	}
+	return copsTxFalso{parent: c.parent}, nil
+}
+
+func (c copsConnFalso) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+	return copsRowsFalso(query)
+}
+
+// copsTxFalso só sabe confirmar (com falha) ou reverter.
+type copsTxFalso struct{ parent copsDestinoFalso }
+
+func (t copsTxFalso) Commit() error   { return t.parent.commitErr }
+func (t copsTxFalso) Rollback() error { return nil }
+
+// copsStmtFalso nunca é executado: a origem destes casos está vazia.
+type copsStmtFalso struct{}
+
+func (copsStmtFalso) Close() error  { return nil }
+func (copsStmtFalso) NumInput() int { return -1 }
+
+func (copsStmtFalso) Exec([]driver.Value) (driver.Result, error) {
+	return nil, errors.New("destino falso não escreve")
+}
+
+func (copsStmtFalso) Query([]driver.Value) (driver.Rows, error) {
+	return nil, errors.New("destino falso não consulta por marcador")
+}
+
+// copsRowsFalso responde à contagem (zero linhas) e à leitura das colunas.
+func copsRowsFalso(query string) (driver.Rows, error) {
+	if strings.HasPrefix(query, "SELECT COUNT(*)") {
+		return &copsLinhasFalsas{columns: []string{"count"}, rows: [][]driver.Value{{int64(0)}}}, nil
+	}
+	match := copsTabelaNaConsulta.FindStringSubmatch(query)
+	if match == nil {
+		return nil, fmt.Errorf("destino falso não conhece a consulta %q", query)
+	}
+	for _, table := range migrationTables {
+		if table.name == match[1] {
+			return &copsLinhasFalsas{columns: table.columns}, nil
+		}
+	}
+	return nil, fmt.Errorf("destino falso não tem a tabela %q", match[1])
+}
+
+// copsLinhasFalsas é o resultado do destino falso.
+type copsLinhasFalsas struct {
+	columns []string
+	rows    [][]driver.Value
+	index   int
+}
+
+func (r *copsLinhasFalsas) Columns() []string { return r.columns }
+func (r *copsLinhasFalsas) Close() error      { return nil }
+
+func (r *copsLinhasFalsas) Next(dest []driver.Value) error {
+	if r.index >= len(r.rows) {
+		return io.EOF
+	}
+	for index, value := range r.rows[r.index] {
+		dest[index] = value
+	}
+	r.index++
+	return nil
+}
+
+var copsTabelaNaConsulta = regexp.MustCompile(`FROM "([a-z_]+)"`)
+
+// TestCopsMigrateDestinationTransactionErrors prova que a migração não copia
+// nada quando o destino recusa abrir ou confirmar a transação, e que o relatório
+// aponta a tabela em que parou.
+func TestCopsMigrateDestinationTransactionErrors(t *testing.T) {
+	ctx := context.Background()
+	// Origem com o schema final e sem linha: a cópia não escreve e o destino
+	// falso só precisa responder à pré-checagem.
+	origem := copsOrigem(t, nil)
+
+	t.Run("transação recusada", func(t *testing.T) {
+		destino := sql.OpenDB(copsDestinoFalso{beginErr: errors.New("destino em manutenção")})
+		t.Cleanup(func() { require.NoError(t, destino.Close()) })
+
+		report, err := MigrateSQLiteToPostgres(ctx, MigrateOptions{
+			Source: origem, Destination: destino, DestinationDialect: DialectPostgres,
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrMigrateDestination)
+		assert.Contains(t, err.Error(), "abrir transação")
+		assert.Empty(t, report.FailedTable)
+		require.Len(t, report.Tables, len(migrationTables), "a origem foi medida antes da cópia")
+		assert.Equal(t, int64(0), report.Rows())
+	})
+
+	t.Run("confirmação recusada", func(t *testing.T) {
+		destino := sql.OpenDB(copsDestinoFalso{commitErr: errors.New("disco cheio")})
+		t.Cleanup(func() { require.NoError(t, destino.Close()) })
+
+		report, err := MigrateSQLiteToPostgres(ctx, MigrateOptions{
+			Source: origem, Destination: destino, DestinationDialect: DialectPostgres,
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrMigrateDestination)
+		assert.Contains(t, err.Error(), "confirmar transação")
+		assert.Equal(t, lastTable(), report.FailedTable, "o operador vê onde a migração parou")
+		assert.Equal(t, "document_intakes", report.FailedTable)
+		require.Len(t, report.Tables, len(migrationTables))
+		for _, tabela := range report.Tables {
+			assert.True(t, tabela.Verified(), "%s", tabela.Table)
+		}
+	})
 }

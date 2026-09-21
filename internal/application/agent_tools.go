@@ -285,8 +285,10 @@ func receiptStatusOf(ctx context.Context, deps Deps, tenant *domain.Tenant, rece
 // locador lê depois: o problema nas palavras do locatário, com o titular e o
 // telefone (mascarado) no evento.
 func openMaintenanceRequest(ctx context.Context, deps Deps, actx AuditContext, tenant *domain.Tenant, description string) (agentToolResult, error) {
+	// O pedido chegou como mensagem pelo WhatsApp: a trilha registra o evento na
+	// ação de mensagem recebida, com o tipo e a descrição do problema.
 	if err := Record(ctx, deps, actx, AuditEntry{
-		Action:      domain.ActionMaintenanceOpened,
+		Action:      domain.ActionWhatsAppMessageReceived,
 		Entity:      domain.EntityWhatsApp,
 		EntityID:    tenant.ID,
 		EntityLabel: tenant.Name,

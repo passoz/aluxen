@@ -124,14 +124,14 @@ func (c *Client) CreateAppService(ctx context.Context, project, service, image s
 		"serviceName": service,
 		"source":      map[string]any{"type": "image", "image": image},
 	}
-	return c.post(ctx, "createAppService", payload, nil)
+	return c.post(ctx, "createAppService", payload)
 }
 
 // UpdateAppSourceImage troca a imagem do serviço. É o que faz do provisionamento
 // também o caminho da atualização canário: um cliente por vez, mesma sequência.
 func (c *Client) UpdateAppSourceImage(ctx context.Context, project, service, image string) error {
 	payload := map[string]any{"projectName": project, "serviceName": service, "image": image}
-	return c.post(ctx, "updateAppSourceImage", payload, nil)
+	return c.post(ctx, "updateAppSourceImage", payload)
 }
 
 // CreateServiceMount monta o volume persistente do serviço (o `/data` da
@@ -145,7 +145,7 @@ func (c *Client) CreateServiceMount(ctx context.Context, project, service string
 		"serviceName": service,
 		"values":      mount,
 	}
-	return c.post(ctx, "createMount", payload, nil)
+	return c.post(ctx, "createMount", payload)
 }
 
 // UpdateAppEnvironment grava as variáveis de ambiente da instância. O formato é
@@ -156,7 +156,7 @@ func (c *Client) UpdateAppEnvironment(ctx context.Context, project, service, env
 		"serviceName": service,
 		"env":         env,
 	}
-	return c.post(ctx, "updateAppEnv", payload, nil)
+	return c.post(ctx, "updateAppEnv", payload)
 }
 
 // CreateDomain publica o subdomínio com HTTPS e certificado do Let's Encrypt. O
@@ -179,13 +179,13 @@ func (c *Client) CreateDomain(ctx context.Context, project, service, host string
 			"path":        "/",
 		},
 	}
-	return c.post(ctx, "createDomain", payload, nil)
+	return c.post(ctx, "createDomain", payload)
 }
 
 // DeployAppService sobe (ou atualiza) o serviço com a imagem configurada.
 func (c *Client) DeployAppService(ctx context.Context, project, service string) error {
 	payload := map[string]any{"projectName": project, "serviceName": service}
-	return c.post(ctx, "deployAppService", payload, nil)
+	return c.post(ctx, "deployAppService", payload)
 }
 
 // DeleteAppService remove o serviço e os volumes dele: apagar uma instância não
@@ -206,7 +206,7 @@ func (c *Client) DeleteAppService(ctx context.Context, project, service string) 
 		}
 	}
 	payload := map[string]any{"projectName": project, "serviceName": service}
-	return c.post(ctx, "destroyAppService", payload, nil)
+	return c.post(ctx, "destroyAppService", payload)
 }
 
 // ListAppServices devolve os serviços de aplicação de todos os projetos do
@@ -253,7 +253,7 @@ func (c *Client) ListMounts(ctx context.Context, project, service string) ([]Mou
 // DeleteMount remove o ponto de montagem de índice `index`.
 func (c *Client) DeleteMount(ctx context.Context, project, service string, index int) error {
 	payload := map[string]any{"projectName": project, "serviceName": service, "index": index}
-	return c.post(ctx, "deleteMount", payload, nil)
+	return c.post(ctx, "deleteMount", payload)
 }
 
 // ListDomains devolve os domínios publicados de um serviço.
@@ -284,22 +284,23 @@ func (c *Client) GetServiceNotes(ctx context.Context, project, service string) (
 // SetServiceNotes grava a anotação do serviço.
 func (c *Client) SetServiceNotes(ctx context.Context, project, service, notes string) error {
 	payload := map[string]any{"projectName": project, "serviceName": service, "notes": notes}
-	return c.post(ctx, "setServiceNotes", payload, nil)
+	return c.post(ctx, "setServiceNotes", payload)
 }
 
 // ── Transporte ─────────────────────────────────────────────────────
 
-// post envia um corpo JSON e decodifica a resposta em `out` (quando houver).
-func (c *Client) post(ctx context.Context, operation string, payload any, out any) error {
+// post envia um corpo JSON. Nenhuma rota de escrita devolve corpo útil para o
+// cliente, então a resposta é descartada (era o que os chamadores já pediam com
+// `out` nulo).
+func (c *Client) post(ctx context.Context, operation string, payload any) error {
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("easypanel: %s: montar requisição: %w", operation, err)
 	}
-	body, err := c.do(ctx, operation, http.MethodPost, "/api/"+operation, encoded)
-	if err != nil {
+	if _, err := c.do(ctx, operation, http.MethodPost, "/api/"+operation, encoded); err != nil {
 		return err
 	}
-	return decodeInto(operation, body, out)
+	return nil
 }
 
 // get lê um recurso e devolve o corpo cru.
@@ -350,17 +351,6 @@ func (c *Client) do(ctx context.Context, operation, method, path string, body []
 		}
 	}
 	return payload, nil
-}
-
-// decodeInto decodifica a resposta quando o chamador espera corpo.
-func decodeInto(operation string, body []byte, out any) error {
-	if out == nil || len(bytes.TrimSpace(body)) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("easypanel: %s: resposta ilegível: %w", operation, err)
-	}
-	return nil
 }
 
 // decodeList aceita tanto uma lista crua quanto a lista embrulhada na chave que

@@ -3,6 +3,7 @@ package platform
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -105,5 +106,39 @@ func TestCovFixedClockZeroValueAndAdvance(t *testing.T) {
 	}
 	if delta := advanced.Now().Sub(clock.Now()); delta != 48*time.Hour {
 		t.Errorf("intervalo entre os relógios = %v, esperado 48h", delta)
+	}
+}
+
+// covEntropyFailure é uma fonte de entropia que sempre falha.
+type covEntropyFailure struct{}
+
+func (covEntropyFailure) Read([]byte) (int, error) { return 0, errors.New("sem entropia") }
+
+// covPanic executa a função e devolve o valor recuperado de um pânico.
+func covPanic(run func()) (recovered any) {
+	defer func() { recovered = recover() }()
+	run()
+	return nil
+}
+
+// Sem entropia do sistema o gerador interrompe o processo em vez de devolver um
+// id repetido: um id repetido colidiria com o registro de outra locação.
+func TestCovUUIDv7FailsClosedWithoutEntropy(t *testing.T) {
+	uuid.SetRand(covEntropyFailure{})
+	t.Cleanup(func() { uuid.SetRand(nil) })
+
+	recovered := covPanic(func() { UUIDv7{}.New() })
+	if recovered == nil {
+		t.Fatal("New() deveria interromper o processo quando não há entropia")
+	}
+	if !strings.Contains(fmt.Sprint(recovered), "gerar UUIDv7") {
+		t.Errorf("pânico sem contexto: %v", recovered)
+	}
+
+	// Restaurada a entropia, o gerador volta a produzir ids válidos: a falha não
+	// deixa o processo num estado pior.
+	uuid.SetRand(nil)
+	if _, err := uuid.Parse(UUIDv7{}.New()); err != nil {
+		t.Errorf("depois de restaurar a entropia, New() devolveu id inválido: %v", err)
 	}
 }

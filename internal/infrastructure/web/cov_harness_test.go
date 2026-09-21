@@ -109,6 +109,18 @@ func (h *covLogHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
 
 func (h *covLogHandler) WithGroup(string) slog.Handler { return h }
 
+// find devolve o primeiro registro cuja mensagem contém o trecho informado.
+func (h *covLogHandler) find(substring string) (slog.Record, bool) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	for _, record := range h.records {
+		if strings.Contains(record.Message, substring) {
+			return record, true
+		}
+	}
+	return slog.Record{}, false
+}
+
 func (h *covLogHandler) last() (slog.Record, bool) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -124,6 +136,10 @@ type covUsers struct {
 	items  map[string]*domain.User
 	err    error
 	byName error
+	// failAfterIDReads injeta falha nas leituras de ByID depois das N primeiras,
+	// para exercitar o caminho em que a sessão vale e a leitura seguinte falha.
+	failAfterIDReads int
+	idReads          int
 }
 
 func newCovUsers(users ...*domain.User) *covUsers {
@@ -135,8 +151,12 @@ func newCovUsers(users ...*domain.User) *covUsers {
 }
 
 func (r *covUsers) ByID(_ context.Context, id string) (*domain.User, error) {
+	r.idReads++
 	if r.err != nil {
 		return nil, r.err
+	}
+	if r.failAfterIDReads > 0 && r.idReads > r.failAfterIDReads {
+		return nil, errCovBoom
 	}
 	user, ok := r.items[id]
 	if !ok {
@@ -184,6 +204,8 @@ func (r *covUsers) UpdatePassword(_ context.Context, id, passwordHash, changedAt
 type covTenants struct {
 	items []domain.Tenant
 	err   error
+	// updatePasswordErr injeta falha só na gravação da senha do locatário.
+	updatePasswordErr error
 }
 
 func (r *covTenants) List(context.Context) ([]domain.Tenant, error) {
@@ -230,6 +252,9 @@ func (r *covTenants) Update(_ context.Context, tenant *domain.Tenant) error {
 }
 
 func (r *covTenants) UpdatePassword(_ context.Context, id, hash, changedAt, updatedAt string) error {
+	if r.updatePasswordErr != nil {
+		return r.updatePasswordErr
+	}
 	for index := range r.items {
 		if r.items[index].ID == id {
 			r.items[index].PasswordHash = &hash
@@ -1072,6 +1097,63 @@ func (p *covPanel) csrfPost(target string, form url.Values) *httptest.ResponseRe
 		request.AddCookie(cookie)
 	}
 	return p.do(request)
+}
+
+// asClient executa a requisição com a sessão do locatário.
+func (p *covPanel) asClient(method, target, tenantID string) *httptest.ResponseRecorder {
+	request := httptest.NewRequest(method, target, nil)
+	if tenantID != "" {
+		request.AddCookie(p.sessionCookie(tenantID, false))
+	}
+	return p.do(request)
+}
+
+// csrfPostAs executa um POST com token de CSRF válido e a sessão informada
+// (administrador ou locatário).
+func (p *covPanel) csrfPostAs(target string, form url.Values, userID string, admin bool) *httptest.ResponseRecorder {
+	page := httptest.NewRecorder()
+	p.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
+	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	if token == "" {
+		p.t.Fatal("cookie de CSRF não emitido")
+	}
+	if form == nil {
+		form = url.Values{}
+	}
+	form.Set(csrfFieldName, token)
+
+	request := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range page.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	if userID != "" {
+		request.AddCookie(p.sessionCookie(userID, admin))
+	}
+	return p.do(request)
+}
+
+// covMalformedPost envia um POST com corpo urlencoded ilegível e o token de
+// CSRF na query (é assim que o painel manda o token nas rotas JSON).
+func covMalformedPost(panel *covPanel, target, sessionID string, asAdmin bool) *httptest.ResponseRecorder {
+	panel.t.Helper()
+
+	page := httptest.NewRecorder()
+	panel.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
+	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	if token == "" {
+		panel.t.Fatal("cookie de CSRF não emitido")
+	}
+
+	request := httptest.NewRequest(http.MethodPost, target+"?"+url.Values{csrfFieldName: {token}}.Encode(), strings.NewReader("valor=%zz"))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, cookie := range page.Result().Cookies() {
+		request.AddCookie(cookie)
+	}
+	if sessionID != "" {
+		request.AddCookie(panel.sessionCookie(sessionID, asAdmin))
+	}
+	return panel.do(request)
 }
 
 // covDecodeJSON decodifica o corpo JSON da resposta.

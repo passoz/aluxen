@@ -29,11 +29,22 @@ func (BcryptHasher) Hash(password string) (string, error) {
 // quando o hash é inválido — devolve um erro que embrulha
 // `domain.ErrUnauthorized`, nunca `nil, nil`. Hashes `$2a$` e `$2b$` do app
 // atual são aceitos.
+//
+// Senha acima de 72 bytes é recusada aqui pelo mesmo motivo que `Hash` recusa:
+// o bcrypt trunca a entrada no limite, então aceitar no login significaria
+// autenticar por prefixo — o que faria `Hash` e `Compare` discordarem sobre a
+// mesma senha.
 func (BcryptHasher) Compare(hash, password string) error {
+	if len(password) > bcryptMaxPasswordBytes {
+		return fmt.Errorf("platform: senha acima de %d bytes não é aceita pelo bcrypt: %w", bcryptMaxPasswordBytes, domain.ErrUnauthorized)
+	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {
 		return fmt.Errorf("platform: senha não confere: %w", domain.ErrUnauthorized)
 	}
 	return nil
 }
+
+// bcryptMaxPasswordBytes é o limite do próprio algoritmo.
+const bcryptMaxPasswordBytes = 72
 
 var _ domain.PasswordHasher = BcryptHasher{}

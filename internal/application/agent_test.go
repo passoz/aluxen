@@ -279,6 +279,30 @@ func (f *agFixture) auditOf(t *testing.T, action string) domain.AuditLog {
 	return domain.AuditLog{}
 }
 
+// auditKind devolve o primeiro evento da ação informada com o `kind` do
+// metadado — é assim que o teste distingue resposta, encaminhamento e
+// solicitação de manutenção dentro do vocabulário fechado da trilha.
+func (f *agFixture) auditKind(t *testing.T, action, kind string) domain.AuditLog {
+	t.Helper()
+	f.audit.mu.Lock()
+	entries := append([]domain.AuditLog(nil), f.audit.entries...)
+	f.audit.mu.Unlock()
+	for _, entry := range entries {
+		if entry.Action != action || entry.Metadata == nil {
+			continue
+		}
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(*entry.Metadata), &fields); err != nil {
+			continue
+		}
+		if fields["kind"] == kind {
+			return entry
+		}
+	}
+	t.Fatalf("evento %s com tipo %q não registrado; ações gravadas: %v", action, kind, auditActionsOf(entries))
+	return domain.AuditLog{}
+}
+
 func (f *agFixture) auditActions() []string {
 	f.audit.mu.Lock()
 	defer f.audit.mu.Unlock()
@@ -407,7 +431,7 @@ func TestAgentAnswersWithReceiptDataFromTool(t *testing.T) {
 
 	// A resposta fica registrada na trilha, com o tipo do evento e o telefone
 	// mascarado.
-	entry := fixture.auditOf(t, domain.ActionAgentAnswered)
+	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindAnswer)
 	assert.Equal(t, "Maria Souza", domain.Str(entry.EntityLabel))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindAnswer, metadata["kind"])
@@ -499,7 +523,7 @@ func TestAgentEscalatesQuestionWithoutApplicableTool(t *testing.T) {
 	assert.NotContains(t, reply.Reply, "2.000") // resposta sem lastro não é publicada
 	assert.Contains(t, reply.Reply, "locador")
 
-	entry := fixture.auditOf(t, domain.ActionAgentEscalated)
+	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindEscalation)
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindEscalation, metadata["kind"])
 	assert.Equal(t, agentReasonUngrounded, metadata["reason"])
@@ -517,7 +541,7 @@ func TestAgentEscalatesLegalQuestionWithoutCallingProvider(t *testing.T) {
 	assert.Equal(t, agentReasonLegal, reply.Reason)
 	assert.Contains(t, reply.Reply, "locador")
 	assert.Empty(t, fixture.chat.calls(), "pergunta jurídica não vai ao provedor")
-	assert.Contains(t, fixture.auditActions(), domain.ActionAgentEscalated)
+	fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindEscalation)
 }
 
 func TestAgentEscalatesMessageWithoutTenant(t *testing.T) {
@@ -600,7 +624,7 @@ func TestAgentRegistersMaintenanceRequest(t *testing.T) {
 	assert.False(t, reply.Escalated)
 	assert.Equal(t, []string{agentToolMaintenance}, reply.Tools)
 
-	entry := fixture.auditOf(t, domain.ActionMaintenanceOpened)
+	entry := fixture.auditKind(t, domain.ActionWhatsAppMessageReceived, agentKindMaintenance)
 	assert.Equal(t, "Maria Souza", domain.Str(entry.EntityLabel))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindMaintenance, metadata["kind"])
@@ -738,7 +762,7 @@ func TestEscalateConversationRegistersManualEscalation(t *testing.T) {
 
 	require.NoError(t, EscalateConversation(context.Background(), fixture.deps, actor, agTenantID, ""))
 
-	entry := fixture.auditOf(t, domain.ActionAgentEscalated)
+	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindManualEscalation)
 	assert.Equal(t, "passoz", domain.Str(entry.ActorName))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindManualEscalation, metadata["kind"])

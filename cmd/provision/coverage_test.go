@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -539,6 +541,25 @@ func TestCovExpireNeverRemovesInstancesWithoutALabel(t *testing.T) {
 }
 
 // ── Apoio ──────────────────────────────────────────────────────────
+
+// main é a borda do processo: um subcomando inválido sai com código 1 e a
+// mensagem de erro em stderr, que é o que o operador enxerga.
+func TestCovMainExitsWithFailureOnUnknownSubcommand(t *testing.T) {
+	if os.Getenv("COV_PROVISION_MAIN") == "1" {
+		os.Args = []string{"provision", "voar"}
+		main()
+		return
+	}
+
+	child := exec.Command(os.Args[0], "-test.run=TestCovMainExitsWithFailureOnUnknownSubcommand")
+	child.Env = append(os.Environ(), "COV_PROVISION_MAIN=1")
+	output, err := child.CombinedOutput()
+
+	var exitErr *exec.ExitError
+	require.ErrorAs(t, err, &exitErr, "saída do processo filho: %s", output)
+	assert.Equal(t, 1, exitErr.ExitCode())
+	assert.Contains(t, string(output), "erro: subcomando desconhecido")
+}
 
 // O segredo gerado para uma instância sem `--session-secret` são 32 bytes em
 // hexadecimal, diferentes a cada chamada — nenhuma instância nasce com o mesmo

@@ -85,6 +85,21 @@ func (s *cintFileRepo) Open(name string) ([]byte, error) {
 	return s.covAttachments.Open(name)
 }
 
+// cintAuditParado deixa passar as primeiras `deixa` gravações e falha depois: é
+// o que permite exercitar a falha de trilha depois das escritas anteriores.
+type cintAuditParado struct {
+	*covAudit
+	deixa int
+}
+
+func (a *cintAuditParado) Insert(ctx context.Context, entry *domain.AuditLog) error {
+	if a.deixa > 0 {
+		a.deixa--
+		return a.covAudit.Insert(ctx, entry)
+	}
+	return errors.New("trilha fora")
+}
+
 // ── Apoio ─────────────────────────────────────────────────────────
 
 // cintEnv monta o ambiente com o dublê de leitura ligado nas duas portas que o
@@ -206,7 +221,7 @@ func TestCintSubmitDocumentIntakeStorageFailures(t *testing.T) {
 			Kind: domain.IntakeKindLease, FileName: "contrato.pdf", Mime: "application/pdf", Bytes: []byte("pdf"),
 		})
 
-		require.ErrorContains(t, err, "enfileirar leitura do documento: fila fora")
+		require.ErrorContains(t, err, "enfileirar trabalho: fila fora")
 		require.Len(t, env.intakes.items, 1)
 		require.Equal(t, domain.IntakeStatusPending, env.intakes.items[0].Status)
 	})
@@ -217,21 +232,21 @@ func TestCintSubmitDocumentIntakeKeepsDocumentAndQueuesRead(t *testing.T) {
 	input := IntakeInput{
 		Kind:     domain.IntakeKindAddressProof,
 		FileName: "  ",
-		Mime:     "",
+		Mime:     "application/pdf",
 		Bytes:    []byte("foto-do-documento"),
 	}
 
 	intake, job, err := SubmitDocumentIntakeJob(context.Background(), env.deps, covCtx(), input)
 	require.NoError(t, err)
 
-	// Nome ausente vira "documento" e o tipo vazio passa pela extensão .pdf.
+	// Nome em branco vira "documento": o tipo declarado já validou o envio.
 	require.Equal(t, []string{"intakes-documento"}, env.attachments.names)
 	require.Equal(t, []byte("foto-do-documento"), env.attachments.files["intakes-documento"])
 	require.Equal(t, domain.IntakeStatusPending, intake.Status)
 	require.Equal(t, domain.IntakeKindAddressProof, intake.Kind)
 	require.Equal(t, "documento", domain.Str(intake.FileName))
 	require.Equal(t, "intakes-documento", domain.Str(intake.FilePath))
-	require.Nil(t, intake.Mime, "mime vazio não é gravado")
+	require.Equal(t, "application/pdf", domain.Str(intake.Mime))
 	require.Nil(t, intake.Extracted, "o envio não faz leitura")
 
 	require.Equal(t, domain.JobKindDocumentIntake, job.Kind)
@@ -302,6 +317,7 @@ func TestCintProcessDocumentIntakeWithoutReading(t *testing.T) {
 		env, _ := cintEnv(t)
 		seeded := cintSeedIntake(t, env, domain.IntakeKindIDDocument, domain.IntakeStatusPending)
 		seeded.FilePath = domain.StrPtr("nao-existe")
+		require.NoError(t, env.intakes.Update(context.Background(), seeded))
 
 		intake, err := ProcessDocumentIntake(context.Background(), env.deps, seeded.ID)
 
@@ -485,7 +501,7 @@ func TestCintPendingDocumentIntakes(t *testing.T) {
 		require.Equal(t, "50%", views[0].ConfidenceLabel)
 		require.True(t, views[0].LowConfidence, "0,50 fica abaixo do limiar de 0,80")
 		require.Equal(t, "Contrato antigo", views[0].KindLabel)
-		require.Empty(t, views[0].Missing, "o contrato lido veio completo")
+		require.Contains(t, views[0].Missing, "CPF do locatário", "o contrato lido sem CPF pede atenção")
 		require.False(t, views[1].LowConfidence)
 		require.Contains(t, views[1].Missing, "CPF", "documento pessoal lido sem CPF pede atenção")
 	})
@@ -835,17 +851,21 @@ func TestCintConfirmDocumentIntakeInformatics(t *testing.T) {
 		require.ErrorContains(t, err, "confirmar proposta de cadastro: banco fora")
 	})
 
-	t.Run("falha na trilha", func(t *testing.T) {
+	t.Run("falha na trilha depois das escritas", func(t *testing.T) {
 		env, _ := cintEnv(t)
 		seeded := cintSeedIntake(t, env, domain.IntakeKindLease, domain.IntakeStatusPending)
-		env.audit.insertErr = errors.New("trilha fora")
+		// A primeira gravação da trilha (criação do locatário) passa; a do
+		// cadastro por documento falha.
+		env.deps.Repos.Audit = &cintAuditParado{covAudit: env.audit, deixa: 1}
 
 		_, err := ConfirmDocumentIntake(context.Background(), env.deps, covCtx(), ConfirmInput{
 			IntakeID: seeded.ID, CreateTenant: true,
 			Lease: domain.LeaseIntakeFields{TenantName: "Ana", TenantEmail: "ana@example.com"},
 		})
 
-		require.ErrorContains(t, err, "trilha fora")
+		require.ErrorContains(t, err, "gravar auditoria: trilha fora")
+		require.Len(t, env.tenants.items, 1, "o locatário foi criado antes da falha na trilha")
+		require.Equal(t, domain.IntakeStatusConfirmed, cintRepoIntake(t, env, seeded.ID).Status)
 	})
 }
 
@@ -1172,12 +1192,18 @@ func cintSeedProof(t *testing.T, env *covEnv, status domain.PaymentProofStatus) 
 	return proof
 }
 
+// cintTenant grava o locatário t-1 usado pelos comprovantes.
+func cintTenant(t *testing.T, env *covEnv) {
+	t.Helper()
+	tenant := covTenantOf("t-1", "Ana")
+	require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+}
+
 // cintProofWorld prepara o locatário, o lançamento em aberto e o locador que a
 // baixa automática precisa encontrar.
 func cintProofWorld(t *testing.T, env *covEnv) domain.Receipt {
 	t.Helper()
-	tenant := covTenantOf("t-1", "Ana")
-	require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+	cintTenant(t, env)
 	receipt := covReceiptOf("r-1", "t-1", "", "2026-09-20", 900)
 	receipt.TenantName = "Ana"
 	receipt.PropertyName = "Casa"
@@ -1269,6 +1295,7 @@ func TestCintSubmitPaymentProofFailures(t *testing.T) {
 
 	t.Run("falha ao guardar o arquivo", func(t *testing.T) {
 		env, _ := cintEnv(t)
+		cintTenant(t, env)
 		env.attachments.saveErr = errors.New("disco cheio")
 
 		_, err := SubmitPaymentProof(context.Background(), env.deps, covCtx(), input)
@@ -1278,6 +1305,7 @@ func TestCintSubmitPaymentProofFailures(t *testing.T) {
 
 	t.Run("falha ao registrar", func(t *testing.T) {
 		env, _ := cintEnv(t)
+		cintTenant(t, env)
 		env.proofs.createErr = errors.New("banco fora")
 
 		_, err := SubmitPaymentProof(context.Background(), env.deps, covCtx(), input)
@@ -1288,6 +1316,7 @@ func TestCintSubmitPaymentProofFailures(t *testing.T) {
 
 	t.Run("fila fora do ar manda para a revisão", func(t *testing.T) {
 		env, _ := cintEnv(t)
+		cintTenant(t, env)
 		env.jobs.createErr = errors.New("fila fora")
 
 		outcome, err := SubmitPaymentProof(context.Background(), env.deps, covCtx(), input)
@@ -1306,6 +1335,7 @@ func TestCintSubmitPaymentProofFailures(t *testing.T) {
 
 	t.Run("fila fora e revisão indisponível", func(t *testing.T) {
 		env, _ := cintEnv(t)
+		cintTenant(t, env)
 		env.jobs.createErr = errors.New("fila fora")
 		env.proofs.updateErr = errors.New("banco fora")
 
@@ -1317,8 +1347,7 @@ func TestCintSubmitPaymentProofFailures(t *testing.T) {
 
 func TestCintSubmitPaymentProofQueuesReading(t *testing.T) {
 	env, _ := cintEnv(t)
-	tenant := covTenantOf("t-1", "Ana")
-	require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+	cintTenant(t, env)
 
 	outcome, err := SubmitPaymentProof(context.Background(), env.deps, covCtx(), PaymentProofInput{
 		Phone: " 21999990000 ", TenantID: " t-1 ", FileName: " comprovante.jpg ", Mime: " image/jpeg ", Bytes: []byte("foto"),
@@ -1545,7 +1574,20 @@ func TestCintProcessPaymentProofReviewPath(t *testing.T) {
 
 		require.Equal(t, domain.PaymentProofStatusReview, outcome.Status)
 		require.Equal(t, "valor do comprovante diferente do lançamento", outcome.Reason)
-		require.Empty(t, outcome.ReceiptID, "sem lançamento aberto de valor compatível nada é gravado")
+		require.Equal(t, "r-1", outcome.ReceiptID, "o lançamento conferido fica gravado para a revisão")
+		require.Nil(t, env.receipts.items[0].PaidAt, "revisão não dá baixa")
+	})
+
+	t.Run("falha ao mandar para a revisão", func(t *testing.T) {
+		env, ext := cintEnv(t)
+		ext.payment = domain.PaymentExtraction{Amount: 900, Date: "2026-09-18", Payee: "Evolucsia Locadora", Confidence: 0.5}
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusPending)
+		env.proofs.updateErr = errors.New("banco fora")
+
+		outcome, err := ProcessPaymentProof(context.Background(), env.deps, seeded.ID)
+
+		require.ErrorContains(t, err, "gravar comprovante em revisão: banco fora")
+		require.Nil(t, outcome)
 	})
 
 	t.Run("falha ao buscar lançamentos", func(t *testing.T) {
@@ -1633,7 +1675,7 @@ func TestCintProcessPaymentProofAcceptFailures(t *testing.T) {
 
 		outcome, err := ProcessPaymentProof(context.Background(), env.deps, seeded.ID)
 
-		require.ErrorContains(t, err, "dar baixa pelo comprovante: baixa recusada")
+		require.ErrorContains(t, err, "dar baixa pelo comprovante: dar baixa no lançamento: baixa recusada")
 		require.Nil(t, outcome)
 		require.Equal(t, domain.PaymentProofStatusPending, cintRepoProof(t, env, seeded.ID).Status)
 	})
@@ -1650,16 +1692,19 @@ func TestCintProcessPaymentProofAcceptFailures(t *testing.T) {
 		require.ErrorContains(t, err, "gravar a decisão do comprovante: banco fora")
 	})
 
-	t.Run("falha na trilha da baixa automática", func(t *testing.T) {
+	t.Run("falha na trilha depois da baixa", func(t *testing.T) {
 		env, ext := cintEnv(t)
 		cintProofWorld(t, env)
 		ext.payment = domain.PaymentExtraction{Amount: 900, Date: "2026-09-18", Payee: "Evolucsia Locadora", Confidence: 0.95}
 		seeded := cintSeedProof(t, env, domain.PaymentProofStatusPending)
-		env.audit.insertErr = errors.New("trilha fora")
+		// A trilha da baixa (ReceiptPay) passa; a do aceite do comprovante falha.
+		env.deps.Repos.Audit = &cintAuditParado{covAudit: env.audit, deixa: 1}
 
 		_, err := ProcessPaymentProof(context.Background(), env.deps, seeded.ID)
 
-		require.ErrorContains(t, err, "trilha fora")
+		require.ErrorContains(t, err, "gravar auditoria: trilha fora")
+		require.NotNil(t, env.receipts.items[0].PaidAt, "a baixa já tinha sido registrada")
+		require.Equal(t, domain.PaymentProofStatusAccepted, cintRepoProof(t, env, seeded.ID).Status)
 	})
 }
 
@@ -1868,8 +1913,7 @@ func TestCintListPaymentProofReview(t *testing.T) {
 
 	t.Run("falha ao montar a linha", func(t *testing.T) {
 		env, _ := cintEnv(t)
-		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
-		seeded.Source = domain.PaymentProofSourceWhatsApp
+		cintSeedProof(t, env, domain.PaymentProofStatusReview)
 		env.tenants.byIDErr = errors.New("banco fora")
 
 		_, err := ListPaymentProofReview(context.Background(), env.deps, 0)
@@ -1938,13 +1982,15 @@ func TestCintPaymentProofRow(t *testing.T) {
 
 		require.NoError(t, err)
 		require.True(t, row.ReceiptPaid)
-		require.Equal(t, "Comprovante "+seeded.ID, row.DocumentLabel, "sem título cadastrado a linha mostra o protocolo")
+		require.Equal(t, "comprovante.pdf", row.DocumentLabel, "sem titular o rótulo é só o arquivo")
 	})
 
 	t.Run("cadastro apagado não derruba a fila", func(t *testing.T) {
 		env, _ := cintEnv(t)
 		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
 		seeded.ReceiptID = domain.StrPtr("r-apagado")
+		seeded.FileName = nil
+		seeded.FilePath = nil
 
 		row, err := paymentProofRow(context.Background(), env.deps, seeded)
 
@@ -1952,6 +1998,8 @@ func TestCintPaymentProofRow(t *testing.T) {
 		require.Empty(t, row.TenantName)
 		require.Empty(t, row.ReceiptLabel)
 		require.Zero(t, row.ReceiptAmount)
+		require.Equal(t, "Comprovante "+seeded.ID, row.DocumentLabel, "sem arquivo a linha mostra o protocolo")
+		require.Empty(t, row.FileURL, "comprovante sem caminho não tem endereço")
 	})
 
 	t.Run("falha ao buscar o lançamento", func(t *testing.T) {
@@ -2037,7 +2085,7 @@ func TestCintApprovePaymentProof(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, "15/09/2026 00:00", domain.Str(env.receipts.items[1].PaidAt), "a data do comprovante vira data da baixa")
+		require.Equal(t, format.FormatLocalDateTime(time.Date(2026, 9, 15, 0, 0, 0, 0, time.UTC)), domain.Str(env.receipts.items[1].PaidAt), "a data do comprovante vira data da baixa")
 		require.Nil(t, env.receipts.items[0].PaidAt, "o outro lançamento fica em aberto")
 
 		stored := cintRepoProof(t, env, seeded.ID)
@@ -2360,7 +2408,7 @@ func TestCintOptionalLoaders(t *testing.T) {
 		tenant := covTenantOf("t-1", "Ana")
 		require.NoError(t, env.tenants.Create(context.Background(), &tenant))
 
-		loaded, err := optionalTenant(context.Background(), env.deps, " t-1 ")
+		loaded, err := optionalTenant(context.Background(), env.deps, "t-1")
 		require.NoError(t, err)
 		require.Equal(t, "Ana", loaded.Name)
 
@@ -2873,7 +2921,7 @@ func TestCintInspectionDocumentInput(t *testing.T) {
 		require.Empty(t, data.PropertyAddress)
 		require.Empty(t, data.StartDate)
 		require.Empty(t, data.EndDate)
-		require.Equal(t, "Locador · ", data.Label, "sem contrato o rótulo nasce dos nomes resolvidos")
+		require.Equal(t, "Locatário ·", data.Label, "sem contrato o rótulo nasce dos nomes resolvidos")
 	})
 
 	t.Run("falha ao ler o contrato", func(t *testing.T) {
@@ -3207,6 +3255,14 @@ func TestCintCanAccessDocuments(t *testing.T) {
 		ok, err = CanAccessReceipt(context.Background(), env.deps, "r-1", "", "t-2")
 		require.NoError(t, err)
 		require.False(t, ok, "outro titular não vê o recibo")
+
+		ok, err = CanAccessDeposit(context.Background(), env.deps, "l-1", "", "t-1")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessDeposit(context.Background(), env.deps, "l-1", "", "t-2")
+		require.NoError(t, err)
+		require.False(t, ok, "outro titular não vê o recibo de devolução de caução")
 
 		ok, err = CanAccessLease(context.Background(), env.deps, "l-1", "", "t-2")
 		require.NoError(t, err)

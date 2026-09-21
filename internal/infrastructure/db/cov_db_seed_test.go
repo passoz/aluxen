@@ -14,10 +14,10 @@ import (
 
 type covDBUserRepo struct {
 	domain.UserRepository
-	users      map[string]*domain.User
-	errByName  map[string]error
-	createErr  error
-	updateErr  error
+	users     map[string]*domain.User
+	errByName map[string]error
+	createErr error
+	updateErr error
 }
 
 func (r *covDBUserRepo) ByUsername(_ context.Context, username string) (*domain.User, error) {
@@ -244,13 +244,13 @@ func (r *covDBInspectionRepo) Create(_ context.Context, inspection *domain.Inspe
 // ── montagem ───────────────────────────────────────────────────────
 
 type covDBFakes struct {
-	users        *covDBUserRepo
-	settings     *covDBSettingRepo
-	tenants      *covDBTenantRepo
-	properties   *covDBPropertyRepo
-	leases       *covDBLeaseRepo
-	receipts     *covDBReceiptRepo
-	inspections  *covDBInspectionRepo
+	users       *covDBUserRepo
+	settings    *covDBSettingRepo
+	tenants     *covDBTenantRepo
+	properties  *covDBPropertyRepo
+	leases      *covDBLeaseRepo
+	receipts    *covDBReceiptRepo
+	inspections *covDBInspectionRepo
 }
 
 func covDBNewFakes() *covDBFakes {

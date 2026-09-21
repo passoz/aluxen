@@ -191,6 +191,11 @@ func TestCovNilAndOversizedMapsInPayloads(t *testing.T) {
 				"nivel2": map[string]string{"SESSION_SECRET": "segredo-456"},
 			},
 		},
+		"lista", map[string]any{
+			"nivel1": map[string]any{
+				"nivel2": []any{"segredo-789", "outro"},
+			},
+		},
 	)
 
 	entry := covEntry(t, out)
@@ -211,8 +216,14 @@ func TestCovNilAndOversizedMapsInPayloads(t *testing.T) {
 		t.Errorf("variaveis.nivel1.nivel2 = %#v, esperado %q", got, objectPlaceholder)
 	}
 
+	lista := covObject(t, entry, "lista")
+	nivel1 = covObject(t, lista, "nivel1")
+	if got := nivel1["nivel2"]; got != "[2 itens]" {
+		t.Errorf("lista.nivel1.nivel2 = %#v, esperado o resumo da lista", got)
+	}
+
 	raw := out.String()
-	for _, secret := range []string{"segredo-123", "segredo-456"} {
+	for _, secret := range []string{"segredo-123", "segredo-456", "segredo-789"} {
 		if strings.Contains(raw, secret) {
 			t.Errorf("segredo %q vazou: %s", secret, raw)
 		}
