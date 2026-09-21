@@ -1,0 +1,128 @@
+{
+  "contract_version": "4.0",
+  "task_id": "1.9",
+  "work_id": "0001",
+  "title": "Documentos: PDF, QR, token HMAC e validação pública",
+  "risk": {
+    "level": "L3",
+    "reasons": [
+      "Task 1.9 classificada como L3 na especificação do Work"
+    ]
+  },
+  "validation_strategy": "tdd-strict",
+  "behavioral_contract": {
+    "scenarios": [
+      {
+        "id": "SCENARIO-1.9-01",
+        "given": "Dado o Work 0001 (\"Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go\") e a task 1.9 (\"Documentos: PDF, QR, token HMAC e validação pública\")",
+        "when": "Quando o executor implementa a task 1.9",
+        "then": "Então recibo e contrato são emitidos em PDF com QR e chave AUTH, e as páginas públicas validam o token e exibem os dados oficiais"
+      },
+      {
+        "id": "SCENARIO-1.9-02",
+        "given": "Dado que os critérios de aceite da task 1.9 são `go test ./...`",
+        "when": "Quando os comandos de aceite são executados no sandbox",
+        "then": "Então todos saem com exit 0 e nenhum arquivo fora da write_allow é modificado"
+      },
+      {
+        "id": "SCENARIO-1.9-REQ-1",
+        "given": "Dado o requisito FR-008 (\"Documentos com prova de autenticidade\")",
+        "when": "Quando o comportamento descrito em \"GET /pdf e GET /contract-pdf devolvem application/pdf com os mesmos parâmetros (id, token, assinatura)\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-1.9-REQ-2",
+        "given": "Dado o requisito FR-008 (\"Documentos com prova de autenticidade\")",
+        "when": "Quando o comportamento descrito em \"O contrato contém as 25 cláusulas vigentes, com título por tipo de contrato\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-1.9-REQ-3",
+        "given": "Dado o requisito FR-008 (\"Documentos com prova de autenticidade\")",
+        "when": "Quando o comportamento descrito em \"GET /validar/recibo/:id e /validar/contrato/:id validam HMAC-SHA256(type:id) truncado a 32 hex e devolvem 400/403/404/200 conforme o caso\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      }
+    ]
+  },
+  "change_contract": {
+    "target_files": [
+      "internal/infrastructure/pdf/**",
+      "internal/infrastructure/authz/**",
+      "internal/infrastructure/web/**"
+    ],
+    "affected_components": [
+      "docs"
+    ]
+  },
+  "architecture_contract": {
+    "invariants": [
+      "domain não importa application/infrastructure; infrastructure importa domain",
+      "Nenhum handler contém regra de negócio; nenhum acesso a dados monta SQL em runtime",
+      "O uso atual (contrato residencial, recibo mensal, baixa) permanece idêntico — toda mudança é aditiva"
+    ]
+  },
+  "acceptance_contract": {
+    "commands": [
+      "go test ./...",
+      "go build ./...",
+      "go vet ./..."
+    ],
+    "required_evidence": [
+      "evidence.json"
+    ]
+  },
+  "scope_contract": {
+    "write_allow": [
+      "cmd/**",
+      "internal/**",
+      "web/**",
+      "migrations/**",
+      "schema/**",
+      "queries/**",
+      "scripts/**",
+      "docs/**",
+      "test/**",
+      ".github/**",
+      "Dockerfile",
+      "README.md",
+      "go.mod",
+      "go.sum",
+      "sqlc*.yaml",
+      "lefthook.yml",
+      ".editorconfig",
+      ".env.example",
+      ".gitignore",
+      "*.go",
+      "*.sql",
+      "*.yaml",
+      "*.yml",
+      "*.json",
+      "*.md",
+      "*.ts"
+    ],
+    "write_deny": [
+      ".git/**",
+      ".env",
+      ".env.*",
+      "!.env.example"
+    ],
+    "out_of_scope": [
+      "Mudanças fora dos arquivos declarados na write_allow",
+      "Alterações destrutivas em dados de produção"
+    ]
+  },
+  "budget_contract": {
+    "max_tokens": 200000,
+    "max_cost_usd": 4,
+    "max_duration_minutes": 120,
+    "max_agent_attempts": 3,
+    "max_llm_calls": 80,
+    "max_tool_calls": 200,
+    "max_shell_executions": 40
+  },
+  "escalation_contract": {
+    "on_write_violation": "block_and_escalate",
+    "on_budget_exceeded": "escalate_to_strong_agent",
+    "on_attempt_failed": "retry_with_strong"
+  }
+}

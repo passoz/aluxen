@@ -1,0 +1,197 @@
+{
+  "work_id": "0001",
+  "title": "Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go",
+  "capabilities": [
+    {
+      "id": "CAP-001",
+      "name": "Fundação e composição",
+      "description": "Módulo Go, configuração 12-factor, logger slog, banco por dialeto, migrações, health/readiness e encerramento graciosamente.",
+      "rules": [
+        "BR-001",
+        "BR-002",
+        "BR-003"
+      ]
+    },
+    {
+      "id": "CAP-002",
+      "name": "Domínio da locação",
+      "description": "Entidades User, Tenant, Property, Lease, Receipt, Setting e AuditLog; portas de repositório; regras puras de sobreposição, status e valores.",
+      "rules": [
+        "BR-004",
+        "BR-005"
+      ]
+    },
+    {
+      "id": "CAP-003",
+      "name": "Autenticação e sessão",
+      "description": "Login do locador e do locatário, senha padrão com troca obrigatória, rate limit, sessão por cookie e CSRF nas mutações.",
+      "rules": [
+        "BR-006",
+        "BR-007"
+      ]
+    },
+    {
+      "id": "CAP-004",
+      "name": "Painel e mutações",
+      "description": "Seis abas do painel, tabelas com filtros e paginação, modais de formulário e todos os intents de mutação.",
+      "rules": [
+        "BR-008"
+      ]
+    },
+    {
+      "id": "CAP-005",
+      "name": "Documentos e prova",
+      "description": "PDF de recibo e de contrato com 25 cláusulas, valor por extenso, QR Code, token HMAC e páginas públicas de validação.",
+      "rules": [
+        "BR-009",
+        "BR-010"
+      ]
+    },
+    {
+      "id": "CAP-006",
+      "name": "Área do Cliente",
+      "description": "Portal do locatário com login por CPF, isolamento por titular, contratos, recibos pagos e download de documentos.",
+      "rules": [
+        "BR-011"
+      ]
+    },
+    {
+      "id": "CAP-007",
+      "name": "Auditoria",
+      "description": "Trilha imutável com diff campo a campo, filtros, paginação, export CSV e backup/import JSON.",
+      "rules": [
+        "BR-012"
+      ]
+    },
+    {
+      "id": "CAP-008",
+      "name": "Mensageria WhatsApp",
+      "description": "Cliente WAHA, sessão, preview de mensagem, envio assíncrono com job consultável e fallback wa.me.",
+      "rules": [
+        "BR-013"
+      ]
+    },
+    {
+      "id": "CAP-009",
+      "name": "Operação e observabilidade",
+      "description": "Métricas do painel, informações de build, logs estruturados, PWA e fila offline.",
+      "rules": [
+        "BR-014"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "BR-001",
+      "statement": "Toda configuração vem de variável de ambiente; nenhum segredo em código ou config versionada.",
+      "coverage": [
+        "CAP-001"
+      ],
+      "evidence": "internal/infrastructure/config + .env.example"
+    },
+    {
+      "id": "BR-002",
+      "statement": "O dialeto do banco é resolvido no boot pela DATABASE_URL: file:/caminho → SQLite, postgres:// → Postgres.",
+      "coverage": [
+        "CAP-001"
+      ],
+      "evidence": "go test ./internal/infrastructure/db/..."
+    },
+    {
+      "id": "BR-003",
+      "statement": "Os dois schemas mantêm paridade de tabelas, colunas, nulidade, PK, FK e índices, verificada por teste obrigatório.",
+      "coverage": [
+        "CAP-001"
+      ],
+      "evidence": "go test ./internal/infrastructure/db/parity"
+    },
+    {
+      "id": "BR-004",
+      "statement": "Um imóvel não pode ter dois contratos ativos ou de temporada com períodos sobrepostos.",
+      "coverage": [
+        "CAP-002"
+      ],
+      "evidence": "go test ./internal/domain/..."
+    },
+    {
+      "id": "BR-005",
+      "statement": "Recibo sem data de pagamento é due/overdue; com pagamento parcial é partial; com valor integral é paid.",
+      "coverage": [
+        "CAP-002"
+      ],
+      "evidence": "go test ./internal/domain/..."
+    },
+    {
+      "id": "BR-006",
+      "statement": "O administrador com senha semeada não acessa nada além de /settings, /login, /logout, /api/health e /portal até trocar a senha.",
+      "coverage": [
+        "CAP-003"
+      ],
+      "evidence": "go test ./internal/infrastructure/web/..."
+    },
+    {
+      "id": "BR-007",
+      "statement": "Toda rota que muda estado exige token CSRF double-submit assinado, exceto webhooks com autenticação própria.",
+      "coverage": [
+        "CAP-003"
+      ],
+      "evidence": "go test ./internal/infrastructure/web/..."
+    },
+    {
+      "id": "BR-008",
+      "statement": "Handlers são adaptadores finos: decodificam HTTP, chamam caso de uso e codificam a resposta; nenhuma regra de negócio no handler.",
+      "coverage": [
+        "CAP-004"
+      ],
+      "evidence": "revisão de código + go vet ./..."
+    },
+    {
+      "id": "BR-009",
+      "statement": "O token de autenticidade é HMAC-SHA256(segredo, type:id) em hex truncado a 32 caracteres, comparado em tempo constante.",
+      "coverage": [
+        "CAP-005"
+      ],
+      "evidence": "go test ./internal/infrastructure/authz/..."
+    },
+    {
+      "id": "BR-010",
+      "statement": "Recibo só é validado publicamente depois de pago; contrato não tem essa restrição.",
+      "coverage": [
+        "CAP-005"
+      ],
+      "evidence": "go test ./internal/infrastructure/web/..."
+    },
+    {
+      "id": "BR-011",
+      "statement": "O locatário só acessa contratos e recibos em que é o titular.",
+      "coverage": [
+        "CAP-006"
+      ],
+      "evidence": "go test ./internal/infrastructure/web/..."
+    },
+    {
+      "id": "BR-012",
+      "statement": "A trilha de auditoria registra diff campo a campo com valores formatados e é somente-anexada.",
+      "coverage": [
+        "CAP-007"
+      ],
+      "evidence": "go test ./internal/application/..."
+    },
+    {
+      "id": "BR-013",
+      "statement": "Envio de WhatsApp é assíncrono, com job consultável e TTL, e nunca bloqueia a requisição HTTP.",
+      "coverage": [
+        "CAP-008"
+      ],
+      "evidence": "go test ./internal/infrastructure/whatsapp/..."
+    },
+    {
+      "id": "BR-014",
+      "statement": "Logs são estruturados via slog e nunca incluem senha, token ou dado pessoal completo.",
+      "coverage": [
+        "CAP-009"
+      ],
+      "evidence": "go test ./internal/infrastructure/logging/..."
+    }
+  ]
+}

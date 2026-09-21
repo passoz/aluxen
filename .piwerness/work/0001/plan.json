@@ -1,0 +1,796 @@
+{
+  "$schema": "../../../schemas/plan.schema.json",
+  "work_id": "0001",
+  "title": "Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go",
+  "components": [
+    {
+      "name": "domain",
+      "purpose": "Entidades, portas e regras puras da locação"
+    },
+    {
+      "name": "application",
+      "purpose": "Casos de uso orquestrando portas"
+    },
+    {
+      "name": "db",
+      "purpose": "Adapters SQLite/Postgres, migrações e paridade de schema"
+    },
+    {
+      "name": "web",
+      "purpose": "Handlers, middlewares, sessão, CSRF e templates"
+    },
+    {
+      "name": "docs",
+      "purpose": "PDF de recibo e contrato, QR e token de autenticidade"
+    },
+    {
+      "name": "messaging",
+      "purpose": "Cliente WAHA, jobs de envio e templates de mensagem"
+    },
+    {
+      "name": "ops",
+      "purpose": "Configuração, logging, métricas, build-info e health"
+    }
+  ],
+  "global_gates": [
+    "`go build ./...` — todos os pacotes compilam com exit 0.",
+    "`go vet ./...` — análise estática sem achados.",
+    "`go test ./...` — a suíte completa passa com exit 0."
+  ],
+  "tasks": [
+    {
+      "id": "1.1",
+      "title": "Fundação Go: módulo, configuração, logging e composition root",
+      "requirement_id": "FR-001",
+      "spec_reference": "CAP-001",
+      "contract_id": "CTR-001",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "o binário sobe lendo configuração do ambiente, registra logs estruturados, expõe /healthz e /readyz e encerra graciosamente em SIGTERM",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "go.mod",
+        "cmd/app/main.go",
+        "internal/infrastructure/config/**",
+        "internal/infrastructure/logging/**",
+        "internal/infrastructure/web/health.go"
+      ],
+      "implementation_files": [
+        "cmd/**",
+        "internal/infrastructure/config/**",
+        "internal/infrastructure/logging/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/config/**",
+        "internal/infrastructure/logging/**"
+      ],
+      "red": {
+        "command": "go build ./...",
+        "description": "a asserção do comportamento \"o binário sobe lendo configuração do ambiente, registra logs estruturados, expõe /healthz e /readyz e encerra graciosamente em SIGTERM\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever o teste de carregamento de configuração (defaults, override por env, erro em segredo ausente em produção)",
+        "Escrever o teste do logger (JSON em produção, texto em dev, redação de segredos)",
+        "Implementar config, logging e o composition root com signal.NotifyContext e srv.Shutdown"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go build ./...",
+          "description": "o binário compila"
+        },
+        {
+          "command": "go test ./...",
+          "description": "config e logging cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.2",
+      "title": "Esquema dual dialeto com paridade enforced",
+      "requirement_id": "FR-002",
+      "spec_reference": "CAP-001",
+      "contract_id": "CTR-002",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "os schemas SQLite e Postgres declaram as mesmas tabelas, colunas, nulidade, PKs, FKs e índices, e um teste falha na divergência",
+      "components": [
+        "db"
+      ],
+      "files": [
+        "schema/sqlite.sql",
+        "schema/postgres.sql",
+        "sqlc.yaml",
+        "queries/**",
+        "internal/infrastructure/db/**"
+      ],
+      "implementation_files": [
+        "schema/**",
+        "queries/**",
+        "sqlc.yaml",
+        "internal/infrastructure/db/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/db/parity/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"os schemas SQLite e Postgres declaram as mesmas tabelas, colunas, nulidade, PKs, FKs e índices, e um teste falha na divergência\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Reconstruir o DDL SQLite a partir de src/db/schema.ts e das 6 migrações, sem renomear nada",
+        "Escrever o DDL Postgres equivalente com o mapa de tipos do ARQUITETURA-DEPLOY.md",
+        "Escrever o teste de paridade que compara metadados dos dois schemas e falha na divergência",
+        "Gerar os dois pacotes sqlc e verificar que as queries estão em sincronia"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "o teste de paridade passa e falha se um lado divergir"
+        },
+        {
+          "command": "go build ./...",
+          "description": "os dois pacotes sqlc compilam"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.3",
+      "title": "Migrações por dialeto e seeds de instância",
+      "requirement_id": "FR-002",
+      "spec_reference": "CAP-001",
+      "contract_id": "CTR-003",
+      "complexity": "standard",
+      "depends_on": [
+        "1.2"
+      ],
+      "behavior": "o boot aplica as migrações do dialeto resolvido, cria o usuário administrador semeado e as configurações padrão de forma idempotente",
+      "components": [
+        "db"
+      ],
+      "files": [
+        "migrations/sqlite/**",
+        "migrations/postgres/**",
+        "internal/infrastructure/db/migrate.go",
+        "internal/infrastructure/db/seed.go"
+      ],
+      "implementation_files": [
+        "migrations/**",
+        "internal/infrastructure/db/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/db/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o boot aplica as migrações do dialeto resolvido, cria o usuário administrador semeado e as configurações padrão de forma idempotente\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de migração em banco vazio e em banco já migrado (idempotência)",
+        "Escrever as migrações SQLite e Postgres equivalentes",
+        "Implementar o runner por dialeto e o seed do usuário e das configurações"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "migração e seed cobertos por teste de integração"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.4",
+      "title": "Domínio: entidades, portas e regras puras",
+      "requirement_id": "FR-003",
+      "spec_reference": "CAP-002",
+      "contract_id": "CTR-004",
+      "complexity": "standard",
+      "depends_on": [],
+      "behavior": "as entidades e interfaces de repositório existem no pacote domain com as regras puras de sobreposição, status de recibo, CPF e valor por extenso",
+      "components": [
+        "domain"
+      ],
+      "files": [
+        "internal/domain/**"
+      ],
+      "implementation_files": [
+        "internal/domain/**"
+      ],
+      "test_files": [
+        "internal/domain/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as entidades e interfaces de repositório existem no pacote domain com as regras puras de sobreposição, status de recibo, CPF e valor por extenso\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes das regras puras (sobreposição, status, CPF, valor por extenso, formato de data)",
+        "Implementar entidades, erros sentinela e portas de repositório"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "regras puras cobertas por teste unitário"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "sem violação de dependência entre camadas"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.5",
+      "title": "Casos de uso de cadastros e configurações",
+      "requirement_id": "FR-004",
+      "spec_reference": "CAP-002",
+      "contract_id": "CTR-005",
+      "complexity": "standard",
+      "depends_on": [
+        "1.4"
+      ],
+      "behavior": "criar, editar e excluir locatários, imóveis e configurações respeita as validações e a trilha de auditoria",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/tenant*.go",
+        "internal/application/property*.go",
+        "internal/application/settings*.go",
+        "internal/application/ports.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"criar, editar e excluir locatários, imóveis e configurações respeita as validações e a trilha de auditoria\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes com repositórios falsos para criação, edição, exclusão e validações",
+        "Implementar os casos de uso e o registro de auditoria correspondente"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "casos de uso cobertos por teste com dublês"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.6",
+      "title": "Casos de uso de contratos e recibos",
+      "requirement_id": "FR-005",
+      "spec_reference": "CAP-002",
+      "contract_id": "CTR-006",
+      "complexity": "standard",
+      "depends_on": [
+        "1.4"
+      ],
+      "behavior": "contratos validam sobreposição por imóvel e recibos cobrem mensal, extra, lote, pagamento total/parcial e geração mensal idempotente",
+      "components": [
+        "application"
+      ],
+      "files": [
+        "internal/application/lease*.go",
+        "internal/application/receipt*.go"
+      ],
+      "implementation_files": [
+        "internal/application/**"
+      ],
+      "test_files": [
+        "internal/application/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"contratos validam sobreposição por imóvel e recibos cobrem mensal, extra, lote, pagamento total/parcial e geração mensal idempotente\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de sobreposição (ativo x ativo, temporada x ativo, suspenso libera), transições de status e geração mensal",
+        "Escrever os testes de recibo (categorias, pagamento parcial, lote, exclusão em lote)",
+        "Implementar os casos de uso"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "contratos e recibos cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.7",
+      "title": "HTTP: sessão, CSRF, rate limit, login e travas",
+      "requirement_id": "FR-006",
+      "spec_reference": "CAP-003",
+      "contract_id": "CTR-007",
+      "complexity": "standard",
+      "depends_on": [
+        "1.5"
+      ],
+      "behavior": "as sessões de administrador e locatário, o rate limit de login, o CSRF e a trava de senha padrão funcionam com os mesmos parâmetros do app atual",
+      "components": [
+        "web"
+      ],
+      "files": [
+        "internal/infrastructure/web/**"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as sessões de administrador e locatário, o rate limit de login, o CSRF e a trava de senha padrão funcionam com os mesmos parâmetros do app atual\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes do gate de login (5/IP/60s, 60 global, bloqueio progressivo, Retry-After)",
+        "Escrever os testes de sessão, CSRF e trava de troca de senha",
+        "Implementar os middlewares e as rotas de login/logout"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "gate de login e travas cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.8",
+      "title": "Painel: rotas, intents e telas",
+      "requirement_id": "FR-007",
+      "spec_reference": "CAP-004",
+      "contract_id": "CTR-008",
+      "complexity": "standard",
+      "depends_on": [
+        "1.6",
+        "1.7"
+      ],
+      "behavior": "as seis abas do painel renderizam com dados reais e todos os intents de mutação respondem no mesmo contrato JSON",
+      "components": [
+        "web"
+      ],
+      "files": [
+        "internal/infrastructure/web/dashboard*.go",
+        "internal/infrastructure/web/templates/**",
+        "internal/infrastructure/web/static/**"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as seis abas do painel renderizam com dados reais e todos os intents de mutação respondem no mesmo contrato JSON\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de rota do painel e de cada intent",
+        "Implementar handlers, templates e JS do painel"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "rotas e intents cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.9",
+      "title": "Documentos: PDF, QR, token HMAC e validação pública",
+      "requirement_id": "FR-008",
+      "spec_reference": "CAP-005",
+      "contract_id": "CTR-009",
+      "complexity": "standard",
+      "depends_on": [
+        "1.6"
+      ],
+      "behavior": "recibo e contrato são emitidos em PDF com QR e chave AUTH, e as páginas públicas validam o token e exibem os dados oficiais",
+      "components": [
+        "docs"
+      ],
+      "files": [
+        "internal/infrastructure/pdf/**",
+        "internal/infrastructure/authz/**",
+        "internal/infrastructure/web/verify*.go"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/pdf/**",
+        "internal/infrastructure/authz/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/pdf/**",
+        "internal/infrastructure/authz/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"recibo e contrato são emitidos em PDF com QR e chave AUTH, e as páginas públicas validam o token e exibem os dados oficiais\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de token HMAC (geração, verificação, comparação em tempo constante, código AUTH)",
+        "Escrever os testes de geração de PDF (recibo pago/parcial, contrato por status, 25 cláusulas, QR presente)",
+        "Implementar token, QR, PDFs e rotas de validação"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "token e PDF cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.10",
+      "title": "Área do Cliente com isolamento por titular",
+      "requirement_id": "FR-009",
+      "spec_reference": "CAP-006",
+      "contract_id": "CTR-010",
+      "complexity": "standard",
+      "depends_on": [
+        "1.7"
+      ],
+      "behavior": "o locatário entra por CPF, troca a senha padrão e vê apenas os próprios contratos, recibos e documentos",
+      "components": [
+        "web"
+      ],
+      "files": [
+        "internal/application/client*.go",
+        "internal/infrastructure/web/portal*.go"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o locatário entra por CPF, troca a senha padrão e vê apenas os próprios contratos, recibos e documentos\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de login por CPF, troca de senha e isolamento por titular",
+        "Implementar casos de uso e rotas do portal"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "portal coberto por teste, incluindo acesso negado a documento de terceiro"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.11",
+      "title": "Auditoria, export CSV e backup",
+      "requirement_id": "FR-010",
+      "spec_reference": "CAP-007",
+      "contract_id": "CTR-011",
+      "complexity": "standard",
+      "depends_on": [
+        "1.5"
+      ],
+      "behavior": "toda mutação registra trilha com diff campo a campo, a listagem filtra e pagina, o CSV exporta e o backup exporta/importa",
+      "components": [
+        "application",
+        "web"
+      ],
+      "files": [
+        "internal/application/audit*.go",
+        "internal/infrastructure/web/audit*.go",
+        "internal/infrastructure/backup/**"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/**",
+        "internal/infrastructure/web/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"toda mutação registra trilha com diff campo a campo, a listagem filtra e pagina, o CSV exporta e o backup exporta/importa\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de diff campo a campo, filtros, paginação e CSV",
+        "Escrever os testes de export/import de backup",
+        "Implementar os casos de uso e as rotas"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "auditoria e backup cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.12",
+      "title": "WhatsApp por WAHA com jobs assíncronos",
+      "requirement_id": "FR-011",
+      "spec_reference": "CAP-008",
+      "contract_id": "CTR-012",
+      "complexity": "standard",
+      "depends_on": [
+        "1.8"
+      ],
+      "behavior": "as rotas /api/whatsapp/* mantêm o mesmo contrato JSON, com sessão via WAHA, preview de mensagem e envio em job consultável",
+      "components": [
+        "messaging"
+      ],
+      "files": [
+        "internal/infrastructure/whatsapp/**",
+        "internal/infrastructure/web/whatsapp*.go"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/whatsapp/**",
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/whatsapp/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as rotas /api/whatsapp/* mantêm o mesmo contrato JSON, com sessão via WAHA, preview de mensagem e envio em job consultável\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes do cliente WAHA com servidor falso (status, start, cancel, logout, send)",
+        "Escrever os testes de montagem de mensagem e do registro de jobs com TTL",
+        "Implementar cliente, jobs e rotas"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "cliente WAHA e jobs cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.13",
+      "title": "Design system, PWA e fila offline",
+      "requirement_id": "FR-014",
+      "spec_reference": "CAP-009",
+      "contract_id": "CTR-013",
+      "complexity": "standard",
+      "depends_on": [
+        "1.8"
+      ],
+      "behavior": "as telas usam o mesmo design system (tema claro/escuro), o manifest PWA é servido e as mutações pendentes são reenviadas ao voltar a conexão",
+      "components": [
+        "web"
+      ],
+      "files": [
+        "internal/infrastructure/web/static/**",
+        "internal/infrastructure/web/templates/**"
+      ],
+      "implementation_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "test_files": [
+        "internal/infrastructure/web/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"as telas usam o mesmo design system (tema claro/escuro), o manifest PWA é servido e as mutações pendentes são reenviadas ao voltar a conexão\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Portar as variáveis CSS e componentes visuais do app atual",
+        "Implementar fila offline e reenvio no JS do painel",
+        "Servir manifest e ícones com os mesmos caminhos"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "rotas de estáticos e manifest cobertas por teste"
+        }
+      ],
+      "visual": "REQUIRED",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.14",
+      "title": "Métricas, informações do sistema e build-info",
+      "requirement_id": "FR-013",
+      "spec_reference": "CAP-009",
+      "contract_id": "CTR-014",
+      "complexity": "standard",
+      "depends_on": [
+        "1.6"
+      ],
+      "behavior": "o painel mostra ocupação, inadimplência e a identificação do build em execução, com a mesma estrutura de payload",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "internal/application/metrics*.go",
+        "internal/infrastructure/buildinfo/**",
+        "internal/infrastructure/web/metrics*.go"
+      ],
+      "implementation_files": [
+        "internal/application/**",
+        "internal/infrastructure/**"
+      ],
+      "test_files": [
+        "internal/application/**",
+        "internal/infrastructure/buildinfo/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"o painel mostra ocupação, inadimplência e a identificação do build em execução, com a mesma estrutura de payload\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes de cálculo de métricas (ocupação, inadimplência, receita, top inquilinos)",
+        "Escrever os testes de build-info (env vars, versão MAJOR.MINOR.build)",
+        "Implementar casos de uso e rotas"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "métricas e build-info cobertos por teste"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.15",
+      "title": "Qualidade: cobertura, lint e CI Go",
+      "requirement_id": "FR-015",
+      "spec_reference": "CAP-001",
+      "contract_id": "CTR-015",
+      "complexity": "standard",
+      "depends_on": [
+        "1.8",
+        "1.9",
+        "1.10",
+        "1.11",
+        "1.12",
+        "1.13",
+        "1.14"
+      ],
+      "behavior": "os gates de qualidade rodam no CI e bloqueiam merge quando a cobertura cai abaixo de 90% ou o lint falha",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        ".github/workflows/ci.yml",
+        "lefthook.yml",
+        ".editorconfig",
+        "Dockerfile",
+        "internal/infrastructure/**"
+      ],
+      "implementation_files": [
+        ".github/**",
+        "lefthook.yml",
+        ".editorconfig",
+        "Dockerfile",
+        "internal/**"
+      ],
+      "test_files": [
+        "internal/**"
+      ],
+      "red": {
+        "command": "go test ./...",
+        "description": "a asserção do comportamento \"os gates de qualidade rodam no CI e bloqueiam merge quando a cobertura cai abaixo de 90% ou o lint falha\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Escrever os testes faltantes até a cobertura total >= 90%",
+        "Configurar CI (qualidade, testes+cobertura, segurança, build) e hooks locais"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go test ./...",
+          "description": "suíte completa verde com cobertura >= 90%"
+        },
+        {
+          "command": "go vet ./...",
+          "description": "vet limpo"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    },
+    {
+      "id": "1.16",
+      "title": "Cutover: remoção do app Bun legado",
+      "requirement_id": "FR-016",
+      "spec_reference": "CAP-001",
+      "contract_id": "CTR-016",
+      "complexity": "standard",
+      "depends_on": [
+        "1.15"
+      ],
+      "behavior": "o branch devgo contém apenas o app Go, com Dockerfile multi-stage e documentação atualizada",
+      "components": [
+        "ops"
+      ],
+      "files": [
+        "README.md",
+        "docs/**",
+        "Dockerfile",
+        ".gitignore"
+      ],
+      "implementation_files": [
+        "README.md",
+        "docs/**",
+        "Dockerfile",
+        ".gitignore",
+        "src/**",
+        "package.json",
+        "drizzle/**",
+        "bun.lock",
+        "test/**",
+        "drizzle.config.ts",
+        "tsconfig.json"
+      ],
+      "test_files": [
+        "internal/**"
+      ],
+      "red": {
+        "command": "go build ./...",
+        "description": "a asserção do comportamento \"o branch devgo contém apenas o app Go, com Dockerfile multi-stage e documentação atualizada\" falha antes da implementação"
+      },
+      "implementation_steps": [
+        "Confirmar paridade funcional rota a rota contra o inventário",
+        "Remover o app Bun e a CI antiga, atualizar README e docs",
+        "Rodar os gates finais"
+      ],
+      "acceptance_criteria": [
+        {
+          "command": "go build ./...",
+          "description": "o projeto compila apenas com Go"
+        },
+        {
+          "command": "go test ./...",
+          "description": "a suíte Go passa sem o legado"
+        }
+      ],
+      "visual": "N/A",
+      "documentation": "N/A",
+      "status": "pending"
+    }
+  ]
+}

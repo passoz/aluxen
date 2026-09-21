@@ -1,0 +1,28 @@
+{{define "login.html"}}{{template "head" .}}
+<div class="login-page">
+  <div class="card login-card">
+    <div class="brand-lockup">
+      <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
+      <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
+    </div>
+
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      {{with .Data}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{end}}
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input id="username" name="username" type="text" required autofocus autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+    </form>
+
+    <p class="subtitle" style="margin-top: 1.25rem; margin-bottom: 0; text-align: center; font-size: 0.85rem;">
+      <a href="/portal/login">Área do Cliente</a>
+    </p>
+  </div>
+</div>
+{{template "foot" .}}{{end}}

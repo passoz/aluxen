@@ -1,0 +1,182 @@
+{
+  "work_id": "0001",
+  "requirements": [
+    {
+      "id": "FR-001",
+      "title": "Fundação Go executável",
+      "user_story": "Como operador, quero um binário Go que sobe com configuração por ambiente e encerra graciosamente, para operar a instância sem Bun.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go build ./...` compila todos os pacotes com exit 0",
+        "`go test ./...` passa com exit 0",
+        "GET /healthz responde 200 'ok' e GET /readyz faz ping real no banco"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Esquema dual dialeto com paridade enforced",
+      "user_story": "Como operador, quero escolher SQLite ou Postgres pela DATABASE_URL sem divergência de schema, para atender clientes com bancos diferentes.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go test ./...` falha se um schema tiver tabela, coluna, nulidade, PK, FK ou índice divergente do outro",
+        "A resolução do dialeto acontece no boot a partir da DATABASE_URL",
+        "As migrações de cada dialeto aplicam em banco vazio e são idempotentes"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Domínio e portas",
+      "user_story": "Como mantenedor, quero entidades e interfaces de repositório no pacote domain, para que as regras de negócio não dependam de HTTP nem de SQL.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go vet ./...` e `go test ./...` passam",
+        "Nenhum arquivo em internal/domain importa internal/application ou internal/infrastructure",
+        "Regras puras (sobreposição de período, status de recibo, valor por extenso, CPF) cobertas por testes unitários"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Cadastros de locatários e imóveis",
+      "user_story": "Como locador, quero cadastrar, editar e excluir locatários e imóveis com as mesmas validações do app atual.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go test ./...` cobre criação, edição, exclusão e validação de e-mail/CPF/CEP",
+        "Excluir locatário com contrato ativo é recusado com mensagem equivalente à atual",
+        "Intents tenant.create/update/delete e property.create/update/delete respondem {ok:true} ou 400 {error}"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Contratos e recibos",
+      "user_story": "Como locador, quero manter contratos (residencial, suspenso, temporada) e recibos (mensais, extras, lote) com as mesmas regras.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go test ./...` cobre sobreposição de período por imóvel, encerrar/suspender/reativar, pagamento total e parcial, lote e geração mensal idempotente",
+        "receipt.generate-monthly usa o mês/ano correntes e não duplica via generated_key",
+        "Recibo rent exige contrato; recibo extra exige descrição"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Autenticação, sessão e travas de segurança",
+      "user_story": "Como locador, quero entrar com usuário e senha, com troca obrigatória da senha padrão e proteção contra força bruta.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "Cookies __aluxen_session e __aluxen_client_session com HttpOnly, SameSite=Lax, 30 dias e Secure condicionado a COOKIE_SECURE",
+        "Rate limit 5/IP/60s, 60 global/60s e bloqueio progressivo a partir de 10 falhas, com header Retry-After",
+        "Trava de troca de senha redireciona para /settings?forced=1 e responde 403 em /api/*",
+        "`go test ./...` cobre o gate de login com os mesmos limites do app atual"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Painel administrativo e intents",
+      "user_story": "Como locador, quero o painel com as seis abas e todas as mutações, para operar a locação no navegador.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "GET /dashboard responde HTML por aba (dashboard, tenants, properties, leases, receipts, history) e JSON com json=true",
+        "POST /dashboard aceita todos os intents documentados e responde {ok:true} ou 400 {error}",
+        "Todas as telas são renderizadas por html/template com o mesmo design system (variáveis CSS) do app atual"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Documentos com prova de autenticidade",
+      "user_story": "Como locador, quero emitir recibo e contrato em PDF com QR e chave AUTH, para dar prova de autenticidade ao locatário.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "GET /pdf e GET /contract-pdf devolvem application/pdf com os mesmos parâmetros (id, token, assinatura)",
+        "O contrato contém as 25 cláusulas vigentes, com título por tipo de contrato",
+        "GET /validar/recibo/:id e /validar/contrato/:id validam HMAC-SHA256(type:id) truncado a 32 hex e devolvem 400/403/404/200 conforme o caso"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Área do Cliente (portal do locatário)",
+      "user_story": "Como locatário, quero entrar com CPF e ver meus contratos e recibos pagos, isolado por titular.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "Login por CPF com senha padrão igual ao CPF e troca obrigatória no primeiro acesso",
+        "Isolamento: nenhum dado de outro titular aparece, inclusive em PDF",
+        "`go test ./...` cobre login, troca de senha, isolamento e acesso a documento de terceiro"
+      ]
+    },
+    {
+      "id": "FR-010",
+      "title": "Trilha de auditoria",
+      "user_story": "Como locador, quero trilha imutável com diff campo a campo, filtros e export CSV, para saber quem mudou o quê.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "GET /audit devolve JSON paginado com filtros (entity, action, actor, from, to, search, order)",
+        "GET /audit/export devolve CSV com Content-Disposition attachment",
+        "Toda mutação registra action, entity, entity_id, summary, changes, origin, ip e user_agent"
+      ]
+    },
+    {
+      "id": "FR-011",
+      "title": "WhatsApp por WAHA",
+      "user_story": "Como locador, quero enviar recibo e contrato por WhatsApp sem Chromium na instância.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "GET /api/whatsapp/status, login/start, login/status, login/cancel, logout respondem o mesmo contrato JSON do app atual",
+        "POST /api/whatsapp/preview monta a mensagem com o mesmo texto e o mesmo wa.me",
+        "POST /api/whatsapp/send cria job assíncrono consultável em /api/whatsapp/send/status"
+      ]
+    },
+    {
+      "id": "FR-012",
+      "title": "Configurações, backup e import",
+      "user_story": "Como locador, quero manter dados do locador, URL pública e senha, além de exportar e importar backup.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "POST /settings aceita save-landlord, save-app-url e change-password com as mesmas validações",
+        "GET /export devolve JSON com Content-Disposition attachment e POST /import aceita o campo file",
+        "URL pública salva passa a ser usada nos QR codes e links de validação"
+      ]
+    },
+    {
+      "id": "FR-013",
+      "title": "Métricas e informações do sistema",
+      "user_story": "Como locador, quero ver ocupação, inadimplência e identificação do build em execução.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "GET /metrics devolve o payload de métricas equivalente ao app atual",
+        "GET /api/info devolve runtime, uptime, caminho e tamanho do banco e contagens",
+        "A versão exibida segue MAJOR.MINOR.<número de build>"
+      ]
+    },
+    {
+      "id": "FR-014",
+      "title": "Operação: logs, PWA e fila offline",
+      "user_story": "Como operador, quero logs estruturados e o painel utilizável offline, como hoje.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "Logs em JSON (produção) e texto legível (desenvolvimento) via slog, sem dados sensíveis",
+        "manifest.webmanifest servido com os mesmos ícones e cores",
+        "A fila offline do painel envia as mutações pendentes quando a conexão volta"
+      ]
+    },
+    {
+      "id": "FR-015",
+      "title": "Qualidade: testes, cobertura e CI",
+      "user_story": "Como mantenedor, quero gates automáticos de qualidade, para não regredir o port.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go test ./... -race -coverprofile=coverage.out` com total >= 90%",
+        "`gofmt -l .` vazio, `go vet ./...` limpo e golangci-lint sem erros",
+        "Workflow de CI com jobs de qualidade, testes+cobertura, segurança e build da imagem"
+      ]
+    },
+    {
+      "id": "FR-016",
+      "title": "Cutover sem código legado",
+      "user_story": "Como mantenedor, quero um único app no branch, para não manter dois padrões.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "O app Bun (src/**, package.json, drizzle/**, bun.lock, test/**) é removido do branch devgo",
+        "A imagem Docker passa a ser multi-stage Go e sobe o binário estático",
+        "A CI antiga baseada em Bun é substituída pela CI Go"
+      ]
+    }
+  ]
+}

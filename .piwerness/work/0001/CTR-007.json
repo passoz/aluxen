@@ -1,0 +1,132 @@
+{
+  "contract_version": "4.0",
+  "task_id": "1.7",
+  "work_id": "0001",
+  "title": "HTTP: sessão, CSRF, rate limit, login e travas",
+  "risk": {
+    "level": "L3",
+    "reasons": [
+      "Task 1.7 classificada como L3 na especificação do Work"
+    ]
+  },
+  "validation_strategy": "tdd-strict",
+  "behavioral_contract": {
+    "scenarios": [
+      {
+        "id": "SCENARIO-1.7-01",
+        "given": "Dado o Work 0001 (\"Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go\") e a task 1.7 (\"HTTP: sessão, CSRF, rate limit, login e travas\")",
+        "when": "Quando o executor implementa a task 1.7",
+        "then": "Então as sessões de administrador e locatário, o rate limit de login, o CSRF e a trava de senha padrão funcionam com os mesmos parâmetros do app atual"
+      },
+      {
+        "id": "SCENARIO-1.7-02",
+        "given": "Dado que os critérios de aceite da task 1.7 são `go test ./...`",
+        "when": "Quando os comandos de aceite são executados no sandbox",
+        "then": "Então todos saem com exit 0 e nenhum arquivo fora da write_allow é modificado"
+      },
+      {
+        "id": "SCENARIO-1.7-REQ-1",
+        "given": "Dado o requisito FR-006 (\"Autenticação, sessão e travas de segurança\")",
+        "when": "Quando o comportamento descrito em \"Cookies __aluxen_session e __aluxen_client_session com HttpOnly, SameSite=Lax, 30 dias e Secure condicionado a COOKIE_SECURE\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-1.7-REQ-2",
+        "given": "Dado o requisito FR-006 (\"Autenticação, sessão e travas de segurança\")",
+        "when": "Quando o comportamento descrito em \"Rate limit 5/IP/60s, 60 global/60s e bloqueio progressivo a partir de 10 falhas, com header Retry-After\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-1.7-REQ-3",
+        "given": "Dado o requisito FR-006 (\"Autenticação, sessão e travas de segurança\")",
+        "when": "Quando o comportamento descrito em \"Trava de troca de senha redireciona para /settings?forced=1 e responde 403 em /api/*\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      },
+      {
+        "id": "SCENARIO-1.7-REQ-4",
+        "given": "Dado o requisito FR-006 (\"Autenticação, sessão e travas de segurança\")",
+        "when": "Quando o comportamento descrito em \"`go test ./...` cobre o gate de login com os mesmos limites do app atual\" é exercitado",
+        "then": "Então o resultado observável declarado no critério é verificado por teste automatizado"
+      }
+    ]
+  },
+  "change_contract": {
+    "target_files": [
+      "internal/infrastructure/web/**"
+    ],
+    "affected_components": [
+      "web"
+    ]
+  },
+  "architecture_contract": {
+    "invariants": [
+      "domain não importa application/infrastructure; infrastructure importa domain",
+      "Nenhum handler contém regra de negócio; nenhum acesso a dados monta SQL em runtime",
+      "O uso atual (contrato residencial, recibo mensal, baixa) permanece idêntico — toda mudança é aditiva"
+    ]
+  },
+  "acceptance_contract": {
+    "commands": [
+      "go test ./...",
+      "go build ./...",
+      "go vet ./..."
+    ],
+    "required_evidence": [
+      "evidence.json"
+    ]
+  },
+  "scope_contract": {
+    "write_allow": [
+      "cmd/**",
+      "internal/**",
+      "web/**",
+      "migrations/**",
+      "schema/**",
+      "queries/**",
+      "scripts/**",
+      "docs/**",
+      "test/**",
+      ".github/**",
+      "Dockerfile",
+      "README.md",
+      "go.mod",
+      "go.sum",
+      "sqlc*.yaml",
+      "lefthook.yml",
+      ".editorconfig",
+      ".env.example",
+      ".gitignore",
+      "*.go",
+      "*.sql",
+      "*.yaml",
+      "*.yml",
+      "*.json",
+      "*.md",
+      "*.ts"
+    ],
+    "write_deny": [
+      ".git/**",
+      ".env",
+      ".env.*",
+      "!.env.example"
+    ],
+    "out_of_scope": [
+      "Mudanças fora dos arquivos declarados na write_allow",
+      "Alterações destrutivas em dados de produção"
+    ]
+  },
+  "budget_contract": {
+    "max_tokens": 200000,
+    "max_cost_usd": 4,
+    "max_duration_minutes": 120,
+    "max_agent_attempts": 3,
+    "max_llm_calls": 80,
+    "max_tool_calls": 200,
+    "max_shell_executions": 40
+  },
+  "escalation_contract": {
+    "on_write_violation": "block_and_escalate",
+    "on_budget_exceeded": "escalate_to_strong_agent",
+    "on_attempt_failed": "retry_with_strong"
+  }
+}
