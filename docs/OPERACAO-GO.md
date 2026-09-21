@@ -1,578 +1,339 @@
-# Operação do Aluxen (Go) — uma instância por cliente
+# 🚀 Operação do Aluxen (Go) — Manual de Operação e Runbook
 
-Roteiro de operação das instâncias: provisionar, expirar demo, migrar de dialeto,
-atualizar, fazer backup e diagnosticar. Escrito para ser repetido sem depender de
-memória — todo passo aqui é um comando versionado.
-
-O desenho está em [`ARQUITETURA-DEPLOY.md`](../ARQUITETURA-DEPLOY.md); o contrato do
-port está em [`ARQUITETURA-GO.md`](ARQUITETURA-GO.md).
+> **Guia definitivo do operador para o Aluxen no modelo de uma instância por cliente.**
+> Cobre: ambientes de execução (`make dev`, `make test`, `make prod`), provisionamento no Easypanel, ciclo de vida de demos, migração SQLite $\rightarrow$ PostgreSQL, canário, backup por volume, troubleshooting e recuperação de desastres.
 
 ---
 
-## 0. O modelo em uma tela
+## 📑 Sumário
 
-```
-Easypanel (VPS)
-└── projeto aluxen
-    ├── app: aluxen-passoz       → aluxen.evolucsia.com         volume: /data
-    ├── app: aluxen-demo-buzios  → buzios.aluxen.evolucsia.com  volume: /data
-    └── app: aluxen-cliente-x    → x.aluxen.evolucsia.com       volume: /data
-```
-
-- **Uma instância = um cliente ou uma demo.** Container, volume e subdomínio próprios.
-  Não existe banco compartilhado, então não existe resíduo em outro lugar.
-- **Imagem:** `ghcr.io/passoz/aluxen:sha-<commit>`, publicada pelo workflow. A VPS só
-  faz *pull* — nada é construído nela.
-- **Persistência:** volume montado em `/data`, com `DB_DIR=/data`. SQLite por padrão
-  (`/data/aluxen.db`); Postgres só quando `DATABASE_URL` aponta para lá.
-- **Domínio e TLS:** o Easypanel emite o certificado (Let's Encrypt/Traefik). O
-  **registro DNS é manual**.
-- **Limite do plano:** 3 *projetos*, não apps. Todas as instâncias convivem no mesmo
-  projeto.
+0. [O Modelo Operacional](#0-o-modelo-operacional)
+1. [Ambientes de Execução Padronizados (Makefile)](#1-ambientes-de-execução-padronizados-makefile)
+2. [Provisionamento de Instância no Easypanel](#2-provisionamento-de-instância-no-easypanel)
+3. [Ciclo de Vida de Demonstrações (Demos)](#3-ciclo-de-vida-de-demonstrações-demos)
+4. [Migração de Dialeto: SQLite $\rightarrow$ PostgreSQL (`cmd/migrate`)](#4-migração-de-dialeto-sqlite--postgresql-cmdmigrate)
+5. [Atualização Canário sem Indisponibilidade](#5-atualização-canário-sem-indisponibilidade)
+6. [Estratégia de Backup, Restauração & Volumes](#6-estratégia-de-backup-restauração--volumes)
+7. [Variáveis de Ambiente e Perfis de Instância](#7-variáveis-de-ambiente-e-perfis-de-instância)
+8. [Monitoramento, Probes HTTP & Métricas](#8-monitoramento-probes-http--métricas)
+9. [Playbook de Troubleshooting & Recuperação de Desastres](#9-playbook-de-troubleshooting--recuperação-de-desastres)
 
 ---
 
-## 1. Provisionar uma instância
+## 0. O Modelo Operacional
+
+Ao contrário de SaaS multi-tenant que misturam dados de centenas de clientes no mesmo banco e processo, o Aluxen opera sob **isolamento físico completo por cliente**:
+
+```
+[Internet] ---> Traefik / Caddy (Easypanel Reverse Proxy + TLS Automático)
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+[Instância A]   [Instância B]   [Instância Demo]
+Container Go    Container Go    Container Go
+Volume /data    Volume /data    Volume /data (efêmero)
+SQLite/Postgres SQLite/Postgres SQLite (demo seed)
+```
+
+| Dimensão | Vantagem Operacional |
+|---|---|
+| **Isolamento** | Falha de processo, pane de banco ou pico de carga em um cliente não afeta nenhum outro. |
+| **Segurança & LGPD** | Dados de clientes distintos nunca compartilham memória ou buffers de banco. |
+| **Backup e Exclusão** | Apagar ou migrar um cliente resume-se a copiar ou destruir o volume `/data`. |
+| **Atualização** | Pode ser feita gradualmente (canário em 1 cliente de teste, depois os demais). |
+| **Flexibilidade de Custo** | Clientes pequenos rodam em SQLite sobre volume local; clientes com grande volume conectam ao PostgreSQL. |
+
+---
+
+## 1. Ambientes de Execução Padronizados (Makefile)
+
+O projeto disponibiliza 3 ambientes de execução nativos orquestrados via `Makefile`:
+
+### 1.1. Desenvolvimento Local (`make dev`)
+Desenvolvimento ágil com **live-reload nativo** via `Air` (sem containers, sem lentidão):
+
+```bash
+make dev
+```
+- **O que faz:** compila `./cmd/app` para `./tmp/main` e inicia o servidor escutando em `http://localhost:3000`.
+- **Hot-Reload:** monitora alterações em arquivos `.go`, `.html`, `.css`, `.js` e `.sql`.
+- **Isolamento:** cria automaticamente `./tmp/dev-data/` para manter o banco SQLite local e uploads isolados da árvore de código.
+
+### 1.2. Ambiente de Testes Automatizados (`make test`)
+Execução da suíte completa de testes com infraestrutura provisionada **exclusivamente via Podman**:
+
+```bash
+make test
+```
+- **O que faz:**
+  1. Verifica a presença do `podman` no sistema (recusa explicitamente o Docker para garantir fidelidade ao runtime Podman).
+  2. Sobe um container isolado com `PostgreSQL 17` (`aluxen-test-postgres`) expondo a porta 5432.
+  3. Aguarda o PostgreSQL aceitar conexões via probe `pg_isready`.
+  4. Executa `go test ./... -race -coverpkg=./... -coverprofile=coverage.out` exercitando os dialetos SQLite e PostgreSQL.
+  5. Valida o **gate de cobertura mínima de 90%**.
+  6. Finaliza e remove o container via `trap` no encerramento (tanto em sucesso quanto em falha).
+
+### 1.3. Ambiente de Produção (`make prod`)
+Gera a imagem de produção multi-stage estática e sobe a stack via Compose:
+
+```bash
+# Auto-detecta Docker ou Podman:
+make prod
+
+# Força motor Docker & Docker Compose:
+make prod ENGINE=docker
+
+# Força motor Podman & Podman Compose:
+make prod ENGINE=podman
+
+# Encerra o ambiente:
+make prod-down
+
+# Acompanha logs estruturados em tempo real:
+make prod-logs
+```
+
+---
+
+## 2. Provisionamento de Instância no Easypanel
+
+A automação de provisionamento vive em `cmd/provision/main.go` e dialoga diretamente com a API do Easypanel.
 
 ### Pré-requisitos
+No ambiente do operador (sua máquina ou orquestrador):
+```env
+EASYPANEL_URL="https://painel.seu-dominio.com"
+EASYPANEL_API_KEY="seu_token_de_acesso"
+EASYPANEL_PROJECT="aluxen"
+```
 
-1. **Imagem publicada.** O workflow de publicação gera a tag `sha-<commit-curto>`.
-   Sem a tag publicada, o deploy sobe e falha no *pull*.
-2. **Credenciais da API do painel no ambiente do operador** (nunca no código, nunca
-   versionadas):
-
-   ```sh
-   export EASYPANEL_URL="https://painel.exemplo.com"
-   export EASYPANEL_API_KEY="cole-aqui-o-token-do-painel"
-   export EASYPANEL_PROJECT="aluxen"   # opcional: este é o padrão
-   ```
-
-3. **DNS.** Saiba qual subdomínio será usado: o comando publica o domínio, mas o
-   registro DNS é feito por você depois.
-
-### Comando
-
-```sh
+### Criar uma Instância para Cliente Real
+```bash
 go run ./cmd/provision create \
-  --name aluxen-demo-buzios \
-  --domain buzios.aluxen.evolucsia.com \
-  --image ghcr.io/passoz/aluxen:sha-abc1234 \
-  --db-dir /data \
-  --seed-demo \
-  --expires-at +30d
+  --name aluxen-imobiliaria-central \
+  --domain imobiliaria.aluxen.com.br \
+  --admin-user passoz \
+  --admin-pass "SenhaForteAleatoria123!" \
+  --image ghcr.io/passoz/aluxen:go
 ```
 
-### Flags
-
-| Flag | Padrão | Para que serve |
-|---|---|---|
-| `--name` | — | Nome do serviço no painel. **Obrigatória.** Use `aluxen-<cliente>` ou `aluxen-demo-<praia>`. |
-| `--domain` | — | Subdomínio da instância. **Obrigatória.** |
-| `--image` | — | Imagem publicada no GHCR. **Obrigatória.** |
-| `--project` | `$EASYPANEL_PROJECT` ou `aluxen` | Projeto do painel. |
-| `--db-dir` | `/data` | Diretório do banco dentro do volume. |
-| `--port` | `3000` | Porta do app no container (a mesma do `Dockerfile`). |
-| `--seed-demo` | `false` | Sobe a instância já com os dados de demonstração (`SEED_DEMO=true`). |
-| `--seed-username` | `$SEED_USERNAME` ou `passoz` | Administrador semeado. |
-| `--seed-password` | `$SEED_PASSWORD` ou `senha-de-teste` | Senha semeada (troca obrigatória no primeiro acesso). |
-| `--session-secret` | `$SESSION_SECRET` ou **gerado** | Assina sessão, CSRF e os tokens dos documentos. |
-| `--expires-at` | — | Etiqueta de expiração: `AAAA-MM-DD` ou `+Nd`. |
-
-### O que o comando faz
-
-1. **App** — `createAppService` com a fonte `image` (nenhum build na VPS).
-2. **Volume** — `createMount` com volume nomeado `<name>-data` em `--db-dir`.
-3. **Variáveis** — `updateAppEnv` com `APP_ENV=production`, `HOST`, `PORT`, `TZ`,
-   `LOG_FORMAT=json`, `DB_DIR`, `SESSION_SECRET`, `SEED_USERNAME`, `SEED_PASSWORD`,
-   `SEED_DEMO` e `APP_URL=https://<domain>`. As variáveis de IA e de WhatsApp são
-   repassadas do seu ambiente quando existirem (ver §6).
-4. **Domínio** — `createDomain` com `https: true` e `certificateResolver: letsencrypt`.
-5. **Deploy** — `deployAppService`.
-6. **Etiqueta** — anotação `expires_at=AAAA-MM-DD` no serviço, quando `--expires-at`
-   for informado (ver §2).
-
-### Saída esperada
-
-```
-projeto:   aluxen
-instância: aluxen-demo-buzios
-imagem:    ghcr.io/passoz/aluxen:sha-abc1234
-volume:    aluxen-demo-buzios-data em /data
-domínio:   https://buzios.aluxen.evolucsia.com
-demo:      sim
-expira em: 2026-10-21
-
-  [criado    ] serviço de aplicação aluxen-demo-buzios
-  [criado    ] volume aluxen-demo-buzios-data em /data
-  [atualizadas] variáveis da instância
-  [criado    ] domínio buzios.aluxen.evolucsia.com
-  [disparado ] deploy
-  [gravada   ] etiqueta de expiração 2026-10-21
-
-próximo passo: aponte o DNS de buzios.aluxen.evolucsia.com para a VPS (registro manual).
-```
-
-Se uma etapa falhar, o comando para ali e mostra o motivo com o status HTTP da API
-(`[falhou] ...: easypanel: createDomain: HTTP 400: ...`).
-
-### Reexecutar com segurança (idempotência)
-
-O comando é **convergente**: reexecutar o mesmo `create` não duplica nada.
-
-- O serviço já existe → **não recria**; a **imagem é ajustada** para a informada.
-- O volume já existe em `--db-dir` → não monta de novo.
-- O domínio já está publicado → não cria de novo.
-- As **variáveis são reescritas** com o estado declarado (a instância é do
-  provisionamento). Se você adicionou uma variável à mão no painel, ela **não**
-  sobrevive a uma reexecução — coloque-a no ambiente do operador (§6) para ela ser
-  repassada.
-- O deploy é disparado de novo (é o que aplica as mudanças).
-
-Depois do DNS propagar:
-
-```sh
-curl -fsS https://buzios.aluxen.evolucsia.com/healthz   # → ok
-curl -fsS https://buzios.aluxen.evolucsia.com/readyz    # → ready
-```
+O comando realiza de forma idempotente:
+1. Cria o serviço no Easypanel com reinício automático (`unless-stopped`).
+2. Configura a imagem `ghcr.io/passoz/aluxen:go` (multi-arch AMD64/ARM64).
+3. Cria e anexa o volume persistente `/data`.
+4. Gera um `SESSION_SECRET` seguro com 64 caracteres hexadecimais.
+5. Injeta as variáveis de ambiente necessárias.
+6. Registra o domínio com certificado TLS/HTTPS automático via Let's Encrypt.
+7. Dispara o primeiro deploy e aguarda a inicialização.
 
 ---
 
-## 2. Ciclo de vida da demo
+## 3. Ciclo de Vida de Demonstrações (Demos)
 
-### A etiqueta de expiração
+Instâncias de demonstração são geradas para prospectos com dados fictícios e **data de expiração programada**:
 
-A data vive na **anotação do serviço** no painel (`setServiceNotes`/`getServiceNotes`),
-no formato `expires_at=AAAA-MM-DD`. É o inventário da demo: não há planilha paralela.
+### Criar uma Instância de Demonstração
+```bash
+go run ./cmd/provision create \
+  --name aluxen-demo-mariana \
+  --domain demo-mariana.aluxen.com.br \
+  --demo \
+  --days 3 \
+  --image ghcr.io/passoz/aluxen:go
+```
 
-- Gravada pelo `create --expires-at <data>`.
-- Lida pelo `list` e usada pelo `expire`.
-- **Serviço sem etiqueta nunca expira sozinho** — um cliente jamais é removido por
-  engano.
+Ao passar a flag `--demo`:
+- `SEED_DEMO=true` é injetado: o primeiro boot popula automaticamente 5 imóveis e contratos fictícios.
+- A etiqueta `expires_at` é gravada nos metadados do serviço com a data limite em UTC.
 
-### Listar
-
-```sh
+### Listar e Expirar Demos
+```bash
+# Listar todas as instâncias e identificar as expiradas:
 go run ./cmd/provision list
+
+# Expirar e destruir instâncias que ultrapassaram o prazo:
+go run ./cmd/provision expire
 ```
 
-```
-SERVIÇO               EXPIRA      SITUAÇÃO
-aluxen-demo-buzios    2026-10-21  vigente
-aluxen-demo-arraial   2026-09-01  vencida
-aluxen-passoz         -           sem prazo
-```
-
-### Expirar
-
-```sh
-# ensaio: mostra o que sairia, sem remover nada
-go run ./cmd/provision expire --days 0 --dry-run
-
-# remove o que já venceu
-go run ./cmd/provision expire --days 0
-
-# antecipa a limpeza para quem vence dentro de 7 dias
-go run ./cmd/provision expire --days 7
-
-# remove o que vence até uma data
-go run ./cmd/provision expire --expires-at 2026-10-05
-```
-
-- `--days N` remove o que vence em até N dias **e** o que já venceu (`0` = só o
-  vencido).
-- `--expires-at DATA` vale até o fim do dia informado.
-- `--days` e `--expires-at` são exclusivos entre si.
-
-### Ordem da remoção (sem resíduo)
-
-Para cada demo vencida o comando **remove os volumes primeiro e o serviço depois**
-(`deleteMount` → `destroyAppService`). Assim o volume de dados não fica órfão no
-painel. Nada fica em nenhum outro lugar — não existe banco compartilhado.
-
-### Cron sugerido
-
-```cron
-# todo dia às 6h: remove as demos vencidas
-0 6 * * * cd /opt/aluxen && EASYPANEL_URL=... EASYPANEL_API_KEY=... \
-  go run ./cmd/provision expire --days 0 >> /var/log/aluxen-expire.log 2>&1
+### Cron Sugerido no Servidor
+Para garantir que instâncias de demonstração não consumam recursos indefinidamente, agende no cron do host:
+```crontab
+0 3 * * * EASYPANEL_URL=... EASYPANEL_API_KEY=... /usr/local/bin/provision expire >> /var/log/aluxen-expire.log 2>&1
 ```
 
 ---
 
-## 3. Migrar de dialeto (SQLite → Postgres)
+## 4. Migração de Dialeto: SQLite $\rightarrow$ PostgreSQL (`cmd/migrate`)
 
-Troca uma instância de SQLite para Postgres com pré-checagem, dry-run, cópia em
-transação e verificação. **A origem nunca é apagada** — o volume fica como backup.
+Quando uma instância cresce ou necessita de replicação externa, o banco SQLite local pode ser migrado para um banco PostgreSQL remoto sem perda de integridade.
 
 ### Pré-requisitos
+1. Um banco PostgreSQL criado e acessível pela instância.
+2. A aplicação parada momentaneamente durante a transferência para evitar escritas concorrentes.
 
-- O arquivo SQLite da instância (dentro do volume: `/data/aluxen.db`).
-- Um Postgres **novo, vazio**, com o DSN à mão. O comando aplica as migrações
-  pendentes no destino antes de copiar, então não é preciso subir o app apontando
-  para ele.
-
-### Comando
-
-```sh
-# 1. Ensaio: conta as linhas por tabela e não escreve nada no destino.
+### Executar a Migração
+```bash
+# 1. Modo Dry-Run (apenas simula e valida compatibilidade de esquemas):
 go run ./cmd/migrate \
-  --from file:/data/aluxen.db \
-  --to 'postgres://usuario:senha@host:5432/aluxen' \
+  --sqlite-path /caminho/do/volume/aluxen.db \
+  --postgres-url "postgres://user:pass@host:5432/aluxen?sslmode=require" \
   --dry-run
 
-# 2. Cópia de verdade.
+# 2. Execução Real com Cópia e Verificação de Checksums:
 go run ./cmd/migrate \
-  --from file:/data/aluxen.db \
-  --to 'postgres://usuario:senha@host:5432/aluxen'
+  --sqlite-path /caminho/do/volume/aluxen.db \
+  --postgres-url "postgres://user:pass@host:5432/aluxen?sslmode=require"
 ```
 
-O relatório traz uma linha por tabela com `ORIGEM`, `DESTINO` e `CHECKSUNK`
-(`confere` ou `DIVERGE`), e o total. Em falha, o relatório aponta **onde parou** e
-que o destino foi revertido.
+### O que o Migrador Faz
+1. Conecta no SQLite de origem e no PostgreSQL de destino.
+2. Aplica automaticamente as migrações Goose no PostgreSQL para garantir que o esquema está idêntico.
+3. Inicia uma transação única no PostgreSQL.
+4. Transfere os dados tabela por tabela na ordem estrita de dependência de chaves estrangeiras:
+   - `users` $\rightarrow$ `tenants` $\rightarrow$ `properties` $\rightarrow$ `leases` $\rightarrow$ `receipts` $\rightarrow$ `deposits` $\rightarrow$ `inspections` $\rightarrow$ `audit_logs` $\rightarrow$ `jobs`.
+5. Valida a contagem exata de linhas entre origem e destino.
+6. Atualiza as sequências (`sequences`) do PostgreSQL para evitar colisões em novos inserts.
+7. Confirma a transação (`COMMIT`).
 
-### O que acontece por dentro
-
-1. **Pré-checagem** — origem legível e com o schema final; destino acessível,
-   migrado e **vazio**. Destino com qualquer linha é recusado: a cópia não tem
-   upsert e duplicar seria silencioso.
-2. **Dry-run** (`--dry-run`) — contagem e checksum por tabela, sem escrever.
-3. **Cópia em uma única transação**, na ordem de dependência das chaves
-   estrangeiras:
-
+### Cutover Operacional
+1. No painel, altere a variável da instância:
+   ```env
+   DATABASE_URL=postgres://user:pass@host:5432/aluxen?sslmode=require
    ```
-   users → properties → tenants → leases → receipts → settings → audit_logs
-         → inspections → whatsapp_messages → jobs → payment_proofs → document_intakes
-   ```
+2. Reinicie o container.
+3. **Não apague o arquivo `aluxen.db` do volume**: ele permanece como backup frio para eventual rollback imediato.
 
-4. **Verificação** — depois de cada tabela, contagem e SHA-256 do conteúdo
-   (linhas ordenadas pela chave primária, hash de todas as colunas) são comparados
-   com a origem, dentro da transação.
-5. **Rollback** — qualquer erro de cópia ou divergência reverte a transação inteira:
-   o destino não fica parcialmente consistente. O commit só acontece com as 12
-   tabelas conferindo.
+---
 
-A origem é aberta em modo somente consulta (`query_only`), então a migração não
-escreve nem apaga nada nela.
+## 5. Atualização Canário sem Indisponibilidade
 
-### Depois da cópia (passos do operador)
+O modelo de instâncias isoladas permite aplicar novas versões primeiro em uma instância canário (cliente voluntário ou instância interna) antes de atualizar o restante da frota:
 
-1. Na instância, troque a variável de ambiente:
+```bash
+# 1. Atualizar primeiro o cliente canário:
+go run ./cmd/provision create \
+  --name aluxen-canario \
+  --image ghcr.io/passoz/aluxen:sha-novo123
 
-   ```
-   DATABASE_URL=postgres://usuario:senha@host:5432/aluxen
-   ```
+# 2. Validar integridade via probe HTTP:
+curl -fsS https://canario.aluxen.com.br/healthz
+curl -fsS https://canario.aluxen.com.br/readyz
 
-   (no lugar de `DB_DIR=/data` — deixe `DB_DIR` como está, ele só é usado quando
-   `DATABASE_URL` está vazia.)
-2. **Redeploy** da instância.
-3. Confirme: `curl -fsS https://<instância>/readyz` → `ready`, login e uma aba do
-   painel.
-4. **Não apague o SQLite.** O arquivo no volume é o backup e a volta atrás.
+# 3. Validada a versão, atualizar as demais instâncias:
+for cliente in cliente1 cliente2 cliente3; do
+  go run ./cmd/provision create --name aluxen-$cliente --image ghcr.io/passoz/aluxen:sha-novo123
+done
+```
 
-### Como voltar atrás
+---
 
-Volte `DATABASE_URL` para o valor anterior (vazio) e faça o redeploy. A instância
-volta a ler o SQLite do volume, que nunca foi tocado. As escritas feitas no
-Postgres nesse intervalo não voltam — por isso a janela de teste é curta.
+## 6. Estratégia de Backup, Restauração & Volumes
 
-### Observações
+### 6.1. Backup de Instâncias SQLite (Padrão)
+O banco SQLite opera em modo **WAL** (`Write-Ahead Logging`). O backup consistente pode ser feito a quente com a ferramenta oficial `sqlite3`:
 
-- A cópia é uma transação única: em base muito grande, é uma transação longa.
-  Para o porte atual (uma instalação, poucos milhares de linhas) é irrelevante.
-- Para ensaiar contra um Postgres de teste, o mesmo comando serve; a suíte de
-  testes da migração usa `TEST_DATABASE_URL` quando quiser exercitar o dialeto real.
-- Postgres descartável para a suíte inteira (os testes que exigem o dialeto real
-  pulam sozinhos sem `TEST_DATABASE_URL`):
+```bash
+# Backup consistente do banco a quente (sem parar a aplicação):
+sqlite3 /data/aluxen.db ".backup '/backup/aluxen-$(date +%F).db'"
 
-  ```sh
-  docker run -d --rm --name aluxen-pg -p 5432:5432 \
-    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aluxen postgres:17
-  TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/aluxen?sslmode=disable' \
-    go test ./... -count=1 -coverpkg=./... -coverprofile=coverage.out
+# Backup dos uploads (fotos de vistoria e comprovantes):
+rsync -a /data/storage/ /backup/storage-$(date +%F)/
+```
+
+### 6.2. Restauração SQLite
+Para restaurar:
+1. Pare o container da instância.
+2. Substitua o arquivo `/data/aluxen.db` pelo arquivo do backup.
+3. Remova quaisquer arquivos temporários residuais (`/data/aluxen.db-wal` e `/data/aluxen.db-shm`).
+4. Inicie o container.
+
+### 6.3. Backup e Restauração PostgreSQL
+```bash
+# Backup:
+pg_dump "$DATABASE_URL" -Fc -f "/backup/aluxen-pg-$(date +%F).dump"
+
+# Restauração:
+pg_restore -d "$DATABASE_URL" --clean --if-exists "/backup/aluxen-pg-2026-09-21.dump"
+```
+
+### 6.4. Backup Lógico pelo Produto (`GET /export` & `POST /import`)
+O painel administrativo oferece exportação completa de dados em JSON estruturado:
+- Acessível na aba de Configurações do painel.
+- Permite transferir cadastros e contratos entre instâncias independentemente do dialeto de banco.
+
+---
+
+## 7. Variáveis de Ambiente e Perfis de Instância
+
+Toda a configuração é estritamente 12-Factor, lida do ambiente:
+
+### Matriz de Diferença: Instância de Produção vs Demo
+
+| Parâmetro | Produção (Cliente) | Demonstração (Demo) |
+|---|---|---|
+| `APP_ENV` | `production` | `production` |
+| `SEED_DEMO` | `false` | `true` (popula dados fake no boot) |
+| `WHATSAPP_MODE` | `client` (Cloud API oficial) | `demo` (WAHA Webhook) |
+| `COOKIE_SECURE` | `true` | `true` |
+| `LOG_FORMAT` | `json` | `json` |
+| `Etiqueta expires_at` | Nenhuma (perene) | Gravada nos metadados |
+
+---
+
+## 8. Monitoramento, Probes HTTP & Métricas
+
+A imagem distroless do Aluxen conta com ferramentas nativas de verificação de integridade sem depender de utilitários como `curl` ou `wget` no container:
+
+### Probes HTTP da Aplicação
+- **`GET /healthz` (Liveness):**
+  - Retorna `200 OK` com texto `ok`.
+  - Confere se o processo Go e o loop de eventos HTTP estão respondendo. Não onera o banco de dados.
+- **`GET /readyz` (Readiness):**
+  - Retorna `200 OK` com texto `ready`.
+  - Executa um `SELECT 1` no banco de dados e valida o diretório de armazenamento. Retorna `503 Service Unavailable` se o banco estiver inacessível.
+- **`GET /api/health`:**
+  - Devolve JSON estruturado com dialeto ativo, versão do framework, runtime e carimbo de tempo.
+
+### Healthcheck Nativo no Container
+O binário suporta a flag interna `--healthcheck`:
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["/aluxen", "--healthcheck"]
+```
+Quando invocado com `--healthcheck`, o próprio executável faz uma requisição HTTP interna para `http://127.0.0.1:PORT/healthz` e sai com código `0` ou `1`.
+
+---
+
+## 9. Playbook de Troubleshooting & Recuperação de Desastres
+
+### 9.1. Container Recusa o Boot: "SESSION_SECRET deve ter ao menos 16 caracteres"
+- **Causa:** `APP_ENV=production` foi ativado sem definir `SESSION_SECRET` ou com string inferior a 16 caracteres.
+- **Solução:** Gere uma chave aleatória segura e injete no ambiente:
+  ```bash
+  openssl rand -hex 32
   ```
 
----
+### 9.2. Administrador Bloqueado por Tentativas Excessivas (Rate Limit)
+- **Causa:** O usuário errou a senha repetidamente e atingiu o limite de bloqueio progressivo (`LOGIN_LOCK_THRESHOLD`).
+- **Solução:**
+  - O bloqueio expira automaticamente após o backoff indicado no header `Retry-After`.
+  - Para liberação imediata sem reiniciar o container, acesse o banco da instância e zere a contagem de tentativas da tabela de configurações ou reinicie o processo para descarregar o cache em memória do rate limiter.
 
-## 4. Atualização canário
-
-Uma instância primeiro, as outras depois. O mesmo `create` é o caminho da
-atualização: a imagem é convergida e o deploy disparado.
-
-```sh
-# 1. Um cliente só.
-go run ./cmd/provision create \
-  --name aluxen-passoz \
-  --domain aluxen.evolucsia.com \
-  --image ghcr.io/passoz/aluxen:sha-novo123
-```
-
-Valide, nesta ordem:
-
-1. `curl -fsS https://aluxen.evolucsia.com/healthz` → `ok` (liveness, não toca o banco).
-2. `curl -fsS https://aluxen.evolucsia.com/readyz` → `ready` (readiness, faz ping no banco).
-3. Login do administrador.
-4. Uma aba que use o que mudou (painel, contratos, pagamentos, temporada, revisão).
-
-Passando, repita o mesmo comando para as outras instâncias, uma por vez.
-
-### Se a atualização quebrar no boot
-
-O log JSON da instância diz onde parou (ver §7). Dois casos comuns:
-
-- **Erro de migração** (`aplicar migrações de ...`) — o processo sai com
-  `falha ao iniciar: ...`. Volte a imagem anterior (reexecute `create` com a tag
-  antiga) e investigue fora da produção.
-- **Processo sobe mas `/readyz` responde 503** — o banco não respondeu ao ping
-  (`banco indisponível` no log). Confira `DATABASE_URL`/`DB_DIR` e o volume montado.
-
-Rollback de imagem é o mesmo comando com a tag anterior:
-
-```sh
-go run ./cmd/provision create --name aluxen-passoz --domain aluxen.evolucsia.com \
-  --image ghcr.io/passoz/aluxen:sha-anterior
-```
-
----
-
-## 5. Backup e restauração por volume
-
-### O que é o volume
-
-Cada instância tem um volume montado em `/data` (o `--db-dir` do provisionamento):
-
-```
-/data/aluxen.db        ← banco SQLite
-/data/aluxen.db-wal    ← write-ahead log (existe enquanto o app roda)
-/data/aluxen.db-shm    ← índice do WAL
-/data/storage/         ← fotos de vistoria e documentos enviados
-```
-
-O volume é a instância: copiá-lo é copiar o cliente; apagá-lo é apagar o cliente.
-
-### Backup (SQLite)
-
-O SQLite roda em modo WAL, então **não copie só o `.db` com o app rodando**: o que
-ainda está no WAL se perde. Duas formas seguras:
-
-```sh
-# A) com o app parado (mais simples e sempre correto)
-#    pare o serviço no painel e copie o arquivo
-cp "$VOLUME/aluxen.db" "backup-aluxen-$(date +%F).db"
-
-# B) com o app rodando, se houver o cliente sqlite3 na VPS
-sqlite3 "$VOLUME/aluxen.db" ".backup '/tmp/aluxen-$(date +%F).db'"
-```
-
-Em ambos os casos inclua `storage/` no backup (tar é o mais prático):
-
-```sh
-tar czf "aluxen-$(date +%F).tar.gz" -C "$VOLUME" aluxen.db storage
-```
-
-`$VOLUME` é a pasta do volume do serviço na VPS — o painel mostra o caminho no
-serviço, na aba de montagens.
-
-### Restauração (SQLite)
-
-1. Pare a instância no painel.
-2. Troque o arquivo (e o `storage/`):
-
-   ```sh
-   rm -f "$VOLUME/aluxen.db-wal" "$VOLUME/aluxen.db-shm"
-   cp backup-aluxen-2026-09-21.db "$VOLUME/aluxen.db"
+### 9.3. Reset Emergencial de Senha do Administrador
+Caso o locador tenha esquecido a senha mestra da instância:
+1. Gere um hash bcrypt de uma nova senha (ex: `NovaSenha123`):
+   ```bash
+   htpasswd -bnBC 10 "" "NovaSenha123" | tr -d ':\n'
    ```
+2. Atualize o registro no SQLite da instância:
+   ```bash
+   sqlite3 /data/aluxen.db "UPDATE users SET password_hash='<hash_gerado>', must_change_password=1 WHERE username='passoz';"
+   ```
+3. O administrador poderá efetuar login imediatamente com a nova senha e será compelido a redefini-la no primeiro acesso.
 
-3. Suba a instância e confira `/readyz` e o login.
-
-**Por que isso funciona sem rodar migração:** no boot o app compara o schema que
-encontrou com o que cada migração embutida produz. Uma base que **já está no schema
-final** tem as migrações apenas **registradas como aplicadas** — nada é recriado e
-nenhuma linha se perde. É o mesmo caminho de quem copia o volume de uma instância
-para outra. Restaurar um dump num banco vazio, portanto, é suportado.
-
-Se o backup vier de uma versão **anterior** do schema, o boot aplica o que falta
-(o goose roda normalmente depois da adoção).
-
-### Backup e restauração (Postgres)
-
-Quando a instância usa Postgres, o volume não tem o banco — o backup é do servidor:
-
-```sh
-pg_dump "$DATABASE_URL" -Fc -f "aluxen-$(date +%F).dump"          # backup
-pg_restore -d "$DATABASE_URL" --clean --if-exists aluxen-2026-09-21.dump   # restauração
-```
-
-Atenção: `--clean` derruba os objetos do destino. Faça a restauração com a
-instância parada.
-
-### Backup pelo produto (independente de dialeto)
-
-O painel exporta e importa os cadastros em JSON (`GET /export`, `POST /import`,
-apenas administrador). Serve para levar dados entre instâncias ou para um backup
-pontual sem mexer no volume — **não** substitui o backup do banco (a fila, os
-comprovantes lidos e a trilha de auditoria ficam de fora do arquivo).
-
----
-
-## 6. Variáveis de ambiente por papel
-
-Todas vêm do ambiente (12-factor). O contrato das chaves está em `.env.example`;
-nenhum segredo tem padrão embutido no código.
-
-### Obrigatórias em produção
-
-| Variável | Observação |
-|---|---|
-| `APP_ENV=production` | Liga o modo produção (cookie `Secure`, exigência de segredo). |
-| `SESSION_SECRET` | **Mínimo de 16 caracteres.** Assina sessão, CSRF e os tokens dos documentos. Em produção o boot **falha** sem ele. |
-
-### Banco
-
-| Variável | Observação |
-|---|---|
-| `DATABASE_URL` | `file:/data/aluxen.db` → SQLite; `postgres://...` → Postgres. Vazio cai para `DB_DIR`. |
-| `DB_DIR` | Diretório do SQLite quando `DATABASE_URL` está vazia. Nas instâncias provisionadas: `/data`. |
-| `STORAGE_DIR` | Anexos (vistoria/documentos). Vazio usa `<DB_DIR>/storage`. |
-
-### Servidor e log
-
-| Variável | Padrão | Observação |
-|---|---|---|
-| `HOST` | `0.0.0.0` | Endereço de escuta. |
-| `PORT` | `3000` | Porta do app (a mesma do domínio no painel). |
-| `TZ` | — | `America/Sao_Paulo` nas instâncias. |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error`, `silent`. |
-| `LOG_FORMAT` | — | `json` (o padrão em produção). |
-| `COOKIE_SECURE` | `false` | Em produção o cookie já é `Secure`; só force fora de produção. |
-
-### URL pública e proteção do login
-
-| Variável | Observação |
-|---|---|
-| `APP_URL` / `BASE_URL` | Base dos links de validação e dos QR codes. `APP_URL` vence. O provisionamento grava `https://<domain>`. |
-| `RATE_LIMIT_MAX`, `RATE_LIMIT_GLOBAL_MAX`, `LOGIN_LOCK_THRESHOLD` | Limites de tentativa de login e bloqueio progressivo. |
-
-### Semente do administrador
-
-| Variável | Observação |
-|---|---|
-| `SEED_USERNAME`, `SEED_PASSWORD` | Administrador criado no primeiro boot. |
-| `DEFAULT_LANDLORD_NAME`, `DEFAULT_LANDLORD_CPF` | Dados do locador gravados nas configurações quando ainda não existem. |
-| `SEED_DEMO` | `true` popula a base com os dados de demonstração **a cada boot**. Só em demo. |
-
-### Só de IA (leitura assistida)
-
-| Variável | Observação |
-|---|---|
-| `AI_API_URL`, `AI_API_KEY` | Provedor de leitura. Sem elas a instância não lê documento nem comprovante. |
-| `AI_MODEL` | Modelo usado nas extrações. |
-| `AI_CONFIDENCE_THRESHOLD` | Confiança mínima para a baixa automática (padrão `0.9`). Abaixo disso, revisão humana. |
-
-### Só de WhatsApp
-
-| Variável | Observação |
-|---|---|
-| `WHATSAPP_MODE` | `demo` → WAHA (não oficial, risco de banimento: **apenas demonstração**); `client` → Cloud API oficial da Meta (cliente pagante). |
-| `WAHA_API_URL`, `WAHA_API_KEY`, `WAHA_SESSION` | Conexão com o WAHA. |
-| `WAHA_WEBHOOK_SECRET` | Valida a assinatura dos webhooks recebidos. |
-
-### Provisionamento (ambiente do operador, não da instância)
-
-| Variável | Observação |
-|---|---|
-| `EASYPANEL_URL`, `EASYPANEL_API_KEY` | Base e token da API do painel. **Só o operador precisa delas.** |
-| `EASYPANEL_PROJECT` | Projeto do painel (padrão `aluxen`). |
-| `SEED_USERNAME`, `SEED_PASSWORD`, `SESSION_SECRET` | Lidas pelo `provision create` quando a flag correspondente não é passada. |
-
-### Demo × cliente
-
-| | Demo | Cliente |
-|---|---|---|
-| `SEED_DEMO` | `true` | `false` |
-| `WHATSAPP_MODE` | `demo` (WAHA) | `client` (API oficial) |
-| Etiqueta `expires_at` | sempre | nunca |
-| Dados | fictícios | reais |
-
----
-
-## 7. Diagnóstico
-
-### A instância não sobe
-
-Comece pelo **log JSON do serviço** no painel. As mensagens úteis, na ordem em que
-aparecem:
-
-| Sintoma | O que significa |
-|---|---|
-| `falha ao iniciar: configuração de ambiente inválida: SESSION_SECRET deve ter ao menos 16 caracteres em produção` | `APP_ENV=production` sem segredo longo o bastante. O boot é *fail-closed* de propósito. |
-| `falha ao iniciar: abrir banco: ...` | `DATABASE_URL`/`DB_DIR` errados, volume não montado ou Postgres inacessível. |
-| `falha ao iniciar: aplicar migrações de ...` | Migração não aplicou. Veja a mensagem do SQL logo abaixo. |
-| `falha ao escutar` + `err=... address already in use` | Porta ocupada — normalmente duas instâncias com o mesmo `PORT` no mesmo host. |
-| `servidor iniciado` | Boot completo. A linha traz `dialect`, `database`, `version` e `env`. |
-
-Depois do boot, a saúde é por HTTP:
-
-```sh
-curl -fsS https://<instância>/healthz   # liveness: "ok", não toca o banco
-curl -fsS https://<instância>/readyz    # readiness: "ready"; 503 = banco indisponível
-curl -fsS https://<instância>/api/health
-```
-
-- `/healthz` **200** e `/readyz` **503** → o processo está vivo e o banco não
-  responde (log: `banco indisponível na readiness`). Confira o volume/DSN.
-- Ambos **200** mas a página não abre → o problema é domínio/DNS/TLS, não o app
-  (confira o registro DNS e o certificado no painel).
-
-### Fila de trabalho (`jobs`)
-
-Leitura de comprovante, leitura de documento, envio e cobrança rodam em uma fila
-persistida na tabela `jobs` — ela sobrevive ao reinício do processo. O worker varre
-a fila a cada 30s, pega até 20 trabalhos por varredura e tenta de novo em falha
-transitória com espera exponencial (30s, 1min, 2min… até 30min), no máximo 3
-tentativas por trabalho.
-
-Estados: `queued` (na fila; `scheduled_at` no futuro = aguardando nova tentativa),
-`running` (em execução), `done` (concluído), `failed` (tentativas esgotadas).
-
-```sh
-# SQLite
-sqlite3 "$VOLUME/aluxen.db" \
-  "select id, kind, status, attempts, scheduled_at, finished_at, substr(coalesce(error,''),1,80)
-   from jobs order by created_at desc limit 20;"
-
-# Postgres
-psql "$DATABASE_URL" -c \
-  "select id, kind, status, attempts, scheduled_at, finished_at, left(coalesce(error,''),80)
-   from jobs order by created_at desc limit 20;"
-```
-
-O que olhar:
-
-- **`running` parado por muito tempo** — o processo caiu no meio. No próximo boot o
-  app devolve os órfãos para `queued` (log: `jobs órfãos devolvidos para a fila`,
-  `count=N`).
-- **`failed`** — o campo `error` diz o motivo. Trabalho falho pode ser reenfileirado
-  com as tentativas zeradas pelo caso de uso de retentativa (`application.RetryJob`);
-  trabalho em execução ou já concluído **não** é reexecutado (a baixa de um
-  lançamento não pode acontecer duas vezes).
-- **`queued` sem sair do lugar** — confira se o `kind` tem handler registrado no
-  boot. Hoje o app registra `payment-proof` e `document-intake`; um trabalho de
-  outro tipo falha com `nenhum handler registrado para o tipo "..."` e vai para
-  `failed` — é sinal de que a área ainda não está ligada, não de banco quebrado.
-
-No log do app:
-
-| Mensagem | Significa |
-|---|---|
-| `fila: trabalho concluído` (`job`, `kind`, `attempts`) | Trabalho terminou. |
-| `fila: trabalho adiado para nova tentativa` | Falha transitória; já tem novo horário. |
-| `fila: trabalho órfão devolvido à fila` | Recuperação no boot. |
-| `fila: varredura falhou` | Não foi possível ler a fila (banco). |
-| `worker não encerrou no tempo esperado` | O encerramento esperou 20s pelo trabalho em execução. |
-
-### Trilha de auditoria
-
-Toda operação sensível (baixa, criação de cadastro, reajuste, exportação de backup,
-decisão sobre comprovante) grava um evento em `audit_logs`, visível no painel na aba
-de auditoria e exportável em CSV (`GET /audit/export`). É o primeiro lugar para
-responder "quem fez isso e quando".
+### 9.4. Erro de Banco Travado no SQLite (`database is locked`)
+- **Causa:** Algum processo externo montou o volume SQLite sem suporte adequado a travas POSIX ou manteve uma transação de escrita aberta.
+- **Solução:**
+  1. Certifique-se de que nenhum outro container ou script está montando o mesmo arquivo simultaneamente.
+  2. O Aluxen configura automaticamente `PRAGMA busy_timeout = 5000;`.
+  3. Verifique se o sistema de arquivos onde o volume reside suporta bloqueios de arquivo (evite montagens NFS v3 sem lock daemons; prefira volumes locais ext4/XFS).

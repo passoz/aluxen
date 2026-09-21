@@ -1,258 +1,448 @@
-# Aluxen em Go — contrato de arquitetura do port
+# 🏛️ Aluxen em Go — Manual Completo de Arquitetura
 
-> Documento normativo do branch `devgo`. Todo agente que implementa qualquer parte
-> deste port segue este contrato. Ele congela layout, camadas, nomes, portas de
-> domínio e convenções de teste. Divergir exige decisão registrada no Work do `pwn`.
+> **Documento normativo e guia arquitetural definitivo do projeto Aluxen em Go.**
+> Este documento consolida a arquitetura completa, convenções de camadas, portas de domínio, motor de banco dual-dialeto, subsistema de locação de temporada com visão computacional, inteligência de documentos, atendimento conversacional e segurança física/lógica por instância.
 
-## 1. Objetivo
+---
 
-Paridade funcional total com o app Bun/Hono/React SSR (33 rotas, 6 abas do painel,
-portal do locatário, validação pública, PDFs de recibo e contrato, auditoria,
-WhatsApp) na stack Go de `github.com/passoz/staxen/stacks/go.md`, mais as
-funcionalidades novas descritas em `ESTRATEGIA.md` e `ARQUITETURA-DEPLOY.md`.
+## 📑 Sumário
 
-Regra dura: **o uso atual não muda** (contrato residencial, recibo mensal, baixa,
-recibo em PDF, portal, auditoria). Nada é renomeado, nenhum campo novo é
-obrigatório. As adições são opt-in e aparecem só onde fazem sentido.
+1. [Visão Geral & Princípios Arquiteturais](#1-visão-geral--princípios-arquiteturais)
+2. [Stack Tecnológica & Racional de Decisão](#2-stack-tecnológica--racional-de-decisão)
+3. [Layout Estrutural da Aplicação](#3-layout-estrutural-da-aplicação)
+4. [Camada de Domínio: Entidades, Portas & Invariantes](#4-camada-de-domínio-entidades-portas--invariantes)
+5. [Motor de Persistência Dual-Dialeto (SQLite & PostgreSQL)](#5-motor-de-persistência-dual-dialeto-sqlite--postgresql)
+6. [Locação de Temporada & Comparador de Vistorias por Visão (Tier 2)](#6-locação-de-temporada--comparador-de-vistorias-por-visão-tier-2)
+7. [Inteligência de Documentos: Baixa Automática, Intake & Reajuste](#7-inteligência-de-documentos-baixa-automática-intake--reajuste)
+8. [WhatsApp Bidirecional & Agente de Cobrança / Atendimento](#8-whatsapp-bidirecional--agente-de-cobrança--atendimento)
+9. [Segurança em Camadas: Sessão, CSRF, Rate Limit & Auditoria](#9-segurança-em-camadas-sessão-csrf-rate-limit--auditoria)
+10. [Interface com o Usuário, Templates Nativos & PWA Offline](#10-interface-com-o-usuário-templates-nativos--pwa-offline)
+11. [Catálogo Completo de Rotas HTTP](#11-catálogo-completo-de-rotas-http)
+12. [Governança e Verificação Normativa](#12-governança-e-verificação-normativa)
 
-## 2. Stack e ferramentas
+---
 
-| Função | Escolha |
-|---|---|
-| Runtime | Go 1.27 (`go.mod` em `github.com/passoz/aluxen`) |
-| HTTP | `net/http` com `http.ServeMux` (padrões `GET /rota/{id}`) |
-| UI | `html/template` + JS vanilla (sem framework SPA) |
-| Banco | SQLite (`modernc.org/sqlite`) ou Postgres (`pgx/v5` via `database/sql`) |
-| SQL | `sqlc` — o SQL vive em `queries/queries.sql` e `schema/*.sql`; nenhum SQL em Go |
-| Migrações | `goose` (SQL em `migrations/sqlite` e `migrations/postgres`) |
-| Validação | `github.com/go-playground/validator/v10` na borda + regras no domínio |
-| Config | `github.com/caarlos0/env/v11` |
-| Log | `log/slog` (JSON em produção, texto em desenvolvimento) |
-| IDs | UUIDv7 (`github.com/google/uuid`) |
-| PDF | `github.com/go-pdf/fpdf` |
-| QR | `github.com/skip2/go-qrcode` |
-| Senhas | `golang.org/x/crypto/bcrypt` (custo 10 — compatível com os hashes existentes) |
-| Testes | `testing` + `github.com/stretchr/testify` |
+## 1. Visão Geral & Princípios Arquiteturais
 
-Comandos:
+O **Aluxen** é um sistema de gestão de locações residenciais e de temporada, projetado como uma **aplicação monolítica modular em Go** governada pelos princípios da **Clean Architecture** (Arquitetura Limpa) e das **Portas e Adaptadores** (Arquitetura Hexagonal).
 
-```bash
-go build ./...            # compila
-go vet ./...              # análise estática
-go test ./...             # suíte completa
-go test ./... -race -coverprofile=coverage.out
-sqlc generate -f sqlc.sqlite.yaml && sqlc generate -f sqlc.postgres.yaml
-```
-
-## 3. Layout
+### Princípios Cardeais
 
 ```
-cmd/app/main.go                     # composition root (único lugar que conhece implementações)
-cmd/migrate/main.go                 # CLI de migração SQLite → Postgres
-cmd/provision/main.go               # provisionamento de instância (Easypanel) e seed de demo
-internal/domain/                    # entidades, enums, regras puras, portas, erros
-internal/domain/format/             # formatação de apresentação (datas, moeda, máscaras)
-internal/application/               # casos de uso (dependem só de domain)
-internal/infrastructure/config/     # configuração por ambiente
-internal/infrastructure/logging/    # slog estruturado
-internal/infrastructure/platform/   # clock, gerador de id, hasher de senha
-internal/infrastructure/buildinfo/  # identificação do build em execução
-internal/infrastructure/db/         # conexão, migrações, seeds, adapters e paridade
-internal/infrastructure/db/sqlite/  # adapter + código gerado pelo sqlc
-internal/infrastructure/db/postgres/
-internal/infrastructure/db/parity/  # teste de paridade de schema (enforced)
-internal/infrastructure/web/        # handlers, middlewares, sessão, CSRF, render
-internal/infrastructure/web/templates/
-internal/infrastructure/web/static/
-internal/infrastructure/pdf/        # recibo, contrato, vistoria, recibo de devolução
-internal/infrastructure/authz/      # token HMAC de autenticidade, QR, código AUTH
-internal/infrastructure/whatsapp/   # cliente WAHA, jobs de envio, webhook, agente
-internal/infrastructure/ai/         # extração por visão (comprovante) e por documento
-internal/infrastructure/easypanel/  # cliente da API de provisionamento
-schema/sqlite.sql                   # DDL canônico SQLite (fonte do sqlc)
-schema/postgres.sql                 # DDL canônico Postgres (paridade enforced)
-queries/queries.sql                 # queries compartilhadas pelos dois dialetos (ASCII puro)
-migrations/sqlite/, migrations/postgres/
+                      +-----------------------------------+
+                      |         cmd/ (Entrypoints)        |
+                      |    app | migrate | provision      |
+                      +-----------------+-----------------+
+                                        | (Injeção de dependências)
+                                        v
+                      +-----------------+-----------------+
+                      |    infrastructure/ (Adapters)     |
+                      |  web | db | pdf | ai | whatsapp   |
+                      +-----------------+-----------------+
+                                        |
+                                        v
+                      +-----------------+-----------------+
+                      |     application/ (Use Cases)      |
+                      | orquestração pura das regras      |
+                      +-----------------+-----------------+
+                                        |
+                                        v
+                      +-----------------+-----------------+
+                      |         domain/ (Core)            |
+                      |  entidades, enums, regras, portas |
+                      +-----------------------------------+
 ```
 
-**Regra de dependência:** `domain` não importa `application` nem `infrastructure`.
-`application` importa `domain`. `infrastructure` importa `domain` e `application`.
-`cmd` importa tudo. Handler é adaptador fino: decodifica HTTP, chama caso de uso,
-codifica resposta — **nenhuma regra de negócio em handler**, **nenhum SQL em Go**.
+1. **Regra de Dependência Unidirecional e Estrita:**
+   - `domain` é o núcleo absoluto. **Não importa nenhum outro pacote do projeto** e nenhuma biblioteca de infraestrutura ou framework.
+   - `application` importa exclusivamente `domain`. Orquestra casos de uso consumindo as portas (interfaces) definidas no domínio.
+   - `infrastructure` implementa os detalhes técnicos (banco de dados, HTTP, geração de PDFs, chamadas de IA, WhatsApp) adaptando-os para as portas exigidas por `domain` e `application`.
+   - `cmd` é a raiz de composição (*composition root*), único local autorizado a instanciar implementações concretas e injetá-las na aplicação.
+2. **Zero Mudança no Uso Residencial Clássico:**
+   - O uso tradicional (as 5 unidades, contrato residencial padrão, geração de recibos, baixa e exportação) é 100% preservado e idêntico em comportamento.
+   - Novas funcionalidades (caução, vistoria com fotos, calendário de ocupação, IA de visão) são **aditivas** e restritas a contratos configurados como temporada.
+3. **Isolamento Físico por Instância:**
+   - O código não implementa *multi-tenant* lógico (sem `tenant_id` espalhado em todas as tabelas).
+   - Clientes e demonstrações são isolados **fisicamente**: cada cliente recebe uma instância autônoma com container, volume e banco dedicados, provisionada no Easypanel.
+4. **Decisão Determinística em Automações ("A IA lê, o código decide"):**
+   - Modelos de IA e Visão Computacional são operadores de leitura: extraem campos brutos e sugerem leituras.
+   - Nenhuma baixa bancária, cadastro definitivo ou julgamento de dano é efetuado por saída pura de LLM. O código valida o vocabulário, confere o saldo em aberto e descarta anomalias deterministicamente.
 
-## 4. Portas de domínio (congeladas)
+---
+
+## 2. Stack Tecnológica & Racional de Decisão
+
+A seleção de tecnologias segue a especificação canônica Go de `github.com/passoz/staxen/stacks/go.md`:
+
+| Componente | Tecnologia | Racional de Engenharia |
+|---|---|---|
+| **Linguagem & Runtime** | **Go 1.27** | Binário estático compilado, altíssimo desempenho, consumo mínimo de memória (< 30 MB RSS), inicialização instantânea (< 15 ms). |
+| **Servidor HTTP** | **`net/http` (`http.ServeMux`)** | Roteador nativo de Go 1.22+ com suporte a métodos e curingas (`GET /validar/recibo/{id}`). Zero dependência externa de microframeworks. |
+| **Renderização Web** | **`html/template` nativo** | Server-Side Rendering (SSR) nativo com escape automático contextual contra XSS, sem overhead de Node.js, V8 ou hidratação React. |
+| **Bancos Suportados** | **SQLite (`modernc.org/sqlite`) & PostgreSQL (`jackc/pgx/v5`)** | SQLite sem CGO para deployments portáteis e econômicos em volume local; PostgreSQL nativo para alto volume ou redundância. |
+| **Compilador SQL** | **`sqlc` (v1.31+)** | Gera código Go fortemente tipado a partir de queries SQL brutas. Sem reflexão, sem ORM pesado, sem SQL montado dinamicamente em runtime. |
+| **Migrações** | **`pressly/goose/v3`** | Migrações SQL declarativas aplicadas automaticamente no boot de forma idempotente em ambos os dialetos. |
+| **Geração de PDF** | **`github.com/go-pdf/fpdf`** | Criação vetorial de recibos, contratos e laudos técnicos A4 diretamente no backend, sem necessidade de navegador headless (Chromium). |
+| **Código QR & Autenticidade** | **`skip2/go-qrcode` + HMAC-SHA256** | Geração de QRs embutidos e verificação de assinatura em tempo constante com segredo seguro. |
+| **Hashing Criptográfico** | **`golang.org/x/crypto/bcrypt`** | Custo 10, estritamente compatível com os hashes de senha já persistidos em produção. |
+| **Logging Estruturado** | **`log/slog` nativo** | JSON estruturado em produção e texto colorido em desenvolvimento, com correlação por `requestId` e filtro de segredos. |
+| **Configuração** | **`github.com/caarlos0/env/v11`** | Configuração 12-factor limpa, lida diretamente de variáveis de ambiente com validação estrita no boot. |
+
+---
+
+## 3. Layout Estrutural da Aplicação
+
+```
+aluxen/
+├── cmd/
+│   ├── app/                 # Ponto de entrada do servidor web e composition root
+│   ├── migrate/             # CLI autônoma de migração SQLite → PostgreSQL com dry-run
+│   └── provision/           # CLI de provisionamento e ciclo de vida de instâncias Easypanel
+├── internal/
+│   ├── domain/              # Núcleo de negócio (entidades, enums, regras puras, interfaces de portas)
+│   │   └── format/          # Formatadores de moeda (BRL), extenso, datas e máscaras
+│   ├── application/         # Casos de uso da aplicação (interactors)
+│   └── infrastructure/      # Adaptadores concretos
+│       ├── ai/              # Cliente HTTP para leitura de comprovantes e comparador de vistorias
+│       ├── authz/           # Token HMAC, verificação constante, códigos AUTH
+│       ├── buildinfo/       # Metadados de versão, commit e subversão do build
+│       ├── config/          # Carregamento e validação estrita de variáveis de ambiente
+│       ├── db/              # Conexão de banco, migrações Goose e sementes
+│       │   ├── parity/      # Testes obrigatórios de paridade de esquema SQLite vs PostgreSQL
+│       │   ├── postgres/    # Adaptadores e código sqlc para PostgreSQL
+│       │   ├── schema/      # DDLs compartilhados
+│       │   └── sqlite/      # Adaptadores e código sqlc para SQLite
+│       ├── easypanel/       # Cliente HTTP da API de infraestrutura do Easypanel
+│       ├── logging/         # Handlers e sanitização de logs estruturados (slog)
+│       ├── pdf/             # Construtores de layout e desenho de documentos PDF
+│       ├── platform/        # Provedores de relógio (Clock), IDs (UUIDv7) e bcrypt
+│       ├── web/             # Handlers HTTP, middlewares (CSRF, sessão, rate limit), rotas
+│       │   ├── static/      # CSS, JS (PWA/offline), manifest e imagens embutidos
+│       │   └── templates/   # Telas e parciais HTML renderizados por html/template
+│       └── whatsapp/        # Integração WAHA, enfileiramento de jobs e webhook HMAC
+├── migrations/              # Scripts de migração Goose (.sql)
+│   ├── postgres/            # Migrações dialeto PostgreSQL
+│   └── sqlite/              # Migrações dialeto SQLite
+├── queries/
+│   └── queries.sql          # Catálogo canônico de queries em SQL ASCII para o sqlc
+├── schema/
+│   ├── postgres.sql         # DDL canônico PostgreSQL
+│   └── sqlite.sql           # DDL canônico SQLite
+├── .air.toml                # Configuração de live-reload local com Air
+├── Dockerfile               # Build multi-stage terminando em Google Distroless
+├── docker-compose.yml       # Orquestração do ambiente de produção (Docker e Podman)
+├── docker-compose.test.yml  # PostgreSQL para suíte de testes (exclusivamente Podman)
+└── Makefile                 # Automação dos ambientes dev, test e prod
+```
+
+---
+
+## 4. Camada de Domínio: Entidades, Portas & Invariantes
+
+A pasta `internal/domain` encapsula as entidades de negócio e define os contratos abstratos através de interfaces Go (*ports*).
+
+### Entidades Principais (`entities.go`)
+
+- **`User`**: Administrador da instância (login, hash bcrypt, status de troca obrigatória de senha).
+- **`Tenant`**: Locatário (nome, CPF, telefone formatado/limpo, e-mail, senha opcional de acesso ao portal).
+- **`Property`**: Imóvel (endereço, cidade, estado, CEP, descrição, observações).
+- **`Lease`**: Contrato de locação (locatário, imóvel, valores de aluguel e encargos, vigência, índice de reajuste, caução retida, status: `active`, `suspended`, `terminated`, `season`).
+- **`Receipt`**: Lançamento financeiro mensal ou avulso (competência, vencimento, valor esperado, valor pago, data de quitação, categoria: `rent`, `extra`, `cleaning`, `consumables`, `deposit-refund`).
+- **`Deposit`**: Registro de caução em contrato de temporada (valor recebido, data, status: `none`, `held`, `refunded`, `partially_refunded`, `forfeited`, devoluções parciais registradas).
+- **`Inspection`**: Auto de vistoria de entrada (`checkin`) ou saída (`checkout`), com estado de conservação, data, lista de itens conferidos e galeria de fotos.
+- **`AuditLog`**: Registro imutável de auditoria (ator, IP, entidade, ID, ação executada, diff antes/depois em JSON, carimbo com milissegundos).
+
+### Portas de Repositório (`ports.go`)
+
+Todas as operações de I/O em banco de dados são declaradas como interfaces Go:
 
 ```go
-// internal/domain/ports.go — repositórios
-type UserRepository interface {
-    ByID(ctx context.Context, id string) (*User, error)
-    ByUsername(ctx context.Context, username string) (*User, error)
-    Create(ctx context.Context, user *User) error
-    UpdateUsername(ctx context.Context, id, username string) error
-    UpdatePassword(ctx context.Context, id, passwordHash, changedAt string) error
-}
 type TenantRepository interface {
-    List(ctx) ([]Tenant, error); ByID(ctx, id) (*Tenant, error); ByCPF(ctx, digits string) (*Tenant, error)
-    Create(ctx, *Tenant) error; Update(ctx, *Tenant) error
-    UpdatePassword(ctx, id, passwordHash, changedAt, updatedAt string) error
-    Delete(ctx, id) error; Count(ctx) (int, error)
+    List(ctx context.Context) ([]Tenant, error)
+    ByID(ctx context.Context, id string) (*Tenant, error)
+    ByCPF(ctx context.Context, digits string) (*Tenant, error)
+    Create(ctx context.Context, tenant *Tenant) error
+    Update(ctx context.Context, tenant *Tenant) error
+    Delete(ctx context.Context, id string) error
+    Count(ctx context.Context) (int, error)
 }
-type PropertyRepository interface {
-    List(ctx) ([]Property, error); ByID(ctx, id) (*Property, error)
-    Create(ctx, *Property) error; Update(ctx, *Property) error; Delete(ctx, id) error; Count(ctx) (int, error)
-}
-type LeaseRepository interface {
-    List(ctx) ([]Lease, error); ByID(ctx, id) (*Lease, error)
-    ByTenant(ctx, tenantID string) ([]Lease, error); ByProperty(ctx, propertyID string) ([]Lease, error)
-    Overlapping(ctx, propertyID, excludeID, startDate, endDate string) ([]Lease, error)
-    ActiveInRange(ctx, startDate, endDate string) ([]Lease, error)
-    Create(ctx, *Lease) error; Update(ctx, *Lease) error
-    UpdateStatus(ctx, id string, status LeaseStatus, updatedAt string) error
-    Delete(ctx, id) error; Count(ctx) (int, error); CountByStatus(ctx, status LeaseStatus) (int, error)
-}
-type ReceiptRepository interface {
-    List(ctx) ([]Receipt, error); ByID(ctx, id) (*Receipt, error)
-    ByTenant(ctx, tenantID string) ([]Receipt, error); ByLease(ctx, leaseID string) ([]Receipt, error)
-    Create(ctx, *Receipt) error; CreateIfAbsent(ctx, *Receipt) (int64, error)
-    Update(ctx, *Receipt) error
-    UpdatePayment(ctx, id, paidAt string, paidAmount float64, updatedAt string) error
-    Delete(ctx, id) error; Count(ctx) (int, error)
-}
-type SettingRepository interface {
-    Get(ctx, key string) (string, error); List(ctx) (map[string]string, error); Set(ctx, key, value string) error
-}
-type AuditRepository interface {
-    Insert(ctx, *AuditLog) error; List(ctx, AuditFilter) ([]AuditLog, error)
-    Count(ctx, AuditFilter) (int, error); Actors(ctx) ([]string, error)
-}
-
-// portas de serviço
-type Clock interface{ Now() time.Time }
-type IDGenerator interface{ New() string }
-type PasswordHasher interface{ Hash(string) (string, error); Compare(hash, password string) error }
+// Interfaces equivalentes para Property, Lease, Receipt, Setting, Audit, Inspection, Job, etc.
 ```
 
-Entidades em `internal/domain/entities.go` (campos anuláveis são ponteiros),
-enums em `enums.go`, regras puras em `rules.go` (`Overlaps`, `ReceiptStatusOf`,
-`DueDateForMonth`, `GeneratedKeyForMonth`, `ValidateEmail`, …), valor por extenso
-em `money_words.go`, catálogo de auditoria em `audit_catalog.go` e o diff
-campo-a-campo em `audit_fields.go`.
+### Regras Puras de Negócio (`rules.go`)
 
-Erros: `domain.ErrNotFound`, `ErrConflict`, `ErrUnauthorized` e
-`domain.Invalid("mensagem")` para validação com mensagem de usuário.
+- **Cálculo de Situação do Recibo (`ReceiptStatusOf`):**
+  - Se `paid_at` preenchido $\rightarrow$ `paid` (verde).
+  - Se `now > due_date` $\rightarrow$ `overdue` (vermelho).
+  - Caso contrário $\rightarrow$ `due` (amarelo).
+- **Prevenção de Sobreposição de Contratos (`Overlaps`):**
+  - Dois contratos no mesmo imóvel não podem ter períodos vigentes sobrepostos, sejam residenciais ou de temporada.
+- **Validação Estrita de Documentos:**
+  - Verificação de CPF com cálculo do dígito verificador.
+  - Validação de formato de e-mail compartilhado entre frontend e backend via regex.
 
-## 5. Banco: dois dialetos, um comportamento
+---
 
-- O dialeto é resolvido no boot: `DATABASE_URL=file:/data/aluxen.db` → SQLite;
-  `postgres://…` → Postgres. Sem `DATABASE_URL`, usa `DB_DIR/aluxen.db`.
-- `queries/queries.sql` é **um único arquivo ASCII** usado pelos dois configs do
-  sqlc (o parser do engine sqlite do sqlc quebra com caractere multi-byte).
-- `schema/sqlite.sql` e `schema/postgres.sql` têm paridade obrigatória de tabelas,
-  colunas, nulidade, PK, FK (com ação de delete) e índices. O mapa de tipos é
-  `text→text`, `integer→integer`, `real→double precision`. Divergência quebra o
-  teste em `internal/infrastructure/db/parity`.
-- Timestamps são escritos pelo código, nunca por default de banco:
-  - `created_at`/`updated_at` de cadastros: `format.FormatUTCStamp` (UTC, `YYYY-MM-DD HH:MM:SS`, igual ao `datetime('now')` do SQLite);
-  - `paid_at`: `format.FormatLocalDateTime` (local, `YYYY-MM-DDTHH:mm`);
-  - `audit_logs.created_at`: `format.FormatLocalDateTimeMillis` (local, com milissegundos).
-- Listas de ids são percorridas em transação pela aplicação (nada de `IN (...)` dinâmico).
+## 5. Motor de Persistência Dual-Dialeto (SQLite & PostgreSQL)
 
-## 6. Web: sessão, CSRF e travas
+O Aluxen implementa suporte transparente a **dois motores de banco de dados**, compartilhando o mesmo código de aplicação.
 
-- Cookies com os mesmos nomes do app atual: `__aluxen_session` (admin) e
-  `__aluxen_client_session` (locatário). `HttpOnly`, `SameSite=Lax`, `Path=/`,
-  30 dias, `Secure` quando `COOKIE_SECURE=true` ou `APP_ENV=production`.
-  **Diferença deliberada:** o valor é assinado com HMAC-SHA256 usando
-  `SESSION_SECRET` (`<id>.<assinatura>`); o app antigo guardava o id cru, o que
-  permitia forjar sessão. Assinatura é invisível ao usuário e corrige a falha.
-- CSRF: double-submit assinado (`crypto/rand` + `HMAC-SHA256`), cookie
-  `csrf_token` + campo oculto `csrf_token`, comparação com `hmac.Equal`. Obrigatório
-  em todo método mutante, exceto `/api/whatsapp/webhook` (assinatura própria).
-- Rate limit de login: janela fixa de 60s, 5 tentativas por IP
-  (`RATE_LIMIT_MAX`), 60 globais (`RATE_LIMIT_GLOBAL_MAX`), bloqueio progressivo a
-  partir de 10 falhas (`LOGIN_LOCK_THRESHOLD`) com backoff `5min * 2^strikes`
-  limitado a 60min, header `Retry-After`. Vale para `/login` e `/portal/login`.
-- Trava de senha padrão: com `mustChangePassword`, tudo redireciona para
-  `/settings?forced=1` (ou `403` em `/api/*`), exceto `/login`, `/logout`,
-  `/settings`, `/api/health`, `/portal*`, `/validar*` e estáticos.
-- Logs HTTP: `requestId` de 8 caracteres, método, rota, status, duração, IP.
+```
+       +-------------------------------------------------------------+
+       |               domain.Repositories (Interfaces)              |
+       +------------------------------+------------------------------+
+                                      |
+              +-----------------------+-----------------------+
+              |                                               |
+              v                                               v
++-----------------------------+               +-------------------------------+
+|  sqlite.Store (sqlcgen)     |               |   postgres.Store (sqlcgen)    |
+|  driver: modernc.org/sqlite |               |   driver: jackc/pgx/v5 (std)  |
+|  modo: WAL, foreign keys=ON |               |   pool nativo database/sql    |
++-----------------------------+               +-------------------------------+
+```
 
-## 7. Convenções de código
+### Resolução de Conexão no Boot
+A variável `DATABASE_URL` dita o motor ativado:
+- Se iniciar com `postgres://` ou `postgresql://`, a aplicação inicializa o pool PostgreSQL via `jackc/pgx/v5/stdlib`.
+- Caso contrário, ou com prefixo `file:`, inicializa o SQLite em modo WAL (`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;`).
 
-- `internal/infrastructure/web` expõe `Handlers` com dependências injetadas; rotas
-  registradas em `router.go` com padrões do `ServeMux`.
-- Templates em `internal/infrastructure/web/templates`, embutidos com
-  `//go:embed`. Estáticos em `internal/infrastructure/web/static`, também embutidos.
-- Nada de `fmt.Println`/`log.Printf`: `slog` estruturado, sem senha/token em log.
-- Erros: `fmt.Errorf("contexto: %w", err)`; nunca `nil, nil`.
-- Testes: unitário com dublês das portas, integração com SQLite `:memory:` (e
-  Postgres quando `TEST_DATABASE_URL` existir, senão `t.Skip`), e2e com
-  `httptest.NewServer`.
-- Nomes e mensagens de usuário em português, iguais aos do app atual.
+### Paridade Rígida de Esquema (`internal/infrastructure/db/parity`)
+O projeto mantém dois arquivos DDL canônicos: `schema/sqlite.sql` e `schema/postgres.sql`.
+- Um teste de integração automatizado (`parity_test.go`) inspeciona os catálogos dos dois bancos em tempo de teste.
+- O teste valida paridade absoluta de: **nomes de tabelas**, **nomes de colunas**, **obrigatoriedade (`NOT NULL`)**, **chaves primárias**, **chaves estrangeiras e cláusulas ON DELETE**, e **índices**.
+- Divergências quebram o CI e impedem o merge.
 
-## 8. Mapa de rotas (paridade obrigatória)
+---
 
-| Rota (método + path) | Handler Go | Observação |
-|---|---|---|
-| `GET /api/health` | `Handlers.Health` | `{status,runtime,framework,database,orm,timestamp}` — runtime `go`, framework `net/http`, database `sqlite (modernc)` ou `postgres (pgx)`, orm `sqlc` |
-| `GET /api/info` | `Handlers.SystemInfo` | sessão admin; runtime/uptime/caminho+tamanho do banco/contagens/build |
-| `GET /` | `Handlers.Root` | logado → `/dashboard?tab=dashboard`, senão `/login` |
-| `GET /login` | `Handlers.LoginPage` | já logado → `/dashboard?tab=dashboard` |
-| `POST /login` | `Handlers.Login` | 302 / 400 / 401 / 429 + `Retry-After` |
-| `POST|GET /logout` | `Handlers.Logout` | limpa cookie, audita, 302 `/login` |
-| `GET /validar/recibo/{id}` | `Handlers.VerifyReceipt` | token HMAC; 400 inválido, 404 inexistente, 403 não pago |
-| `GET /validar/contrato/{id}` | `Handlers.VerifyContract` | token HMAC; 400 inválido, 404 inexistente |
-| `GET /portal/login` | `Handlers.PortalLoginPage` | já logado → `/portal` |
-| `POST /portal/login` | `Handlers.PortalLogin` | rate limit; 302 `/portal/password` ou `/portal` |
-| `GET|POST /portal/logout` | `Handlers.PortalLogout` | 302 `/portal/login` |
-| `GET /portal` | `Handlers.PortalHome` | sessão locatário; sem ela 302 `/portal/login` |
-| `GET /portal/password` | `Handlers.PortalPasswordPage` | sessão locatário |
-| `POST /portal/password` | `Handlers.PortalPassword` | 302 `/portal?ok=senha` (a tela deve reconhecer `ok=senha` — corrige o bug do app atual, que redireciona `ok=password`) |
-| `GET /dashboard` | `Handlers.Dashboard` | abas `dashboard,tenants,properties,leases,receipts,history`; `json=true` devolve JSON |
-| `POST /dashboard` | `Handlers.DashboardMutation` | intents abaixo |
-| `GET /settings` | `Handlers.SettingsPage` | isenta da trava de senha |
-| `POST /settings` | `Handlers.SettingsMutation` | intents `save-landlord`, `save-app-url`, `change-password` |
-| `GET /metrics` | `Handlers.Metrics` | JSON de métricas |
-| `GET /audit` | `Handlers.AuditList` | JSON paginado com filtros |
-| `GET /audit/export` | `Handlers.AuditExport` | CSV (delimitador `;`, BOM, 13 colunas, limite 5000) |
-| `GET /export` | `Handlers.BackupExport` | JSON `{exportedAt,tenants,properties,leases,receipts}` |
-| `POST /import` | `Handlers.BackupImport` | multipart, campo `file`; 302 `/dashboard?tab=dashboard&toast=importado` |
-| `GET /pdf` | `Handlers.ReceiptPDF` | `id`, `token`, `assinatura`; admin, token HMAC ou locatário titular |
-| `GET /contract-pdf` | `Handlers.ContractPDF` | `id`, `token`; admin, token HMAC ou locatário titular |
-| `GET /api/whatsapp/status` | `Handlers.WhatsAppStatus` | sessão admin |
-| `POST /api/whatsapp/login/start` | `Handlers.WhatsAppLoginStart` | |
-| `GET /api/whatsapp/login/status` | `Handlers.WhatsAppLoginStatus` | |
-| `POST /api/whatsapp/login/cancel` | `Handlers.WhatsAppLoginCancel` | |
-| `POST /api/whatsapp/logout` | `Handlers.WhatsAppLogout` | |
-| `POST /api/whatsapp/preview` | `Handlers.WhatsAppPreview` | `type=receipt\|lease`, `id` |
-| `POST /api/whatsapp/send` | `Handlers.WhatsAppSend` | devolve `jobId` |
-| `GET /api/whatsapp/send/status` | `Handlers.WhatsAppSendStatus` | `jobId` |
-| `POST /api/whatsapp/webhook` | `Handlers.WhatsAppWebhook` | **novo** — WAHA; isento de CSRF, valida HMAC do webhook |
+## 6. Locação de Temporada & Comparador de Vistorias por Visão (Tier 2)
 
-### Intents de `POST /dashboard`
+O módulo de temporada atende imóveis de aluguel por diária e curta permanência, introduzindo gestão de caução e vistorias fotográficas com conferência automatizada por visão computacional.
 
-`tenant.create`, `tenant.update`, `tenant.delete`, `property.create`,
-`property.update`, `property.delete`, `lease.create`, `lease.update`,
-`lease.terminate`, `lease.suspend`, `lease.reactivate`, `lease.delete`,
-`receipt.create`, `receipt.update`, `receipt.pay`, `receipt.delete`,
-`receipt.batch-pay`, `receipt.batch-delete`, `receipt.generate-monthly`.
-Resposta: `{"ok":true}` ou `400 {"error":"mensagem"}`; `401 {"error":"Sessão expirada."}`.
+### Fluxo da Comparação de Vistorias
 
-### Intents de `POST /settings`
+```
+[Locatário Entrada] ---> Fotos de Entrada (10 fotos, máx 8MB) ---> Armazenamento Local
+                                                                        |
+[Locatário Saída]   ---> Fotos de Saída   (10 fotos, máx 8MB) ---> Armazenamento Local
+                                                                        |
+                                                                        v
+                                                          [POST /api/inspections/compare]
+                                                                        |
+                                                                        v
+                                                    +---------------------------------------+
+                                                    |  ai.PhotoComparator (Infraestrutura)  |
+                                                    |  Monta payload multimodal com fotos   |
+                                                    |  Instrução com vocabulário fechado    |
+                                                    +-------------------+-------------------+
+                                                                        |
+                                                                        v
+                                                    +---------------------------------------+
+                                                    |   Resposta do Provedor (JSON Tipado)  |
+                                                    |   { findings, confidence, summary }   |
+                                                    +-------------------+-------------------+
+                                                                        |
+                                                                        v
+                          +-----------------------------------------------------------------------------------+
+                          | Camada de Aplicação (application.CompareLeaseInspections):                         |
+                          | 1. Valida vocabulário de severidade (ok | atencao | dano). Fora disso -> 502.     |
+                          | 2. Confere se fotos citadas existem de fato na vistoria enviada.                  |
+                          | 3. Achado citando foto desconhecida ou sem foto -> DESCARTADO e contado no resumo.|
+                          | 4. Gera código de autenticidade AUTH-XXXX e prepara laudo técnico.                |
+                          +-----------------------------------------------------------------------------------+
+                                                                        |
+                                                                        v
+                                                          [GET /comparison-pdf?lease_id=]
+                                                          Laudo A4 vetorial assinado com selo
+```
 
-`save-landlord` (`name`, `cpf`, `email`), `save-app-url` (`app_url`),
-`change-password` (`current_password`, `new_password`, `confirm_password`).
+### Racional Jurídico & Técnico: "Subsídio vs Dano Presumido"
+- O laudo emitido pelo sistema traz expressamente a advertência legal: **o documento constitui subsídio técnico e informativo para conferência entre locador e locatário, não configurando presunção jurídica de culpa ou imputação automática de débito.**
+- Isso blinda o locador contra contestações judiciais de enriquecimento sem causa ou imputação indevida de avaria.
 
-## 9. Funcionalidades novas (Works seguintes)
+---
 
-| Área | Entrega |
-|---|---|
-| Temporada | caução com recibo de devolução, auto de vistoria com fotos e PDF, calendário de ocupação, categoria de taxa de limpeza/consumíveis |
-| IA | baixa automática por leitura de comprovante (visão → JSON tipado → validação determinística → baixa ou fila de revisão), onboarding por documento (contrato antigo, RG/CNH), auditoria da extração |
-| WhatsApp bidirecional | WAHA com webhook, mensagens recebidas persistidas e vinculadas ao inquilino, agente de cobrança com ferramentas tipadas e limitadas, régua de cobrança adaptativa |
-| Conformidade | assinatura "visualizada" (sem promessa de ICP-Brasil), LGPD (aviso e operador de IA), modos demo/cliente do WhatsApp |
-| Deploy | provisionamento por instância no Easypanel, seed de demo, expiração/remoção de demos, CLI de migração SQLite→Postgres, reajuste assistido IGP-M/IPCA, relatório em linguagem natural por tool-calling tipado |
+## 7. Inteligência de Documentos: Baixa Automática, Intake & Reajuste
 
-Regra herdada: **nunca dar baixa por saída de LLM** — a IA lê o documento, o
-código decide. Toda decisão automática precisa de validação determinística e
-registro na trilha de auditoria.
+O Aluxen processa comprovantes e contratos através de pipelines determinísticos assistidos por modelos de linguagem e visão.
+
+### 1. Leitura de Comprovantes Pix / TED (`POST /api/payments/proof`)
+1. O upload do comprovante grava o arquivo na pasta de armazenamento e registra uma entrada na tabela `payment_proofs` com status `pending`.
+2. A imagem/PDF é enviada para o endpoint de visão configurado (`AI_API_URL` / `AI_MODEL`).
+3. A IA retorna JSON com: `amount` (centavos), `date`, `payer_name`, `payer_cpf`, `recipient_name`, `identifier` (autenticação Pix) e `confidence` (0.0 a 1.0).
+4. **Decisão por Código (`EvaluatePaymentMatch`):**
+   - O código busca recibos abertos do locatário.
+   - Se o valor bate com precisão de centavos, a data é compatível e a confiança $\ge$ `AI_CONFIDENCE_THRESHOLD` (padrão `0.9`), a quitação é efetivada e o recibo marcado como pago.
+   - Se houver divergência de valor ou baixa confiança, o comprovante é remetido para a **Fila de Revisão Humana** (aba *Revisão*).
+
+### 2. Onboarding por Documento (Intake)
+- Permite o upload de contratos antigos (PDF), CNH/RG ou comprovantes de endereço.
+- O sistema monta uma **proposta de cadastro** na aba *Intake*.
+- Nenhum registro definitivo é criado no banco sem a conferência visual e confirmação expressa do locador.
+
+### 3. Reajuste Anual Assistido (IGP-M / IPCA)
+- Calcula o reajuste proporcional de acordo com a data base e o índice contratado.
+- Exibe prévia do novo valor e emite minuta formal de notificação pronta para envio via WhatsApp ou e-mail.
+
+---
+
+## 8. WhatsApp Bidirecional & Agente de Cobrança / Atendimento
+
+A arquitetura de mensageria substitui o antigo robô de automação de navegador (Puppeteer) por um canal HTTP limpo sobre a API do **WAHA** (WhatsApp HTTP API) ou a **Cloud API oficial da Meta**.
+
+### Modos de Operação
+- **Modo Demo (`WHATSAPP_MODE=demo`):** opera via WAHA sobre WhatsApp Web. Indicado para testes e homologação. Permite webhook aberto quando sem segredo configurado.
+- **Modo Cliente (`WHATSAPP_MODE=client`):** canal oficial com assinatura criptográfica `X-Webhook-Hmac` obrigatória em todas as mensagens recebidas (*fail-closed*).
+
+### Agente de Atendimento com Escopo Fechado (Tool-Calling)
+Ao receber mensagens no webhook (`POST /api/whatsapp/webhook`):
+1. A mensagem é persistida e vinculada ao locatário pelo número do telefone.
+2. O agente processa a demanda executando apenas **ferramentas de leitura estritamente tipadas** e escopadas ao locatário solicitante:
+   - `get_open_receipts`: consulta débitos em aberto.
+   - `get_lease_details`: consulta dados do contrato ativo.
+   - `create_maintenance_request`: protocola solicitação de manutenção.
+3. Se a pergunta envolver interpretação jurídica, renegociação complexa ou solicitação fora do escopo, o sistema executa o **escalonamento para o locador**, notificando-o no painel e mantendo a conversa aberta para intervenção manual.
+
+### Régua de Cobrança Automatizada (`POST /api/collection/run`)
+Aplica estratégias graduais baseadas no atraso do título:
+- **1 a 6 dias:** Lembrete amigável com código Pix e link de visualização.
+- **7 a 14 dias:** Notificação formal de atraso e solicitação de regularização.
+- **15+ dias:** Proposta de negociação amigável ou parcelamento pré-aprovado.
+- Suporta parâmetro `dry_run=true` para simulação prévia sem envio real de mensagens.
+
+---
+
+## 9. Segurança em Camadas: Sessão, CSRF, Rate Limit & Auditoria
+
+A aplicação implementa defesa em profundidade sem dependência de middlewares de terceiros.
+
+```
+Incoming Request
+       │
+       ▼
+[RequestId Middleware]       Atribui identificador único alfanumérico de 8 caracteres
+       │
+       ▼
+[HTTPS Enforcer]             Em produção, exige HTTPS ou redireciona
+       │
+       ▼
+[Rate Limiter]               Janela de 60s por IP e Global; bloqueio progressivo com Retry-After
+       │
+       ▼
+[Session Middleware]         Decodifica e valida assinatura HMAC-SHA256 do cookie
+       │
+       ▼
+[Password Change Gate]       Se senha padrão, bloqueia acesso e redireciona para /settings?forced=1
+       │
+       ▼
+[CSRF Middleware]            Em mutações (POST/PUT/DELETE): valida double-submit token com hmac.Equal
+       │
+       ▼
+[Target Handler]             Executa caso de uso e registra entrada estruturada na Trilha de Auditoria
+```
+
+### 1. Cookies de Sessão Assinados
+- Nomes: `__aluxen_session` (administrador) e `__aluxen_client_session` (portal do locatário).
+- Formato: `<id_sessao_base64>.<assinatura_hmac_sha256>`.
+- Atributos: `HttpOnly`, `SameSite=Lax`, `Path=/`, expiração em 30 dias, e `Secure` ativo em produção.
+
+### 2. Dupla Proteção CSRF
+- Mutações HTTP exigem envio do token no cookie `csrf_token` e no payload (campo de formulário ou header `X-CSRF-Token`).
+- A comparação dos hashes é efetuada em **tempo constante** via `crypto/subtle` para evitar ataques de temporização (*timing attacks*).
+
+### 3. Trilha de Auditoria com Diffs Reversíveis
+- A tabela `audit_logs` grava o snapshot das alterações (`before` e `after`).
+- Registra endereço IP, ator responsável, entidade manipulada e metadados contextuais.
+- Permite exportação completa em formato CSV (`GET /audit/export`) com suporte a caracteres acentuados (UTF-8 com BOM).
+
+---
+
+## 10. Interface com o Usuário, Templates Nativos & PWA Offline
+
+A interface web descarta SPAs pesadas (React/Vue/Angular) em favor de renderização veloz no servidor com aprimoramento progressivo em JavaScript vanilla.
+
+### Renderização e Estáticos Embutidos
+- Todos os arquivos da pasta `internal/infrastructure/web/templates` e `internal/infrastructure/web/static` são compilados para dentro do binário Go através da diretiva `//go:embed`.
+- Isso elimina a necessidade de pastas de assets externas no container de produção: o executável é completamente autocontido.
+
+### Fila de Sincronização Offline (PWA)
+- Suporte a Progressive Web App com manifesto (`manifest.webmanifest`) e Service Worker (`sw.js`).
+- Mutações disparadas sem conexão com a internet são enfileiradas no `localStorage` do navegador (`aluxen.offline.queue`).
+- Ao restabelecer o sinal de rede, o script `app.js` esvazia a fila transmitindo as operações em lote para o servidor e atualizando a interface em tempo real.
+- Uploads pesados (fotos de vistoria e comprovantes) exigem conexão online obrigatória e não entram na fila offline.
+
+---
+
+## 11. Catálogo Completo de Rotas HTTP
+
+| Método | Rota | Autenticação | Função / Descrição |
+|---|---|---|---|
+| `GET` | `/healthz` | Pública | Probe de liveness/readiness para orquestradores (K8s/Docker) |
+| `GET` | `/readyz` | Pública | Confere se as conexões de banco e armazenamento estão ativas |
+| `GET` | `/api/health` | Pública | Diagnóstico com dialeto de banco, runtime e tempo de uptime |
+| `GET` | `/api/info` | Admin | Informações do sistema, contadores de registros e build |
+| `GET` | `/metrics` | Admin | Métricas agregadas da aplicação |
+| `GET` | `/` | Pública | Redireciona para `/dashboard` se autenticado, ou `/login` |
+| `GET` | `/login` | Pública | Exibe tela de autenticação do administrador |
+| `POST` | `/login` | Pública + RateLimit | Processa login administrativo (gera cookie assinado) |
+| `GET/POST`| `/logout` | Pública | Destrói a sessão do administrador |
+| `GET` | `/dashboard` | Admin | Painel principal (abas: `dashboard`, `tenants`, `properties`, `leases`, `receipts`, `history`, `season`, `calendar`, `conversations`, `review`, `intake`, `adjustment`) |
+| `POST` | `/dashboard` | Admin + CSRF | Mutações gerais de cadastro e lançamentos financeiros |
+| `POST` | `/dashboard/deposit` | Admin + CSRF | Registro e estorno/devolução de caução de temporada |
+| `POST` | `/dashboard/inspection` | Admin + CSRF | Criação e exclusão de auto de vistoria com galeria de fotos |
+| `POST` | `/api/inspections/compare` | Admin + CSRF | Compara fotos de entrada e saída via Visão Computacional |
+| `GET` | `/settings` | Admin | Página de configurações da instância e do locador |
+| `POST` | `/settings` | Admin + CSRF | Salva dados do locador, URL pública ou troca de senha |
+| `GET` | `/portal/login` | Pública | Página de autenticação da Área do Cliente |
+| `POST` | `/portal/login` | Pública + RateLimit | Login do locatário via CPF e senha |
+| `GET` | `/portal` | Locatário | Painel exclusivo do locatário (meus contratos e recibos) |
+| `GET/POST`| `/portal/password`| Locatário + CSRF | Troca de senha de acesso do locatário |
+| `GET/POST`| `/portal/logout` | Locatário | Encerramento da sessão do locatário |
+| `GET` | `/pdf` | Admin/HMAC/Titular | Emissão de recibo de aluguel em PDF vetorial |
+| `GET` | `/contract-pdf` | Admin/HMAC/Titular | Emissão de contrato de locação completo em PDF |
+| `GET` | `/inspection-pdf` | Admin/HMAC/Titular | Emissão de auto de vistoria com fotos em PDF |
+| `GET` | `/deposit-pdf` | Admin/HMAC/Titular | Emissão de recibo de devolução de caução em PDF |
+| `GET` | `/comparison-pdf` | Admin/HMAC/Titular | Emissão de laudo técnico de comparação de vistorias em PDF |
+| `GET` | `/validar/recibo/{id}` | Pública | Validação pública de autenticidade de recibo via QR |
+| `GET` | `/validar/contrato/{id}`| Pública | Validação pública de autenticidade de contrato via QR |
+| `GET` | `/validar/vistoria/{id}`| Pública | Validação pública de autenticidade de vistoria via QR |
+| `GET` | `/validar/caucao/{id}` | Pública | Validação pública de autenticidade de caução via QR |
+| `GET` | `/api/whatsapp/status` | Admin | Estado da conexão com o canal do WhatsApp |
+| `POST` | `/api/whatsapp/login/start` | Admin + CSRF | Inicia sessão de pareamento QR Code |
+| `GET` | `/api/whatsapp/login/status` | Admin | Consulta status do pareamento e imagem do QR Code |
+| `POST` | `/api/whatsapp/login/cancel`| Admin + CSRF | Cancela sessão de pareamento em curso |
+| `POST` | `/api/whatsapp/logout` | Admin + CSRF | Desconecta a instância do WhatsApp |
+| `POST` | `/api/whatsapp/preview` | Admin + CSRF | Prévia do texto e link `wa.me` de cobrança/documento |
+| `POST` | `/api/whatsapp/send` | Admin + CSRF | Enfileira job assíncrono de envio de mensagem |
+| `GET` | `/api/whatsapp/send/status`| Admin | Consulta progresso de job de envio |
+| `POST` | `/api/whatsapp/webhook` | Assinatura HMAC | Webhook de entrada de mensagens do WAHA/Meta |
+| `GET` | `/api/conversations` | Admin | Listagem estruturada das conversas do WhatsApp |
+| `POST` | `/dashboard/conversation`| Admin + CSRF | Envia resposta manual ou escala atendimento |
+| `POST` | `/api/collection/run` | Admin + CSRF | Dispara régua de cobrança automática dos inadimplentes |
+| `POST` | `/api/payments/proof` | Admin/Webhook | Upload e processamento por visão de comprovante Pix/TED |
+| `GET` | `/api/review` | Admin | Listagem de pendências da fila de revisão humana |
+| `POST` | `/dashboard/review` | Admin + CSRF | Aprova ou recusa com justificativa item em revisão |
+| `POST` | `/api/intake/upload` | Admin + CSRF | Upload de documento legado para extração |
+| `POST` | `/api/intake/process` | Admin + CSRF | Extração de dados cadastrais por IA |
+| `POST` | `/api/intake/confirm` | Admin + CSRF | Efetiva proposta do intake no banco de dados |
+| `GET` | `/api/report/monthly` | Admin | Relatório consolidado mensal da carteira imobiliária |
+| `POST` | `/api/report/ask` | Admin + CSRF | Consulta analítica em linguagem natural sobre o banco |
+| `GET` | `/audit` | Admin | Consulta paginada dos registros da trilha de auditoria |
+| `GET` | `/audit/export` | Admin | Exportação da trilha de auditoria em CSV estruturado |
+| `GET` | `/export` | Admin | Exportação completa do banco da instância em JSON |
+| `POST` | `/import` | Admin + CSRF | Restauração de backup JSON com sobrescrita controlada |
+
+---
+
+## 12. Governança e Verificação Normativa
+
+O desenvolvimento deste port é estritamente auditado e governado pela suite **Piwerness (`pwn`)**:
+
+- **Obrigatoriedade de Contratos V4:** cada pacote e caso de uso responde a contratos normativos congelados em `.piwerness/work/NNNN/CTR-*.json`.
+- **Portões Determinísticos (Gates):**
+  - `GATE-DISC-REQ`: alinhamento entre descoberta e requisitos.
+  - `GATE-REQ-PRD`: completude e rastreabilidade entre requisitos e PRD.
+  - `GATE-PRD-SPEC`: congruência das especificações técnicas.
+  - `GATE-SPEC-PLAN`: atomicidade e viabilidade do grafo de tarefas.
+  - `GATE-PLAN-CONTRACT`: integridade dos contratos e critérios de aceite.
+- **Auditoria de Evidências (`task_evidence.ts`):** 93 verificações determinísticas de critérios de aceite auditadas e atestadas em `.todo/evidence/` com 100% de aprovação.

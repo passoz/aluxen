@@ -1,6 +1,6 @@
 # 🏢 Aluxen — Coleção de Logos em PNG (Alta Resolução)
 
-Coleção de **10 conceitos de logo moderna e com estética de startup** para o **Aluxen** (sistema de gestão de locações imobiliárias em Bun, SQLite, Hono e React SSR), gerados em **PNG de alta definição (1024x1024)**.
+Coleção de **10 conceitos de logo moderna e com estética de startup** para o **Aluxen** (sistema de gestão de locações imobiliárias em Go, SQLite/PostgreSQL, Clean Architecture e templates HTML nativos), gerados em **PNG de alta definição (1024x1024)**.
 
 ---
 

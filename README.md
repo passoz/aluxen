@@ -39,7 +39,7 @@ Sistema completo de **gestão de locações imobiliárias**, escrito em **Go**: 
   - [19. Leitura Assistida por IA, Intake & Reajuste](#19-leitura-assistida-por-ia-intake--reajuste)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
-- [Comandos Disponíveis](#-comandos-disponíveis)
+- [Comandos Disponíveis (Makefile)](#-comandos-disponíveis-makefile)
 - [Banco de Dados & Migrações](#-banco-de-dados--migrações)
 - [Execução com Docker e Docker Compose](#-execução-com-docker-e-docker-compose)
 - [Testes e Qualidade de Código](#-testes-e-qualidade-de-código)
@@ -423,9 +423,12 @@ aluxen/
 ├── queries/                    # Queries SQL usadas pelo sqlc
 ├── schema/                     # Esquema de referência (SQLite/Postgres)
 ├── test/e2e/                   # Testes ponta a ponta (httptest) do app Go
-├── docs/                       # Documentação técnica (ver seção abaixo)
-├── Dockerfile                  # Imagem multi-stage → distroless
-├── docker-compose.yml          # Orquestração com volume persistente em /data
+├── docs/                       # Documentação técnica detalhada (ver índice abaixo)
+├── Makefile                    # Ambientes de execução padronizados (dev / test / prod)
+├── .air.toml                   # Configuração de live-reload local via Air
+├── Dockerfile                  # Imagem multi-stage estática → Google Distroless
+├── docker-compose.yml          # Orquestração de produção com volume persistente em /data
+├── docker-compose.test.yml     # PostgreSQL 17 de testes (exclusivamente via Podman)
 └── .env.example                # Contrato das variáveis de ambiente
 ```
 
@@ -436,16 +439,17 @@ aluxen/
 
 ## 📚 Documentação Técnica Aprofundada
 
-Para detalhes de engenharia de cada subsistema, consulte os manuais da pasta `docs/`:
+Para detalhes aprofundados de arquitetura, domínio e operação de cada subsistema, consulte os manuais dedicados na pasta `docs/`:
 
-- **[Arquitetura do port Go (`docs/ARQUITETURA-GO.md`)](docs/ARQUITETURA-GO.md)**: contrato normativo do port — camadas, dependências, mapa de rotas e funcionalidades novas.
-- **[Deploy por instância (`ARQUITETURA-DEPLOY.md`)](ARQUITETURA-DEPLOY.md)**: uma instância por cliente no Easypanel, SQLite/Postgres e provisionamento.
-- **[Operação (`docs/OPERACAO-GO.md`)](docs/OPERACAO-GO.md)**: rotina de operação da instância Go.
-- **[WhatsApp (`docs/WHATSAPP-GO.md`)](docs/WHATSAPP-GO.md)**: modos demo/cliente, configuração do canal (WAHA / Cloud API), webhook e endpoints.
-- **[Validação pública (`docs/VALIDACAO-GO.md`)](docs/VALIDACAO-GO.md)**: protocolo HMAC, URL pública e a **dependência de hospedagem contínua** do QR Code.
-- **[Privacidade / LGPD (`docs/PRIVACIDADE.md`)](docs/PRIVACIDADE.md)**: dados tratados, finalidades, controlador/operador, retenção e direitos do titular.
-- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: rotas, autenticação, payloads, códigos de status e mensagens de erro literais.
-
+- **[Manual de Arquitetura Go (`docs/ARQUITETURA-GO.md`)](docs/ARQUITETURA-GO.md)**: arquitetura limpa (Clean Architecture), layout, camadas, entidades, regras puras, motor dual-dialeto (SQLite/PostgreSQL) e catálogo de rotas.
+- **[Guia do Desenvolvedor (`docs/GUIA-DESENVOLVEDOR.md`)](docs/GUIA-DESENVOLVEDOR.md)**: onboarding de engenharia, live-reload com Air (`make dev`), ciclo de banco (sqlc + Goose), paridade de esquemas e testes com Podman (`make test`).
+- **[Manual de Locação de Temporada & Vistorias por Visão (`docs/TEMPORADA.md`)](docs/TEMPORADA.md)**: subsistema de temporada — gestão de caução, vistorias fotográficas de check-in/check-out, comparador inteligente de fotos por IA (Tier 2), emissão do laudo técnico com prova pública e calendário de ocupação.
+- **[Manual de Operação e Runbook (`docs/OPERACAO-GO.md`)](docs/OPERACAO-GO.md)**: provisionamento no Easypanel, ambientes (`make dev/test/prod`), ciclo de vida de demos, migração SQLite $\rightarrow$ Postgres (`cmd/migrate`), atualização canário, backup e troubleshooting.
+- **[Catálogo de APIs e Rotas HTTP (`docs/API.md`)](docs/API.md)**: especificação exaustiva de todos os endpoints HTTP, autenticação, payloads JSON, códigos de status e mensagens de erro literais.
+- **[WhatsApp e Atendimento Conversacional (`docs/WHATSAPP-GO.md`)](docs/WHATSAPP-GO.md)**: modos demo (WAHA) e cliente (Cloud API oficial), webhook HMAC, régua de cobrança automática e agente de atendimento tipado.
+- **[Validação Pública & Autenticidade (`docs/VALIDACAO-GO.md`)](docs/VALIDACAO-GO.md)**: protocolo criptográfico HMAC-SHA256, URL pública e a dependência de hospedagem contínua do QR Code.
+- **[Privacidade & LGPD (`docs/PRIVACIDADE.md`)](docs/PRIVACIDADE.md)**: tratamento de dados, operador de IA, finalidades, descarte e conformidade jurídica.
+- **[Deploy por Instância (`ARQUITETURA-DEPLOY.md`)](ARQUITETURA-DEPLOY.md)**: decisão de isolamento físico, multi-adapter e governança de infraestrutura.
 ---
 
 ## 📄 Licença
