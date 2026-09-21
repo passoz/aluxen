@@ -55,7 +55,13 @@ func (h *Handlers) InspectionCompare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view, err := application.CompareLeaseInspections(r.Context(), h.Deps, h.comparisonAuditContext(r), leaseID)
-	if handled := h.failComparison(w, r, err); handled {
+	if err != nil {
+		// As duas falhas próprias da comparação (provedor ausente e resposta fora
+		// do formato) têm código próprio; o resto é erro de domínio comum —
+		// validação sem vistoria, por exemplo. Nunca responder ok sem comparação.
+		if !h.failComparison(w, r, err) {
+			h.mapError(w, r, err)
+		}
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "comparison": view})

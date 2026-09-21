@@ -30,6 +30,7 @@ Regras:
 - severity: exatamente "ok", "atencao" ou "dano" — nada fora disso.
 - note: observação curta sobre o que mudou.
 - checkInPhoto e checkOutPhoto: o nome EXATO do arquivo da foto correspondente, como aparece no texto que acompanha cada imagem; deixe vazio quando não houver foto daquele lado.
+- Cada achado precisa citar ao menos uma foto (checkInPhoto ou checkOutPhoto): achado sem foto nenhuma não serve.
 Nunca invente: você só compara o que aparece nas fotos.`
 
 // CompareInspectionPhotos compara as fotos das vistorias de entrada e de saída

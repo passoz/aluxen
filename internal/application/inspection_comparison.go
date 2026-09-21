@@ -103,10 +103,9 @@ type InspectionComparisonView struct {
 	ProviderSummary string `json:"providerSummary"`
 	// Laudo é o texto determinístico montado a partir dos achados validados.
 	Laudo string `json:"laudo"`
-	// AuthToken, AuthCode e ValidationURL são o selo do laudo. O laudo não é
-	// entidade própria: o selo é o do auto de vistoria de ENTRADA do contrato,
-	// que é o documento-âncora (a página pública de validação é por vistoria).
-	AuthToken     string `json:"-"`
+	// AuthCode e ValidationURL são o selo do laudo. O laudo não é entidade
+	// própria: o selo é o do auto de vistoria de ENTRADA do contrato, que é o
+	// documento-âncora (a página pública de validação é por vistoria).
 	AuthCode      string `json:"authCode"`
 	ValidationURL string `json:"validationUrl"`
 }
@@ -316,7 +315,7 @@ func buildComparisonView(
 			summary.Discarded++
 			continue
 		}
-		kept.Findings = append(kept.Findings, ComparisonFinding{
+		validated := ComparisonFinding{
 			Area:          strings.TrimSpace(finding.Area),
 			Item:          strings.TrimSpace(finding.Item),
 			State:         strings.TrimSpace(finding.State),
@@ -324,18 +323,19 @@ func buildComparisonView(
 			Note:          strings.TrimSpace(finding.Note),
 			CheckInPhoto:  strings.TrimSpace(finding.CheckInPhoto),
 			CheckOutPhoto: strings.TrimSpace(finding.CheckOutPhoto),
-		})
+		}
+		kept.Findings = append(kept.Findings, validated)
 		findings = append(findings, ComparisonFindingRow{
-			Area:          strings.TrimSpace(finding.Area),
-			Item:          strings.TrimSpace(finding.Item),
-			State:         strings.TrimSpace(finding.State),
-			Severity:      severity,
-			SeverityLabel: FindingSeverityLabel(severity),
-			Note:          strings.TrimSpace(finding.Note),
-			CheckInPhoto:  strings.TrimSpace(finding.CheckInPhoto),
-			CheckOutPhoto: strings.TrimSpace(finding.CheckOutPhoto),
-			CheckInLabel:  comparisonPhotoLabel(checkInPhotos, strings.TrimSpace(finding.CheckInPhoto)),
-			CheckOutLabel: comparisonPhotoLabel(checkOutPhotos, strings.TrimSpace(finding.CheckOutPhoto)),
+			Area:          validated.Area,
+			Item:          validated.Item,
+			State:         validated.State,
+			Severity:      validated.Severity,
+			SeverityLabel: FindingSeverityLabel(validated.Severity),
+			Note:          validated.Note,
+			CheckInPhoto:  validated.CheckInPhoto,
+			CheckOutPhoto: validated.CheckOutPhoto,
+			CheckInLabel:  comparisonPhotoLabel(checkInPhotos, validated.CheckInPhoto),
+			CheckOutLabel: comparisonPhotoLabel(checkOutPhotos, validated.CheckOutPhoto),
 		})
 	}
 	// O resumo quantitativo conta só o que ficou no laudo (o descartado não
@@ -357,7 +357,7 @@ func buildComparisonView(
 	}
 	// O laudo usa o selo do auto de entrada: mesma chave, mesmo `kind` e a
 	// mesma página pública de validação dos demais documentos.
-	token, code, validationURL, err := documentAuth(ctx, deps, documentKindInspection, checkIn.ID)
+	_, code, validationURL, err := documentAuth(ctx, deps, documentKindInspection, checkIn.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +378,6 @@ func buildComparisonView(
 		Findings:        findings,
 		Summary:         summary,
 		ProviderSummary: strings.TrimSpace(comparison.Summary),
-		AuthToken:       token,
 		AuthCode:        code,
 		ValidationURL:   validationURL,
 	}

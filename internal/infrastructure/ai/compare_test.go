@@ -92,6 +92,13 @@ func TestCompareInspectionPhotosRequest(t *testing.T) {
 	if payload.Messages[0].Role != "system" {
 		t.Errorf("papel da primeira mensagem = %q", payload.Messages[0].Role)
 	}
+	var prompt string
+	if err := json.Unmarshal(payload.Messages[0].Content, &prompt); err != nil {
+		t.Fatalf("instrução de sistema não é texto: %v", err)
+	}
+	if !strings.Contains(prompt, "checkInPhoto") || !strings.Contains(prompt, "ao menos uma foto") {
+		t.Errorf("instrução de sistema inesperada: %q", prompt)
+	}
 
 	var parts []struct {
 		Type     string `json:"type"`

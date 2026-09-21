@@ -145,6 +145,7 @@ func run() error {
 		deps.Proofs = reader
 		deps.Intakes = reader
 		deps.Chat = reader
+		deps.Photos = reader
 		deps.Opts.AIEnabled = true
 	}
 	deps.Opts.AIConfidenceThreshold = cfg.AIConfidenceThreshold
