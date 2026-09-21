@@ -219,8 +219,21 @@
     document.addEventListener('click', function (event) {
       var opener = event.target.closest('[data-comparison-run]');
       if (!opener) return;
-      run(opener.getAttribute('data-comparison-run'), opener.getAttribute('data-comparison-label') || '');
+      run(opener.getAttribute('data-comparison-run'), comparisonLabel(opener));
     });
+
+    // comparisonLabel lê o rótulo do contrato: o atributo vem do template como
+    // string JSON (mesma convenção do data-modal-fill), então é decodificado.
+    function comparisonLabel(opener) {
+      var raw = opener.getAttribute('data-comparison-label');
+      if (!raw) return '';
+      try {
+        var parsed = JSON.parse(raw);
+        return typeof parsed === 'string' ? parsed : String(parsed);
+      } catch (error) {
+        return raw;
+      }
+    }
 
     function run(leaseID, label) {
       if (!leaseID) return;
@@ -280,13 +293,13 @@
       els.findings.textContent = '';
       var findings = view.findings || [];
       if (findings.length === 0) {
-        var empty = document.createElement('tr');
-        var cell = document.createElement('td');
-        cell.colSpan = 6;
-        cell.className = 'empty-state';
-        cell.textContent = 'A comparação não apontou nenhum achado entre as fotos analisadas.';
-        empty.appendChild(cell);
-        els.findings.appendChild(empty);
+        var emptyRow = document.createElement('tr');
+        var emptyCell = document.createElement('td');
+        emptyCell.colSpan = 6;
+        emptyCell.className = 'empty-state';
+        emptyCell.textContent = 'A comparação não apontou nenhum achado entre as fotos analisadas.';
+        emptyRow.appendChild(emptyCell);
+        els.findings.appendChild(emptyRow);
       }
       findings.forEach(function (finding) {
         var row = document.createElement('tr');

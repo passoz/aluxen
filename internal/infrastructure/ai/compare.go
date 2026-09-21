@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -38,8 +39,15 @@ Nunca invente: você só compara o que aparece nas fotos.`
 // trilha de auditoria.
 //
 // Nada é gravado nem cobrado aqui: o laudo é sugestão para o locador conferir.
-// Resposta fora do schema (severidade fora do vocabulário, foto citada que não
-// foi enviada, campo ausente) é falha, nunca dado.
+// Resposta fora do formato (envelope, JSON, `summary` vazio, confiança fora de
+// 0..1, achado sem item, severidade fora do vocabulário) é falha, nunca dado, e
+// o erro embrulha application.ErrInvalidComparisonResponse para o caso de uso
+// responder 502 em vez de 500.
+//
+// Fronteira: aqui se valida FORMATO. Julgar se o achado se sustenta (nome de
+// foto que não foi enviada, achado sem foto) é regra de domínio — o caso de uso
+// descarta o achado e conta o descarte. Os nomes de foto saem daqui como o
+// provedor devolveu.
 func (c *Client) CompareInspectionPhotos(ctx context.Context, input application.PhotoComparisonInput) (application.PhotoComparison, string, error) {
 	if !c.Configured() {
 		return application.PhotoComparison{}, "", ErrNotConfigured
@@ -50,13 +58,26 @@ func (c *Client) CompareInspectionPhotos(ctx context.Context, input application.
 	}
 	raw, err := c.completeImages(ctx, comparePrompt, compareInstruction(input), parts)
 	if err != nil {
-		return application.PhotoComparison{}, raw, err
+		return application.PhotoComparison{}, raw, comparisonError(err)
 	}
 	comparison, err := parseComparison(raw, input)
 	if err != nil {
-		return application.PhotoComparison{}, raw, err
+		return application.PhotoComparison{}, raw, comparisonError(err)
 	}
 	return comparison, raw, nil
+}
+
+// comparisonError marca a falha de formato com o sentinela do domínio da
+// comparação, para o caso de uso responder 502 ("resultado fora do formato
+// esperado") em vez de 500. Embrulha os dois sentinelas: o do domínio e o do
+// pacote, de modo que errors.Is reconhece qualquer um. Falha de rede/status,
+// documento inválido e instância sem IA não passam por aqui — não são "o
+// provedor respondeu fora do formato".
+func comparisonError(err error) error {
+	if err == nil || !errors.Is(err, ErrInvalidResponse) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", application.ErrInvalidComparisonResponse, err)
 }
 
 // photoParts monta as partes da mensagem: cada foto precedida do texto que diz
@@ -149,13 +170,9 @@ func parseComparison(raw string, input application.PhotoComparisonInput) (applic
 		return application.PhotoComparison{}, err
 	}
 
-	photos := map[string]map[string]bool{
-		"checkInPhoto":  photoNames(input.CheckIn),
-		"checkOutPhoto": photoNames(input.CheckOut),
-	}
 	findings := make([]application.ComparisonFinding, 0, len(rawFindings))
 	for index, item := range rawFindings {
-		finding, err := parseFinding(item, index, photos)
+		finding, err := parseFinding(item, index)
 		if err != nil {
 			return application.PhotoComparison{}, err
 		}
@@ -166,7 +183,13 @@ func parseComparison(raw string, input application.PhotoComparisonInput) (applic
 
 // parseFinding valida um achado. `item` e `severity` são a âncora: sem eles o
 // achado não tem como ser conferido pelo locador.
-func parseFinding(object map[string]json.RawMessage, index int, photos map[string]map[string]bool) (application.ComparisonFinding, error) {
+//
+// `checkInPhoto`/`checkOutPhoto` são lidos como texto qualquer, sem conferir se
+// o nome pertence às fotos enviadas nem se há foto: dizer se o achado se
+// sustenta é regra de domínio, do caso de uso, que descarta o achado inválido e
+// conta o descarte para o locador — um nome inventado não pode jogar fora o
+// laudo inteiro.
+func parseFinding(object map[string]json.RawMessage, index int) (application.ComparisonFinding, error) {
 	at := func(err error) error {
 		return fmt.Errorf("%w (achado %d)", err, index+1)
 	}
@@ -196,6 +219,8 @@ func parseFinding(object map[string]json.RawMessage, index int, photos map[strin
 		{"area", &finding.Area},
 		{"state", &finding.State},
 		{"note", &finding.Note},
+		{"checkInPhoto", &finding.CheckInPhoto},
+		{"checkOutPhoto", &finding.CheckOutPhoto},
 	} {
 		value, err := textField(object, field.key)
 		if err != nil {
@@ -203,44 +228,5 @@ func parseFinding(object map[string]json.RawMessage, index int, photos map[strin
 		}
 		*field.target = value
 	}
-	for key, names := range photos {
-		value, err := photoField(object, key, names)
-		if err != nil {
-			return application.ComparisonFinding{}, at(err)
-		}
-		if key == "checkInPhoto" {
-			finding.CheckInPhoto = value
-		} else {
-			finding.CheckOutPhoto = value
-		}
-	}
 	return finding, nil
-}
-
-// photoField lê o nome da foto citada e exige que seja o nome EXATO de uma das
-// fotos enviadas: foto desconhecida é resposta inválida, nunca um achado
-// apontando para lugar nenhum.
-func photoField(object map[string]json.RawMessage, key string, names map[string]bool) (string, error) {
-	value, err := textField(object, key)
-	if err != nil {
-		return "", err
-	}
-	if value == "" {
-		return "", nil
-	}
-	if !names[value] {
-		return "", fmt.Errorf("%w: campo %q cita uma foto que não está entre as fotos enviadas", ErrInvalidResponse, key)
-	}
-	return value, nil
-}
-
-// photoNames reúne os nomes de arquivo das fotos de uma série.
-func photoNames(photos []application.ComparisonPhoto) map[string]bool {
-	names := make(map[string]bool, len(photos))
-	for _, photo := range photos {
-		if name := strings.TrimSpace(photo.Name); name != "" {
-			names[name] = true
-		}
-	}
-	return names
 }

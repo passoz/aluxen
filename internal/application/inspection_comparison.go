@@ -117,7 +117,8 @@ type InspectionComparisonView struct {
 // mensagem clara, contrato inexistente é `domain.ErrNotFound`. Foto referenciada
 // que não está no armazenamento também é validação — nunca pânico.
 func CompareLeaseInspections(ctx context.Context, deps Deps, actx AuditContext, leaseID string) (*InspectionComparisonView, error) {
-	if strings.TrimSpace(leaseID) == "" {
+	leaseID = strings.TrimSpace(leaseID)
+	if leaseID == "" {
 		return nil, domain.Invalid("Informe o contrato da comparação.")
 	}
 	if deps.Photos == nil {

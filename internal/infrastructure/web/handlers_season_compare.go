@@ -105,7 +105,12 @@ func (h *Handlers) ComparisonPDF(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Vistoria de entrada não encontrada", http.StatusNotFound)
 		return
 	}
-	if handled := h.failComparison(w, r, err); handled {
+	if err != nil {
+		// As mesmas falhas próprias do POST têm código próprio; o resto é erro de
+		// domínio comum. O laudo nunca é montado sem comparação.
+		if !h.failComparison(w, r, err) {
+			h.mapError(w, r, err)
+		}
 		return
 	}
 

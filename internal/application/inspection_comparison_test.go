@@ -355,6 +355,40 @@ func TestCompareLeaseInspectionsRejectsConfidenceOutsideTheRange(t *testing.T) {
 	}
 }
 
+func TestCompareLeaseInspectionsKeepsTheLaudoWhenNoFindingSurvives(t *testing.T) {
+	env, _ := newCompEnv(t)
+	// Nenhum achado cita foto comparada: o laudo sai com o resumo zerado, sem
+	// erro, e o descarte aparece contado para o locador revisar.
+	env.deps.Photos.(*compPhotos).result.Findings = []ComparisonFinding{
+		{Area: "Quarto", Item: "Cama", Severity: FindingDamage, CheckInPhoto: "inspections/sumiu.jpg"},
+		{Area: "Cozinha", Item: "Pia", Severity: FindingAttention},
+	}
+
+	view, err := CompareLeaseInspections(context.Background(), env.deps, covCtx(), compLeaseID)
+	if err != nil {
+		t.Fatalf("CompareLeaseInspections devolveu erro: %v", err)
+	}
+	if len(view.Findings) != 0 {
+		t.Fatalf("achados = %+v, esperado nenhum", view.Findings)
+	}
+	summary := view.Summary
+	if summary.Findings != 0 || summary.Ok != 0 || summary.Attention != 0 || summary.Damaged != 0 || summary.Discarded != 2 {
+		t.Fatalf("resumo = %+v", summary)
+	}
+	if summary.Photos != 2 {
+		t.Fatalf("fotos comparadas = %d, esperado 2", summary.Photos)
+	}
+	if !strings.Contains(view.Laudo, "Achados: 0 sem alteração, 0 de atenção, 0 de dano.") {
+		t.Fatalf("laudo sem o resumo zerado\n---\n%s", view.Laudo)
+	}
+	if !strings.Contains(view.Laudo, "2 achado(s) foram descartados") {
+		t.Fatalf("laudo sem o descarte contado\n---\n%s", view.Laudo)
+	}
+	if actions := covAuditActions(env.audit.entries); len(actions) != 1 || actions[0] != domain.ActionInspectionCompare {
+		t.Fatalf("auditoria = %v", actions)
+	}
+}
+
 func TestCompareLeaseInspectionsWithoutProvider(t *testing.T) {
 	env, photos := newCompEnv(t)
 	env.deps.Photos = nil

@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -249,6 +250,28 @@ func TestInspectionCompareAcceptsAJSONBody(t *testing.T) {
 	}
 	if port.calls != 1 {
 		t.Fatal("corpo ilegível chegou ao provedor de IA")
+	}
+}
+
+func TestComparisonRoutesReportProviderFailure(t *testing.T) {
+	panel, port := cmpPanel(t)
+	port.err = errors.New("provedor fora do ar")
+
+	posted := panel.csrfPost("/api/inspections/compare", url.Values{"lease_id": {cmpLeaseID}})
+	if posted.Code != http.StatusInternalServerError {
+		t.Fatalf("POST: status = %d, esperado 500: %s", posted.Code, posted.Body.String())
+	}
+	if strings.Contains(posted.Body.String(), `"ok":true`) {
+		t.Fatalf("POST respondeu ok sem comparação: %s", posted.Body.String())
+	}
+
+	// A mesma falha no laudo não pode virar PDF vazio nem pânico.
+	pdf := panel.as(http.MethodGet, "/comparison-pdf?lease_id="+cmpLeaseID, nil, panel.admin.ID)
+	if pdf.Code != http.StatusInternalServerError {
+		t.Fatalf("PDF: status = %d, esperado 500: %s", pdf.Code, pdf.Body.String())
+	}
+	if actions := panel.audit.actions(); len(actions) != 0 {
+		t.Fatalf("falha de leitura foi auditada: %v", actions)
 	}
 }
 

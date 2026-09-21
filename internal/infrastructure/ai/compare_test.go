@@ -202,6 +202,40 @@ func TestCompareInspectionPhotosValid(t *testing.T) {
 	}
 }
 
+// Foto citada que não foi enviada e achado sem foto NÃO são erro de formato: o
+// cliente devolve o achado como veio, e quem julga (descartando e contando) é o
+// caso de uso.
+func TestCompareInspectionPhotosAcceptsAnyPhotoNames(t *testing.T) {
+	cases := []struct {
+		name         string
+		finding      string
+		wantCheckIn  string
+		wantCheckOut string
+	}{
+		{"nome desconhecido", `{"item":"Parede","severity":"dano","checkInPhoto":"inventada.jpg","checkOutPhoto":"saida-sala.jpg"}`, "inventada.jpg", "saida-sala.jpg"},
+		{"sem foto nenhuma", `{"item":"Parede","severity":"ok"}`, "", ""},
+		{"foto de outra série", `{"item":"Parede","severity":"atencao","checkOutPhoto":"entrada-sala.jpg"}`, "", "entrada-sala.jpg"},
+		{"rótulo em vez de nome", `{"item":"Parede","severity":"ok","checkInPhoto":"IMG_001.jpg"}`, "IMG_001.jpg", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			content := `{"summary":"Ok.","confidence":0.9,"findings":[` + tc.finding + `]}`
+			comparison, _, err := comparar(t, entrada(), content)
+			if err != nil {
+				t.Fatalf("comparação falhou: %v", err)
+			}
+			if len(comparison.Findings) != 1 {
+				t.Fatalf("achados = %d, esperado 1", len(comparison.Findings))
+			}
+			finding := comparison.Findings[0]
+			if finding.CheckInPhoto != tc.wantCheckIn || finding.CheckOutPhoto != tc.wantCheckOut {
+				t.Errorf("fotos = %q / %q, esperadas %q / %q",
+					finding.CheckInPhoto, finding.CheckOutPhoto, tc.wantCheckIn, tc.wantCheckOut)
+			}
+		})
+	}
+}
+
 func TestCompareInspectionPhotosEmptyFindings(t *testing.T) {
 	comparison, _, err := comparar(t, entrada(), `{"summary":"Nada mudou.","confidence":0.9,"findings":[]}`)
 	if err != nil {
@@ -213,7 +247,7 @@ func TestCompareInspectionPhotosEmptyFindings(t *testing.T) {
 }
 
 func TestCompareInspectionPhotosAcceptsUppercaseSeverity(t *testing.T) {
-	content := `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"ATENCAO"}]}`
+	content := `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"ATENCAO","checkOutPhoto":"saida-sala.jpg"}]}`
 	comparison, _, err := comparar(t, entrada(), content)
 	if err != nil {
 		t.Fatalf("comparação falhou: %v", err)
@@ -242,11 +276,8 @@ func TestCompareInspectionPhotosRejections(t *testing.T) {
 		{"achados não são lista", `{"summary":"Ok.","confidence":0.9,"findings":"nenhum"}`, "findings"},
 		{"achado sem item", `{"summary":"Ok.","confidence":0.9,"findings":[{"severity":"ok"}]}`, "item"},
 		{"achado sem severidade", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede"}]}`, "severity"},
-		{"severidade fora do vocabulário", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"grave"}]}`, "severity"},
-		{"severidade vazia", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":""}]}`, "severity"},
-		{"foto de entrada desconhecida", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"ok","checkInPhoto":"outra.jpg"}]}`, "checkInPhoto"},
-		{"foto de saída desconhecida", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"ok","checkOutPhoto":"saida-sala.png"}]}`, "checkOutPhoto"},
-		{"foto de entrada citada na saída", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"ok","checkOutPhoto":"entrada-sala.jpg"}]}`, "checkOutPhoto"},
+		{"severidade fora do vocabulário", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"grave","checkInPhoto":"entrada-sala.jpg"}]}`, "severity"},
+		{"severidade vazia", `{"summary":"Ok.","confidence":0.9,"findings":[{"item":"Parede","severity":"","checkInPhoto":"entrada-sala.jpg"}]}`, "severity"},
 		{"JSON inválido", `não consegui comparar as fotos`, "JSON"},
 		{"JSON não é objeto", `["achado"]`, "JSON"},
 	}
@@ -255,6 +286,10 @@ func TestCompareInspectionPhotosRejections(t *testing.T) {
 			comparison, raw, err := comparar(t, entrada(), tc.content)
 			if !errors.Is(err, ErrInvalidResponse) {
 				t.Fatalf("erro = %v, esperado ErrInvalidResponse", err)
+			}
+			// O caso de uso reconhece este sentinela e responde 502.
+			if !errors.Is(err, application.ErrInvalidComparisonResponse) {
+				t.Fatalf("erro = %v, esperado embrulhar ErrInvalidComparisonResponse", err)
 			}
 			if !strings.Contains(err.Error(), tc.motivo) {
 				t.Errorf("mensagem = %q, esperada citando %q", err.Error(), tc.motivo)
@@ -271,11 +306,14 @@ func TestCompareInspectionPhotosRejections(t *testing.T) {
 
 func TestCompareInspectionPhotosRejectionPointsToFinding(t *testing.T) {
 	content := `{"summary":"Ok.","confidence":0.9,"findings":[` +
-		`{"item":"Parede","severity":"ok"},` +
-		`{"item":"Bancada","severity":"grave"}]}`
+		`{"item":"Parede","severity":"ok","checkInPhoto":"entrada-sala.jpg"},` +
+		`{"item":"Bancada","severity":"grave","checkOutPhoto":"saida-sala.jpg"}]}`
 	_, _, err := comparar(t, entrada(), content)
 	if !errors.Is(err, ErrInvalidResponse) {
 		t.Fatalf("erro = %v, esperado ErrInvalidResponse", err)
+	}
+	if !errors.Is(err, application.ErrInvalidComparisonResponse) {
+		t.Fatalf("erro = %v, esperado embrulhar ErrInvalidComparisonResponse", err)
 	}
 	if !strings.Contains(err.Error(), "achado 2") {
 		t.Errorf("mensagem = %q, esperada citando o achado 2", err.Error())
@@ -324,6 +362,11 @@ func TestCompareInspectionPhotosValidatesPhotos(t *testing.T) {
 			if fake.calls() != 0 {
 				t.Errorf("foto inválida não deveria chegar ao provedor (%d chamadas)", fake.calls())
 			}
+			// Foto inválida é erro de entrada (400), não resposta fora do
+			// formato (502).
+			if errors.Is(err, application.ErrInvalidComparisonResponse) {
+				t.Errorf("erro de documento não deveria embrulhar ErrInvalidComparisonResponse: %v", err)
+			}
 		})
 	}
 }
@@ -336,8 +379,13 @@ func TestCompareInspectionPhotosProviderFailures(t *testing.T) {
 			http.Error(w, "modelo indisponível", http.StatusInternalServerError)
 		})
 		client := fake.client(Config{})
-		if _, _, err := client.CompareInspectionPhotos(context.Background(), entrada()); err == nil || !strings.Contains(err.Error(), "500") {
+		_, _, err := client.CompareInspectionPhotos(context.Background(), entrada())
+		if err == nil || !strings.Contains(err.Error(), "500") {
 			t.Fatalf("erro = %v, esperado com o status", err)
+		}
+		// Falha de provedor não é "resposta fora do formato": não vira 502.
+		if errors.Is(err, application.ErrInvalidComparisonResponse) {
+			t.Errorf("erro HTTP não deveria embrulhar ErrInvalidComparisonResponse: %v", err)
 		}
 	})
 
@@ -357,8 +405,12 @@ func TestCompareInspectionPhotosProviderFailures(t *testing.T) {
 			_, _ = io.WriteString(w, `{"choices":[{"message":{"content":""}}]}`)
 		})
 		client := fake.client(Config{})
-		if _, _, err := client.CompareInspectionPhotos(context.Background(), entrada()); !errors.Is(err, ErrInvalidResponse) {
+		_, _, err := client.CompareInspectionPhotos(context.Background(), entrada())
+		if !errors.Is(err, ErrInvalidResponse) {
 			t.Fatalf("erro = %v, esperado ErrInvalidResponse", err)
+		}
+		if !errors.Is(err, application.ErrInvalidComparisonResponse) {
+			t.Fatalf("erro = %v, esperado embrulhar ErrInvalidComparisonResponse", err)
 		}
 	})
 }
