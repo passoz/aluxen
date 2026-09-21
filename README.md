@@ -310,22 +310,30 @@ A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato d
 
 ---
 
-## 📜 Comandos Disponíveis
+## 📜 Comandos Disponíveis (Makefile)
 
-O app Go se constrói e roda com a toolchain padrão (não há scripts de runtime):
+O repositório disponibiliza 3 ambientes de execução padronizados via `Makefile`:
 
 ```bash
-# Executar em desenvolvimento
-go run ./cmd/app
+# 1. Ambiente de Desenvolvimento (live-reload local via Air, sem container)
+make dev
 
+# 2. Ambiente de Testes (PostgreSQL de teste provisionado exclusivamente via Podman, suíte com -race e cobertura >= 90%)
+make test
+
+# 3. Ambiente de Produção (Compose com multi-stage build, suportando Docker e Podman)
+make prod                # auto-detecta Docker ou Podman
+make prod ENGINE=docker  # força Docker & Docker Compose
+make prod ENGINE=podman  # força Podman & Podman Compose
+make prod-down           # encerra a stack de produção
+make prod-logs           # acompanha logs da produção
+```
+
+Comandos manuais com a toolchain padrão:
+
+```bash
 # Compilar o binário estático de produção
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aluxen ./cmd/app
-
-# Executar a suíte de testes
-go test ./...
-
-# Verificação estática (vet)
-go vet ./...
 
 # Provisionar uma instância no Easypanel (uma instância por cliente/demo)
 go run ./cmd/provision

@@ -1,0 +1,17 @@
+# Aluxen — ambiente de teste (PostgreSQL 17 para testes de paridade de banco e cobertura >= 90%)
+# Executado exclusivamente com Podman: make test
+services:
+  postgres:
+    image: postgres:17
+    container_name: aluxen-test-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=aluxen
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aluxen"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

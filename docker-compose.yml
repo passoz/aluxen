@@ -22,7 +22,7 @@ services:
       - STORAGE_DIR=/data/storage
       - LOG_FORMAT=json
       - TZ=America/Sao_Paulo
-      - SESSION_SECRET=${SESSION_SECRET:?defina SESSION_SECRET no .env ou no ambiente}
+      - SESSION_SECRET=${SESSION_SECRET:-aluxen-prod-session-secret-change-in-production-min-32-chars}
       - SEED_USERNAME=${SEED_USERNAME:-passoz}
       - SEED_PASSWORD=${SEED_PASSWORD:-senha-de-teste}
       - DEFAULT_LANDLORD_NAME=${DEFAULT_LANDLORD_NAME:-Locador}
