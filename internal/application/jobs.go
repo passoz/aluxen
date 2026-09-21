@@ -266,6 +266,11 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 	if w.deps.Repos.Jobs == nil {
 		return 0, errors.New("fila de trabalho indisponível")
 	}
+	// Cancelamento em curso não pega trabalho novo: o que já estava rodando
+	// termina, e o resto continua na fila para o próximo ciclo.
+	if ctx.Err() != nil {
+		return 0, nil
+	}
 	due, err := w.due(ctx)
 	if err != nil {
 		return 0, err
@@ -306,6 +311,9 @@ func (w *Worker) dispatch(ctx context.Context, jobs []domain.Job) int {
 	}
 
 	for _, job := range jobs {
+		if ctx.Err() != nil {
+			break
+		}
 		queue <- job
 	}
 	close(queue)

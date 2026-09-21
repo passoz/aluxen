@@ -15,7 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -310,10 +312,15 @@ func TestCopsWorkerRunsRegisteredHandlers(t *testing.T) {
 	}
 	worker := copsWorker(env, 10)
 
+	// A varredura roda os trabalhos em paralelo: o registro do que foi visto
+	// precisa ser seguro para acesso concorrente.
+	var mu sync.Mutex
 	var vistos []string
 	for _, kind := range []domain.JobKind{domain.JobKindPaymentProof, domain.JobKindWhatsAppSend} {
 		k := kind
 		worker.Register(k, func(_ context.Context, _ Deps, job domain.Job) error {
+			mu.Lock()
+			defer mu.Unlock()
 			vistos = append(vistos, string(job.Kind))
 			return nil
 		})
@@ -322,6 +329,7 @@ func TestCopsWorkerRunsRegisteredHandlers(t *testing.T) {
 	tratados, err := worker.RunOnce(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 2, tratados, "os dois trabalhos vencidos foram tratados")
+	sort.Strings(vistos)
 	assert.Equal(t, []string{"payment-proof", "whatsapp-send"}, vistos)
 
 	concluido := env.jobs.items[0]

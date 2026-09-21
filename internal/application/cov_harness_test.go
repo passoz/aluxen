@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/passoz/aluxen/internal/domain"
@@ -773,12 +774,17 @@ func (r *covMessages2) ByTenant(_ context.Context, tenantID string, limit int) (
 
 // covJobs é a fila em memória.
 type covJobs struct {
+	// O worker roda a varredura em paralelo (pool de goroutines), então o dublê
+	// precisa ser seguro para acesso concorrente.
+	mu                                     sync.Mutex
 	items                                  []domain.Job
 	createErr, byIDErr, listErr, updateErr error
 	updates                                []domain.Job
 }
 
 func (r *covJobs) Create(_ context.Context, job *domain.Job) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.createErr != nil {
 		return r.createErr
 	}
@@ -787,6 +793,8 @@ func (r *covJobs) Create(_ context.Context, job *domain.Job) error {
 }
 
 func (r *covJobs) ByID(_ context.Context, id string) (*domain.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.byIDErr != nil {
 		return nil, r.byIDErr
 	}
@@ -800,6 +808,8 @@ func (r *covJobs) ByID(_ context.Context, id string) (*domain.Job, error) {
 }
 
 func (r *covJobs) ListByStatus(_ context.Context, status domain.JobStatus, limit int) ([]domain.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
@@ -816,6 +826,8 @@ func (r *covJobs) ListByStatus(_ context.Context, status domain.JobStatus, limit
 }
 
 func (r *covJobs) List(context.Context, int) ([]domain.Job, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
@@ -823,6 +835,8 @@ func (r *covJobs) List(context.Context, int) ([]domain.Job, error) {
 }
 
 func (r *covJobs) Update(_ context.Context, job *domain.Job) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.updateErr != nil {
 		return r.updateErr
 	}
