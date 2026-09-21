@@ -1,0 +1,34 @@
+{
+  "work_id": "0006",
+  "title": "Cutover: remoção do app Bun legado e publicação do app Go",
+  "grilling_depth": "deep",
+  "problem": "O branch devgo contém, ao mesmo tempo, o app Bun original (src/, package.json, drizzle/, test/ em TypeScript) e o port completo em Go. Manter os dois convivendo significa duas convenções para o mesmo produto: qualquer pessoa que abrir o repositório não sabe qual é o app, a CI roda duas vezes e o build da imagem não é o único caminho. O port já cobre todas as rotas, telas e features, então o legado deixou de ter função — e a remoção é destrutiva (apaga a implementação original da árvore de trabalho), o que a classifica como risco L4 e exige decisão humana registrada.",
+  "actors": [
+    "ACT-001",
+    "ACT-004"
+  ],
+  "actor_details": [
+    {
+      "id": "ACT-001",
+      "name": "Locador (administrador)",
+      "description": "Usa o sistema; nada muda no uso depois do cutover."
+    },
+    {
+      "id": "ACT-004",
+      "name": "Operador de instância",
+      "description": "Publica a imagem e opera as instâncias; passa a ter um único build."
+    }
+  ],
+  "objectives": [
+    "Um único app no repositório: Go, com uma CI e uma imagem.",
+    "Nenhum arquivo do app Bun na árvore de trabalho (código, dependências, migrações, testes, imagens auxiliares).",
+    "Documentação apontando para o app Go como o produto.",
+    "Suíte Go verde depois da limpeza, com os mesmos números de cobertura."
+  ],
+  "constraints": [
+    "A remoção é destrutiva na árvore de trabalho: exige aprovação humana na fila AFK (risco L4).",
+    "A referência do app anterior permanece no histórico do git — nenhuma informação é perdida de fato.",
+    "Nada do comportamento do port pode mudar por causa da limpeza: a suíte Go deve seguir verde antes e depois.",
+    "Fora de escopo: reescrever a história do git, remover branches antigas ou apagar a base SQLite de produção."
+  ]
+}

@@ -3,8 +3,8 @@
   "id": "PRD-0001",
   "meta": {
     "version": "1.0",
-    "created_at": "2026-09-21T20:17:59.129Z",
-    "updated_at": "2026-09-21T20:17:59.129Z",
+    "created_at": "2026-09-21T21:01:14.664Z",
+    "updated_at": "2026-09-21T21:01:14.664Z",
     "author": "operator"
   },
   "title": "PRD — Port completo do Aluxen (Bun/Hono/React SSR) para a stack Go",

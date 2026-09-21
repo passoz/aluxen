@@ -1,0 +1,72 @@
+{
+  "$schema": "../../../schemas/prd.schema.json",
+  "id": "PRD-0006",
+  "meta": {
+    "version": "1.0",
+    "created_at": "2026-09-21T21:01:14.768Z",
+    "updated_at": "2026-09-21T21:01:14.768Z",
+    "author": "operator"
+  },
+  "title": "PRD — Cutover: remoção do app Bun legado e publicação do app Go",
+  "status": "approved",
+  "scenario": "brownfield",
+  "problem": {
+    "statement": "O branch devgo contém, ao mesmo tempo, o app Bun original (src/, package.json, drizzle/, test/ em TypeScript) e o port completo em Go. Manter os dois convivendo significa duas convenções para o mesmo produto: qualquer pessoa que abrir o repositório não sabe qual é o app, a CI roda duas vezes e o build da imagem não é o único caminho. O port já cobre todas as rotas, telas e features, então o legado deixou de ter função — e a remoção é destrutiva (apaga a implementação original da árvore de trabalho), o que a classifica como risco L4 e exige decisão humana registrada."
+  },
+  "solution": {
+    "statement": "Remover da árvore de trabalho o app Bun e o que só existe para ele (código, dependências, migrações Drizzle, testes em TypeScript, imagens de desenvolvimento e o CI antigo), deixando o repositório com um único app em Go, uma única CI e uma única imagem. A referência do comportamento anterior continua no histórico do git (branch main e commits anteriores), e o inventário do port fica em docs/ARQUITETURA-GO.md."
+  },
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "statement": "O app Bun é removido do branch devgo e permanece apenas no histórico do git (branches main/release).",
+      "status": "accepted",
+      "made_by": "operator"
+    },
+    {
+      "id": "DEC-002",
+      "statement": "A remoção é executada por decisão humana registrada na fila AFK do pwn, por ser risco L4.",
+      "status": "accepted",
+      "made_by": "operator"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "FR-601",
+      "type": "functional",
+      "statement": "Remoção do app legado: Como mantenedor, quero um repositório com um único app, para não manter duas convenções.",
+      "priority": "must"
+    },
+    {
+      "id": "FR-602",
+      "type": "functional",
+      "statement": "Documentação do produto em Go: Como operador, quero a documentação apontando para o app Go, para não seguir instrução de stack antiga.",
+      "priority": "must"
+    }
+  ],
+  "stakeholders": [
+    {
+      "name": "Locador (administrador)",
+      "role": "ACT-001"
+    },
+    {
+      "name": "Operador de instância",
+      "role": "ACT-004"
+    }
+  ],
+  "scope": {
+    "in_scope": [
+      "Um único app no repositório: Go, com uma CI e uma imagem.",
+      "Nenhum arquivo do app Bun na árvore de trabalho (código, dependências, migrações, testes, imagens auxiliares).",
+      "Documentação apontando para o app Go como o produto.",
+      "Suíte Go verde depois da limpeza, com os mesmos números de cobertura."
+    ],
+    "out_of_scope": [
+      "Fora de escopo: reescrever a história do git, remover branches antigas ou apagar a base SQLite de produção."
+    ]
+  },
+  "accepted_requirements": [
+    "FR-601",
+    "FR-602"
+  ]
+}

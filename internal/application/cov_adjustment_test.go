@@ -435,6 +435,37 @@ func TestCadjApplyAdjustmentRequiresConfirmation(t *testing.T) {
 	assert.Empty(t, env.audit.entries)
 }
 
+func TestCadjApplyAdjustmentPropagatesValidation(t *testing.T) {
+	env := cadjEnv(t)
+	lease := cadjSeedLease(env, covLeaseOf("lease-1", "tenant-1", "prop-1", domain.LeaseStatusActive, "2025-01-01", "2027-12-31", 2500))
+
+	for _, testCase := range []struct {
+		name  string
+		input AdjustmentApplyInput
+	}{
+		{"índice desconhecido", AdjustmentApplyInput{LeaseID: lease.ID, Index: AdjustmentIndex("inpc"), Rate: 4.5, EffectiveDate: "2026-10-01", Confirm: true}},
+		{"percentual zero", AdjustmentApplyInput{LeaseID: lease.ID, Index: AdjustmentIndexIGPM, Rate: 0, EffectiveDate: "2026-10-01", Confirm: true}},
+		{"vigência inválida", AdjustmentApplyInput{LeaseID: lease.ID, Index: AdjustmentIndexIGPM, Rate: 4.5, EffectiveDate: "31/02/2026", Confirm: true}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, err := ApplyAdjustment(context.Background(), env.deps, covCtx(), testCase.input)
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.True(t, domain.IsValidation(err), "erro deveria ser de validação: %v", err)
+		})
+	}
+
+	// Contrato inexistente é erro de registro ausente, não de validação.
+	_, err := ApplyAdjustment(context.Background(), env.deps, covCtx(), AdjustmentApplyInput{
+		LeaseID: "lease-inexistente", Index: AdjustmentIndexIGPM, Rate: 4.5, EffectiveDate: "2026-10-01", Confirm: true,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, domain.ErrNotFound))
+
+	assert.Equal(t, 2500.0, env.leases.items[0].RentAmount, "aplicação recusada não altera o contrato")
+	assert.Empty(t, env.audit.entries)
+}
+
 func TestCadjApplyAdjustmentPropagatesRepositoryFailure(t *testing.T) {
 	sentinel := errors.New("banco fora do ar")
 

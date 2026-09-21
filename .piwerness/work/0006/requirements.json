@@ -1,0 +1,27 @@
+{
+  "work_id": "0006",
+  "requirements": [
+    {
+      "id": "FR-601",
+      "title": "Remoção do app legado",
+      "user_story": "Como mantenedor, quero um repositório com um único app, para não manter duas convenções.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "`go build ./...` e `go test ./...` passam sem nenhum arquivo do app Bun",
+        "Não existe mais `src/`, `package.json`, `bun.lock`, `tsconfig.json`, `drizzle/`, `drizzle.config.ts` nem testes em TypeScript",
+        "Nenhum arquivo restante referencia o app Bun como o produto (docs, README, CI)"
+      ]
+    },
+    {
+      "id": "FR-602",
+      "title": "Documentação do produto em Go",
+      "user_story": "Como operador, quero a documentação apontando para o app Go, para não seguir instrução de stack antiga.",
+      "priority": "must",
+      "acceptance_criteria": [
+        "README descreve o app Go, a operação por instância e as variáveis de ambiente",
+        "`docs/ARQUITETURA-GO.md` e `docs/OPERACAO-GO.md` são a referência de arquitetura e operação",
+        "Os documentos do app anterior ficam marcados como histórico, sem instrução contraditória"
+      ]
+    }
+  ]
+}

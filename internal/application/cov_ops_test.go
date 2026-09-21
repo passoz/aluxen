@@ -130,7 +130,7 @@ func TestCopsEnqueueWithAttempts(t *testing.T) {
 		assert.Equal(t, DefaultJobMaxAttempts, job.MaxAttempts, "tentativas não positivas caem no padrão")
 		assert.Equal(t, agora, job.CreatedAt)
 		assert.Equal(t, agora, job.UpdatedAt)
-		assert.Equal(t, agora, job.ScheduledAt)
+		assert.Equal(t, format.FormatUTCStamp(covToday().Add(15*time.Minute)), job.ScheduledAt, "o atraso adia a primeira execução")
 		require.NotNil(t, job.Payload)
 		assert.JSONEq(t, `{"receipt":"r-1"}`, *job.Payload)
 
@@ -502,8 +502,8 @@ func TestCopsWorkerRunOnceErrors(t *testing.T) {
 // (marcar `running`), nada é executado nem gravado.
 func TestCopsWorkerClaimFailure(t *testing.T) {
 	env := newCovEnv(t)
-	worker, _ := copsWorkerSeletivo(env, 1, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 	buffer := copsLogBuffer(env)
+	worker, _ := copsWorkerSeletivo(env, 1, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 	executou := false
 	worker.Register(domain.JobKindCollection, func(context.Context, Deps, domain.Job) error {
 		executou = true
@@ -526,8 +526,8 @@ func TestCopsWorkerOutcomeNotRecorded(t *testing.T) {
 
 	t.Run("sucesso não gravado", func(t *testing.T) {
 		env := newCovEnv(t)
-		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 		buffer := copsLogBuffer(env)
+		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 		worker.Register(domain.JobKindCollection, func(context.Context, Deps, domain.Job) error { return nil })
 
 		_, err := worker.RunOnce(ctx)
@@ -541,8 +541,8 @@ func TestCopsWorkerOutcomeNotRecorded(t *testing.T) {
 
 	t.Run("reagendamento não gravado", func(t *testing.T) {
 		env := newCovEnv(t)
-		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 		buffer := copsLogBuffer(env)
+		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKindCollection, domain.JobStatusQueued, 0, 3, ""))
 		worker.Register(domain.JobKindCollection, func(context.Context, Deps, domain.Job) error {
 			return errors.New("tentativa falha")
 		})
@@ -558,8 +558,8 @@ func TestCopsWorkerOutcomeNotRecorded(t *testing.T) {
 
 	t.Run("falha definitiva não gravada", func(t *testing.T) {
 		env := newCovEnv(t)
-		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKind("sem-handler"), domain.JobStatusQueued, 0, 3, ""))
 		buffer := copsLogBuffer(env)
+		worker, _ := copsWorkerSeletivo(env, 2, copsFila("j1", domain.JobKind("sem-handler"), domain.JobStatusQueued, 0, 3, ""))
 
 		_, err := worker.RunOnce(ctx)
 		require.NoError(t, err)
@@ -672,8 +672,8 @@ func TestCopsWorkerRunCycle(t *testing.T) {
 	t.Run("registra a varredura falha e cala no cancelamento", func(t *testing.T) {
 		env := newCovEnv(t)
 		env.jobs.listErr = errors.New("banco fora")
-		worker := copsWorker(env, 10)
 		buffer := copsLogBuffer(env)
+		worker := copsWorker(env, 10)
 
 		worker.runCycle(ctx)
 		worker.inflight.Wait()
@@ -809,9 +809,9 @@ func TestCopsLoginGateRegisterSuccess(t *testing.T) {
 // TestCopsLoginGateReset prova que o Reset limpa janelas, bloqueios e o contador
 // global.
 func TestCopsLoginGateReset(t *testing.T) {
-	gate, clock := copsGate(1, 1, 1)
+	gate, clock := copsGate(1, 100, 1)
 	assert.True(t, gate.Check("10.0.0.1").Allowed)
-	assert.Equal(t, "ip", gate.Check("10.0.0.2").Reason)
+	assert.True(t, gate.Check("10.0.0.2").Allowed, "o limite é por IP")
 	gate.RegisterFailure("10.0.0.1")
 	assert.Equal(t, "locked", gate.Check("10.0.0.1").Reason)
 

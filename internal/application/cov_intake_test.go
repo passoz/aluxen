@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -943,15 +943,15 @@ func TestCintIntakeStatusAndLabels(t *testing.T) {
 
 func TestCintIntakeDateISO(t *testing.T) {
 	cases := map[string]string{
-		"":             "",
-		"   ":          "",
-		"2026-09-21":   "2026-09-21",
-		"21/09/2026":   "2026-09-21",
-		" 1/2/2026 ":   "2026-02-01",
-		"1/2":          "1/2",
-		"ab/09/2026":   "ab/09/2026",
-		"21/09/26":     "21/09/26",
-		"21/09/2026x":  "21/09/2026x",
+		"":            "",
+		"   ":         "",
+		"2026-09-21":  "2026-09-21",
+		"21/09/2026":  "2026-09-21",
+		" 1/2/2026 ":  "2026-02-01",
+		"1/2":         "1/2",
+		"ab/09/2026":  "ab/09/2026",
+		"21/09/26":    "21/09/26",
+		"21/09/2026x": "21/09/2026x",
 	}
 	for value, want := range cases {
 		require.Equal(t, want, intakeDateISO(value), "intakeDateISO(%q)", value)
@@ -980,8 +980,8 @@ func TestCintIntakeFileSupported(t *testing.T) {
 
 func TestCintIntakeCreatedEntity(t *testing.T) {
 	cases := []struct {
-		result       IntakeResult
-		entity, id   string
+		result     IntakeResult
+		entity, id string
 	}{
 		{IntakeResult{TenantID: "t", PropertyID: "p", LeaseID: "l"}, "lease", "l"},
 		{IntakeResult{TenantID: "t", PropertyID: "p"}, "property", "p"},
@@ -1071,7 +1071,7 @@ func TestCintIntakeByID(t *testing.T) {
 }
 
 func TestCintExtractIntakeDocument(t *testing.T) {
-	env, ext := cintEnv(t)
+	_, ext := cintEnv(t)
 	ext.lease = domain.LeaseIntakeFields{TenantName: "Ana", Confidence: 0.8}
 	ext.person = domain.PersonIntakeFields{Name: "Bruno", Confidence: 0.4}
 	ext.raw = "bruto"
@@ -1110,8 +1110,8 @@ func TestCintExtractIntakeDocument(t *testing.T) {
 
 func TestCintIntakeTenantFields(t *testing.T) {
 	fromLease := ConfirmInput{
-		Kind:  domain.IntakeKindLease,
-		Lease: domain.LeaseIntakeFields{TenantName: "Ana", TenantEmail: "ana@example.com", TenantPhone: "219", TenantCPF: "111"},
+		Kind:   domain.IntakeKindLease,
+		Lease:  domain.LeaseIntakeFields{TenantName: "Ana", TenantEmail: "ana@example.com", TenantPhone: "219", TenantCPF: "111"},
 		Person: domain.PersonIntakeFields{Name: "Bruno", Email: "bruno@example.com", Phone: "119", CPF: "222"},
 	}
 	fromPerson := ConfirmInput{Kind: domain.IntakeKindIDDocument, Person: fromLease.Person}
@@ -2190,5 +2190,1126 @@ func TestCintRejectPaymentProof(t *testing.T) {
 		require.Equal(t, domain.ActionPaymentProofRejected, last.Action)
 		require.Equal(t, "Comprovante recusado na revisão: valor divergente", last.Summary)
 		require.Equal(t, "manual", cintAuditMeta(t, last)["decision"])
+	})
+}
+
+// ── Dados de documento ────────────────────────────────────────────
+
+// cintDocumentWorld prepara o locatário, o imóvel e as configurações do locador
+// usados pelos documentos.
+func cintDocumentWorld(t *testing.T, env *covEnv) {
+	t.Helper()
+	tenant := covTenantOf("t-1", "Ana")
+	tenant.CPF = domain.StrPtr("123.456.789-09")
+	tenant.Phone = domain.StrPtr("(21) 99999-0000")
+	require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+	property := covPropertyOf("p-1", "Casa")
+	property.Zip = domain.StrPtr("24000-000")
+	require.NoError(t, env.props.Create(context.Background(), &property))
+	cintSetting(env, domain.SettingLandlordName, " Evolucsia Locadora ")
+	cintSetting(env, domain.SettingLandlordCPF, " 123 ")
+	cintSetting(env, domain.SettingLandlordAddress, " Rua do Locador, 10 ")
+}
+
+// cintReceiptForDocument grava um lançamento ligado ao locatário e ao imóvel.
+func cintReceiptForDocument(t *testing.T, env *covEnv) domain.Receipt {
+	t.Helper()
+	receipt := covReceiptOf("r-1", "t-1", "", "2026-09-10", 900)
+	receipt.PropertyID = domain.StrPtr("p-1")
+	receipt.Description = domain.StrPtr("Aluguel de setembro")
+	require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+	return receipt
+}
+
+func TestCintDocumentFieldReaders(t *testing.T) {
+	lease := &domain.Lease{
+		TenantID: "t-1", PropertyID: "p-1", TenantName: "Ana", PropertyName: "Casa",
+		StartDate: "2026-01-01", EndDate: "2026-12-31",
+	}
+	require.Equal(t, "t-1", leaseTenantID(lease))
+	require.Equal(t, "p-1", leasePropertyID(lease))
+	require.Equal(t, "Ana", leaseTenantName(lease))
+	require.Equal(t, "Casa", leasePropertyName(lease))
+	require.Equal(t, "2026-01-01", leaseStartDate(lease))
+	require.Equal(t, "2026-12-31", leaseEndDate(lease))
+
+	require.Empty(t, leaseTenantID(nil))
+	require.Empty(t, leasePropertyID(nil))
+	require.Empty(t, leaseTenantName(nil))
+	require.Empty(t, leasePropertyName(nil))
+	require.Empty(t, leaseStartDate(nil))
+	require.Empty(t, leaseEndDate(nil))
+
+	tenant := &domain.Tenant{Name: "Ana", CPF: domain.StrPtr("111"), Phone: domain.StrPtr("219")}
+	require.Equal(t, "Ana", tenantName(tenant))
+	require.Equal(t, "111", domain.Str(tenantCpf(tenant)))
+	require.Equal(t, "219", domain.Str(tenantPhone(tenant)))
+	require.Empty(t, tenantName(nil))
+	require.Nil(t, tenantCpf(nil))
+	require.Nil(t, tenantPhone(nil))
+
+	property := &domain.Property{Name: "Casa"}
+	require.Equal(t, "Casa", propertyName(property))
+	require.Empty(t, propertyName(nil))
+}
+
+func TestCintJoinAddressAndFirstNonEmpty(t *testing.T) {
+	require.Empty(t, joinAddress(nil))
+	require.Equal(t, "Rua A, 1, Niterói, RJ", joinAddress(&domain.Property{Address: "Rua A, 1", City: "Niterói", State: "RJ"}))
+	require.Equal(t, "Rua A, 1", joinAddress(&domain.Property{Address: " Rua A, 1 ", City: " ", State: ""}))
+	require.Empty(t, joinAddress(&domain.Property{}))
+
+	require.Empty(t, firstNonEmpty("", "   ", "\t"))
+	require.Equal(t, "b", firstNonEmpty(" ", " b ", "c"))
+	require.Equal(t, "c", firstNonEmpty("", "", "c"))
+	require.Equal(t, "a", firstNonEmpty("a"))
+}
+
+func TestCintLeaseLabelSource(t *testing.T) {
+	lease := &domain.Lease{TenantName: "Ana", PropertyName: "Casa"}
+	require.Same(t, lease, leaseLabelSource(lease, "Outro", "Outro Imóvel"))
+
+	unnamed := &domain.Lease{ID: "l-1"}
+	synthetic := leaseLabelSource(unnamed, "Ana", "Casa")
+	require.Equal(t, "Ana", synthetic.TenantName)
+	require.Equal(t, "Casa", synthetic.PropertyName)
+	require.Empty(t, synthetic.ID, "contrato sintético só carrega os nomes do documento")
+
+	fromNil := leaseLabelSource(nil, "Locatário", "Imóvel")
+	require.Equal(t, "Locatário", fromNil.TenantName)
+	require.Equal(t, "Imóvel", fromNil.PropertyName)
+}
+
+func TestCintDocumentAuth(t *testing.T) {
+	t.Run("sem emissor", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.deps.Signer = nil
+
+		_, _, _, err := documentAuth(context.Background(), env.deps, documentKindReceipt, "r-1")
+
+		require.ErrorContains(t, err, "emissor de tokens de autenticidade não configurado")
+	})
+
+	t.Run("emite token, chave e link público", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		token, code, url, err := documentAuth(context.Background(), env.deps, documentKindReceipt, "r-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "receipt-r-1-tok", token)
+		require.Equal(t, "AUTH-RECEIPT-R-1-TOK", code)
+		require.Equal(t, "https://painel.example/validar/receipt/r-1?t=receipt-r-1-tok", url)
+	})
+
+	t.Run("link usa a base configurada na instância", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintSetting(env, domain.SettingAppURL, "https://aluxen.example/")
+
+		_, _, url, err := documentAuth(context.Background(), env.deps, documentKindLease, "l-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "https://aluxen.example/validar/lease/l-1?t=lease-l-1-tok", url)
+	})
+}
+
+func TestCintLandlordSettings(t *testing.T) {
+	t.Run("padrões do app quando nada está configurado", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		name, cpf, err := landlordSettings(context.Background(), env.deps)
+
+		require.NoError(t, err)
+		require.Equal(t, landlordFallback, name)
+		require.Empty(t, cpf)
+	})
+
+	t.Run("valores configurados vêm aparados", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintSetting(env, domain.SettingLandlordName, "  Evolucsia Locadora  ")
+		cintSetting(env, domain.SettingLandlordCPF, " 123.456.789-09 ")
+
+		name, cpf, err := landlordSettings(context.Background(), env.deps)
+
+		require.NoError(t, err)
+		require.Equal(t, "Evolucsia Locadora", name)
+		require.Equal(t, "123.456.789-09", cpf)
+	})
+
+	t.Run("falha ao ler o nome", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordName, err: errors.New("config fora")}
+
+		_, _, err := landlordSettings(context.Background(), env.deps)
+
+		require.ErrorContains(t, err, "ler configuração landlord_name: config fora")
+	})
+
+	t.Run("falha ao ler o CPF", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordCPF, err: errors.New("config fora")}
+
+		_, _, err := landlordSettings(context.Background(), env.deps)
+
+		require.ErrorContains(t, err, "ler configuração landlord_cpf: config fora")
+	})
+}
+
+func TestCintOptionalLoaders(t *testing.T) {
+	t.Run("locatário", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		tenant := covTenantOf("t-1", "Ana")
+		require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+
+		loaded, err := optionalTenant(context.Background(), env.deps, " t-1 ")
+		require.NoError(t, err)
+		require.Equal(t, "Ana", loaded.Name)
+
+		missing, err := optionalTenant(context.Background(), env.deps, "nao-existe")
+		require.NoError(t, err)
+		require.Nil(t, missing, "cadastro incompleto não impede o documento")
+
+		empty, err := optionalTenant(context.Background(), env.deps, "  ")
+		require.NoError(t, err)
+		require.Nil(t, empty)
+
+		env.tenants.byIDErr = errors.New("banco fora")
+		_, err = optionalTenant(context.Background(), env.deps, "t-1")
+		require.ErrorContains(t, err, "carregar o locatário t-1: banco fora")
+	})
+
+	t.Run("imóvel", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		property := covPropertyOf("p-1", "Casa")
+		require.NoError(t, env.props.Create(context.Background(), &property))
+
+		loaded, err := optionalProperty(context.Background(), env.deps, "p-1")
+		require.NoError(t, err)
+		require.Equal(t, "Casa", loaded.Name)
+
+		missing, err := optionalProperty(context.Background(), env.deps, "nao-existe")
+		require.NoError(t, err)
+		require.Nil(t, missing)
+
+		empty, err := optionalProperty(context.Background(), env.deps, "")
+		require.NoError(t, err)
+		require.Nil(t, empty)
+
+		env.props.byIDErr = errors.New("banco fora")
+		_, err = optionalProperty(context.Background(), env.deps, "p-1")
+		require.ErrorContains(t, err, "carregar o imóvel p-1: banco fora")
+	})
+
+	t.Run("contrato", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+
+		loaded, err := optionalLease(context.Background(), env.deps, "l-1")
+		require.NoError(t, err)
+		require.Equal(t, "t-1", loaded.TenantID)
+
+		missing, err := optionalLease(context.Background(), env.deps, "nao-existe")
+		require.NoError(t, err)
+		require.Nil(t, missing)
+
+		empty, err := optionalLease(context.Background(), env.deps, "   ")
+		require.NoError(t, err)
+		require.Nil(t, empty)
+
+		env.leases.byIDErr = errors.New("banco fora")
+		_, err = optionalLease(context.Background(), env.deps, "l-1")
+		require.ErrorContains(t, err, "carregar o contrato l-1: banco fora")
+	})
+}
+
+func TestCintLeaseTenantMatches(t *testing.T) {
+	newEnv := func(t *testing.T) (*covEnv, domain.Lease) {
+		t.Helper()
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		return env, lease
+	}
+
+	t.Run("titular confere", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		ok, err := leaseTenantMatches(context.Background(), env.deps, "l-1", "t-1")
+
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("contrato de outro titular", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		ok, err := leaseTenantMatches(context.Background(), env.deps, "l-1", "t-9")
+
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("contrato inexistente não pertence a ninguém", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		ok, err := leaseTenantMatches(context.Background(), env.deps, "nao-existe", "t-1")
+
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("falha ao buscar o contrato", func(t *testing.T) {
+		env, _ := newEnv(t)
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := leaseTenantMatches(context.Background(), env.deps, "l-1", "t-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1: banco fora")
+	})
+}
+
+func TestCintReceiptDocumentInput(t *testing.T) {
+	t.Run("sem id", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "  ")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("lançamento inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("falha ao buscar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.receipts.byIDErr = errors.New("banco fora")
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o recibo r-1: banco fora")
+	})
+
+	t.Run("recibo pago parcialmente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		receipt := cintReceiptForDocument(t, env)
+		receipt.PaidAt = domain.StrPtr("05/09/2026 10:00")
+		receipt.PaidAmount = domain.FloatPtr(300)
+		env.receipts.items[0] = receipt
+
+		data, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "r-1", data.ReceiptID)
+		require.Equal(t, "Ana", data.TenantName, "sem nome no lançamento o cadastro resolve")
+		require.Equal(t, "123.456.789-09", data.TenantCPF)
+		require.Equal(t, "Casa", data.PropertyName)
+		require.Equal(t, "Rua A, 1, Niterói, RJ", data.PropertyAddress)
+		require.Equal(t, domain.ReceiptCategoryRent, data.Category)
+		require.Equal(t, "Aluguel de setembro", data.Description)
+		require.Equal(t, "2026-09-10", data.DueDate)
+		require.Equal(t, "05/09/2026 10:00", data.PaidAt)
+		require.Equal(t, 900.0, data.Amount)
+		require.Equal(t, 300.0, data.PaidAmount)
+		require.True(t, data.HasPaidAmount)
+		require.True(t, data.IsPaid)
+		require.True(t, data.IsPartial)
+		require.Equal(t, "Evolucsia Locadora", data.LandlordName)
+		require.Equal(t, "123", data.LandlordCPF)
+		require.Equal(t, covToday(), data.IssuedAt)
+		require.Equal(t, "receipt-r-1-tok", data.Token)
+		require.Equal(t, "AUTH-RECEIPT-R-1-TOK", data.AuthCode)
+		require.Contains(t, data.ValidationURL, "/validar/receipt/r-1?t=receipt-r-1-tok")
+		require.Equal(t, "Aluguel de setembro · 09/2026", data.Label)
+	})
+
+	t.Run("recibo em aberto sem cadastro", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		receipt := covReceiptOf("r-1", "t-1", "", "2026-09-10", 900)
+		receipt.TenantName = "Titular do Lançamento"
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+
+		data, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Titular do Lançamento", data.TenantName)
+		require.Empty(t, data.TenantCPF)
+		require.Empty(t, data.PropertyName)
+		require.Empty(t, data.PropertyAddress)
+		require.False(t, data.HasPaidAmount)
+		require.Zero(t, data.PaidAmount)
+		require.False(t, data.IsPaid)
+		require.False(t, data.IsPartial)
+		require.Equal(t, landlordFallback, data.LandlordName)
+	})
+
+	t.Run("contrato tem precedência sobre o vínculo do lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		otherTenant := covTenantOf("t-2", "Do Contrato")
+		otherProperty := covPropertyOf("p-2", "Imóvel do Contrato")
+		require.NoError(t, env.tenants.Create(context.Background(), &otherTenant))
+		require.NoError(t, env.props.Create(context.Background(), &otherProperty))
+		lease := covLeaseOf("l-1", "t-2", "p-2", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		receipt := cintReceiptForDocument(t, env)
+		receipt.LeaseID = domain.StrPtr("l-1")
+		env.receipts.items[0] = receipt
+
+		data, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Do Contrato", data.TenantName)
+		require.Equal(t, "Imóvel do Contrato", data.PropertyName)
+	})
+
+	t.Run("contrato removido mantém o vínculo do lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		receipt := cintReceiptForDocument(t, env)
+		receipt.LeaseID = domain.StrPtr("l-removido")
+		env.receipts.items[0] = receipt
+
+		data, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Ana", data.TenantName)
+		require.Equal(t, "Casa", data.PropertyName)
+	})
+
+	t.Run("falha ao ler o contrato", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		receipt := covReceiptOf("r-1", "t-1", "l-1", "2026-09-10", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1 do recibo: banco fora")
+	})
+
+	t.Run("falha ao ler o locatário", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintReceiptForDocument(t, env)
+		env.tenants.byIDErr = errors.New("banco fora")
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o locatário t-1: banco fora")
+	})
+
+	t.Run("falha ao ler o imóvel", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintReceiptForDocument(t, env)
+		env.props.byIDErr = errors.New("banco fora")
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o imóvel p-1: banco fora")
+	})
+
+	t.Run("falha nas configurações do locador", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintReceiptForDocument(t, env)
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordName, err: errors.New("config fora")}
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "ler configuração landlord_name: config fora")
+	})
+
+	t.Run("sem emissor de token", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintReceiptForDocument(t, env)
+		env.deps.Signer = nil
+
+		_, err := ReceiptDocumentInput(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "emissor de tokens de autenticidade não configurado")
+	})
+}
+
+func TestCintLeaseDocumentInput(t *testing.T) {
+	t.Run("sem id", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "  ")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("contrato inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("falha ao buscar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1: banco fora")
+	})
+
+	t.Run("dados completos do contrato", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		lease.TenantName = "Ana"
+		lease.PropertyName = "Casa"
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+
+		data, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Ana", data.TenantName)
+		require.Equal(t, "(21) 99999-0000", data.TenantPhone)
+		require.Equal(t, "123.456.789-09", data.TenantCPF)
+		require.Equal(t, "Casa", data.PropertyName)
+		require.Equal(t, "Rua A, 1, Niterói, RJ", data.PropertyAddress)
+		require.Equal(t, "Rua A, 1", data.PropertyStreet)
+		require.Equal(t, "Niterói", data.PropertyCity)
+		require.Equal(t, "RJ", data.PropertyState)
+		require.Equal(t, "24000-000", data.PropertyZip)
+		require.Equal(t, "2026-01-01", data.StartDate)
+		require.Equal(t, "2026-12-31", data.EndDate)
+		require.Equal(t, 10, data.DueDay)
+		require.Equal(t, 900.0, data.RentAmount)
+		require.Equal(t, domain.LeaseStatusActive, data.Status)
+		require.Equal(t, "Evolucsia Locadora", data.LandlordName)
+		require.Equal(t, "123", data.LandlordCPF)
+		require.Equal(t, "Rua do Locador, 10", data.LandlordAddress)
+		require.Equal(t, "lease-l-1-tok", data.Token)
+		require.Equal(t, "Ana · Casa", data.Label)
+		require.Equal(t, covToday(), data.IssuedAt)
+	})
+
+	t.Run("contrato sem cadastro vinculado", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+
+		data, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+		require.NoError(t, err)
+
+		require.Equal(t, receiptTenantFallback, data.TenantName)
+		require.Empty(t, data.TenantPhone)
+		require.Empty(t, data.PropertyName)
+		require.Empty(t, data.PropertyStreet)
+		require.Empty(t, data.PropertyCity)
+		require.Empty(t, data.PropertyZip)
+		require.Equal(t, landlordFallback, data.LandlordName)
+		require.Empty(t, data.LandlordAddress)
+	})
+
+	t.Run("falha ao ler o locatário", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.tenants.byIDErr = errors.New("banco fora")
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o locatário t-1: banco fora")
+	})
+
+	t.Run("falha ao ler o imóvel", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.props.byIDErr = errors.New("banco fora")
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o imóvel p-1: banco fora")
+	})
+
+	t.Run("falha nas configurações do locador", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordCPF, err: errors.New("config fora")}
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "ler configuração landlord_cpf: config fora")
+	})
+
+	t.Run("falha no endereço do locador", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordAddress, err: errors.New("config fora")}
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "ler configuração landlord_address: config fora")
+	})
+
+	t.Run("sem emissor de token", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.deps.Signer = nil
+
+		_, err := LeaseDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "emissor de tokens de autenticidade não configurado")
+	})
+}
+
+// cintInspection grava uma vistoria do contrato informado.
+func cintInspection(t *testing.T, env *covEnv, leaseID string) domain.Inspection {
+	t.Helper()
+	inspection := domain.Inspection{
+		ID: "i-1", LeaseID: leaseID, Kind: domain.InspectionKindCheckIn,
+		PerformedAt: "2026-09-01 10:00:00", Condition: domain.InspectionConditionGood,
+		Notes:  domain.StrPtr("tudo certo"),
+		Items:  []domain.InspectionItem{{Area: "Sala", Item: "Piso", State: "bom"}},
+		Photos: []domain.InspectionPhoto{{Name: "foto1.jpg"}},
+	}
+	require.NoError(t, env.inspections.Create(context.Background(), &inspection))
+	return inspection
+}
+
+func TestCintInspectionDocumentInput(t *testing.T) {
+	t.Run("sem id", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "  ")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("vistoria inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("falha ao buscar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.inspections.byIDErr = errors.New("banco fora")
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "carregar a vistoria i-1: banco fora")
+	})
+
+	t.Run("nomes do próprio documento vencem", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		lease.TenantName = "Nome do Contrato"
+		lease.PropertyName = "Imóvel do Contrato"
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		inspection := cintInspection(t, env, "l-1")
+		inspection.TenantName = "Nome da Vistoria"
+		inspection.PropertyName = "Imóvel da Vistoria"
+		env.inspections.items[0] = inspection
+
+		data, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Nome da Vistoria", data.TenantName)
+		require.Equal(t, "Imóvel da Vistoria", data.PropertyName)
+		require.Equal(t, "123.456.789-09", data.TenantCPF)
+		require.Equal(t, "Rua A, 1, Niterói, RJ", data.PropertyAddress)
+		require.Equal(t, "2026-01-01", data.StartDate)
+		require.Equal(t, "2026-12-31", data.EndDate)
+		require.Equal(t, domain.InspectionKindCheckIn, data.Kind)
+		require.NotEmpty(t, data.KindLabel)
+		require.Equal(t, domain.InspectionConditionGood, data.Condition)
+		require.NotEmpty(t, data.ConditionLabel)
+		require.Equal(t, "2026-09-01 10:00:00", data.PerformedAt)
+		require.Equal(t, "tudo certo", data.Notes)
+		require.Len(t, data.Items, 1)
+		require.Equal(t, "Sala", data.Items[0].Area)
+		require.Len(t, data.Photos, 1)
+		require.Equal(t, "foto1.jpg", data.Photos[0].Name)
+		require.Equal(t, "Evolucsia Locadora", data.LandlordName)
+		require.Equal(t, "inspection-i-1-tok", data.Token)
+		require.Equal(t, "Nome do Contrato · Imóvel do Contrato", data.Label, "com contrato, o rótulo é o do contrato")
+		require.Equal(t, covToday(), data.IssuedAt)
+	})
+
+	t.Run("nomes vêm do contrato e do cadastro", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		lease.TenantName = "Ana do Contrato"
+		lease.PropertyName = "Casa do Contrato"
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		cintInspection(t, env, "l-1")
+
+		data, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "Ana do Contrato", data.TenantName)
+		require.Equal(t, "Casa do Contrato", data.PropertyName)
+	})
+
+	t.Run("vistoria sem contrato usa o cadastro e o padrão", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		cintInspection(t, env, "")
+
+		data, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+		require.NoError(t, err)
+
+		require.Equal(t, receiptTenantFallback, data.TenantName)
+		require.Empty(t, data.PropertyName)
+		require.Empty(t, data.PropertyAddress)
+		require.Empty(t, data.StartDate)
+		require.Empty(t, data.EndDate)
+		require.Equal(t, "Locador · ", data.Label, "sem contrato o rótulo nasce dos nomes resolvidos")
+	})
+
+	t.Run("falha ao ler o contrato", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintInspection(t, env, "l-1")
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1: banco fora")
+	})
+
+	t.Run("falha ao ler o locatário", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		cintInspection(t, env, "l-1")
+		env.tenants.byIDErr = errors.New("banco fora")
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "carregar o locatário t-1: banco fora")
+	})
+
+	t.Run("falha ao ler o imóvel", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		cintInspection(t, env, "l-1")
+		env.props.byIDErr = errors.New("banco fora")
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "carregar o imóvel p-1: banco fora")
+	})
+
+	t.Run("falha nas configurações do locador", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintInspection(t, env, "")
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordName, err: errors.New("config fora")}
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "ler configuração landlord_name: config fora")
+	})
+
+	t.Run("sem emissor de token", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintInspection(t, env, "")
+		env.deps.Signer = nil
+
+		_, err := InspectionDocumentInput(context.Background(), env.deps, "i-1")
+
+		require.ErrorContains(t, err, "emissor de tokens de autenticidade não configurado")
+	})
+}
+
+func TestCintDepositDocumentInput(t *testing.T) {
+	t.Run("sem id", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "  ")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("contrato inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+
+	t.Run("falha ao buscar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1: banco fora")
+	})
+
+	t.Run("caução recebida e parcialmente devolvida", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		lease.TenantName = "Ana"
+		lease.PropertyName = "Casa"
+		lease.DepositAmount = domain.FloatPtr(2000)
+		lease.DepositStatus = domain.DepositStatusPartiallyRefunded
+		lease.DepositReceivedAt = domain.StrPtr("2026-01-05")
+		lease.DepositRefundedAt = domain.StrPtr("2026-12-20")
+		lease.DepositRefundedAmt = domain.FloatPtr(500)
+		lease.DepositNotes = domain.StrPtr("descontado o piso")
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+
+		data, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+		require.NoError(t, err)
+
+		require.Equal(t, "l-1", data.LeaseID)
+		require.Equal(t, "Ana", data.TenantName)
+		require.Equal(t, "123.456.789-09", data.TenantCPF)
+		require.Equal(t, "Casa", data.PropertyName)
+		require.Equal(t, "Rua A, 1, Niterói, RJ", data.PropertyAddress)
+		require.Equal(t, 2000.0, data.Amount)
+		require.Equal(t, 500.0, data.Refunded)
+		require.Equal(t, 1500.0, data.Retained)
+		require.Equal(t, domain.DepositStatusPartiallyRefunded, data.Status)
+		require.NotEmpty(t, data.StatusLabel)
+		require.Equal(t, "2026-01-05", data.ReceivedAt)
+		require.Equal(t, "2026-12-20", data.RefundedAt)
+		require.Equal(t, "descontado o piso", data.Notes)
+		require.True(t, data.HasDeposit)
+		require.Equal(t, "Evolucsia Locadora", data.LandlordName)
+		require.Equal(t, "deposit-l-1-tok", data.Token)
+		require.Equal(t, "Ana · Casa", data.Label)
+	})
+
+	t.Run("contrato sem caução não libera o recibo", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+
+		data, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+		require.NoError(t, err)
+
+		require.Zero(t, data.Amount)
+		require.Zero(t, data.Retained)
+		require.False(t, data.HasDeposit)
+		require.Equal(t, domain.DepositStatusNone, data.Status)
+		require.Equal(t, receiptTenantFallback, data.TenantName)
+	})
+
+	t.Run("falha ao ler o locatário", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.tenants.byIDErr = errors.New("banco fora")
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o locatário t-1: banco fora")
+	})
+
+	t.Run("falha ao ler o imóvel", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.props.byIDErr = errors.New("banco fora")
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "carregar o imóvel p-1: banco fora")
+	})
+
+	t.Run("falha nas configurações do locador", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.deps.Repos.Settings = &cintSettingsKey{covSettings: env.settings, failKey: domain.SettingLandlordName, err: errors.New("config fora")}
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "ler configuração landlord_name: config fora")
+	})
+
+	t.Run("sem emissor de token", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		env.deps.Signer = nil
+
+		_, err := DepositDocumentInput(context.Background(), env.deps, "l-1")
+
+		require.ErrorContains(t, err, "emissor de tokens de autenticidade não configurado")
+	})
+}
+
+// ── Chave de autenticidade e acesso ao documento ───────────────────
+
+func TestCintDocumentTokenMatches(t *testing.T) {
+	env, _ := cintEnv(t)
+
+	require.True(t, documentTokenMatches(env.deps, documentKindReceipt, "r-1", "receipt-r-1-tok"))
+	require.False(t, documentTokenMatches(env.deps, documentKindReceipt, "r-1", ""))
+	require.False(t, documentTokenMatches(env.deps, documentKindReceipt, "  ", "receipt-r-1-tok"))
+	require.False(t, documentTokenMatches(env.deps, documentKindReceipt, "r-1", "receipt-r-1-tok-maior"))
+	require.False(t, documentTokenMatches(env.deps, documentKindReceipt, "r-1", "receipt-r-2-tok"), "chave de outro documento não vale")
+
+	env.deps.Signer = nil
+	require.False(t, documentTokenMatches(env.deps, documentKindReceipt, "r-1", "receipt-r-1-tok"))
+}
+
+func TestCintVerifyDocumentTokens(t *testing.T) {
+	newEnv := func(t *testing.T) (*covEnv, domain.Receipt) {
+		t.Helper()
+		env, _ := cintEnv(t)
+		cintDocumentWorld(t, env)
+		return env, cintReceiptForDocument(t, env)
+	}
+
+	t.Run("chave inválida", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		_, err := VerifyReceiptToken(context.Background(), env.deps, "r-1", "chave-errada")
+
+		cintWantValidation(t, err, "Chave de autenticação inválida ou documento não autenticado.")
+	})
+
+	t.Run("chave confere devolve o documento", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		data, err := VerifyReceiptToken(context.Background(), env.deps, "r-1", "receipt-r-1-tok")
+		require.NoError(t, err)
+		require.Equal(t, "r-1", data.ReceiptID)
+
+		_, err = VerifyLeaseToken(context.Background(), env.deps, "l-1", "chave-errada")
+		cintWantValidation(t, err, "Chave de autenticação inválida ou documento não autenticado.")
+
+		_, err = VerifyInspectionToken(context.Background(), env.deps, "i-1", "chave-errada")
+		cintWantValidation(t, err, "Chave de autenticação inválida ou documento não autenticado.")
+
+		_, err = VerifyDepositToken(context.Background(), env.deps, "l-1", "chave-errada")
+		cintWantValidation(t, err, "Chave de autenticação inválida ou documento não autenticado.")
+	})
+
+	t.Run("chave válida de documento inexistente", func(t *testing.T) {
+		env, _ := newEnv(t)
+
+		_, err := VerifyReceiptToken(context.Background(), env.deps, "r-9", "receipt-r-9-tok")
+		require.ErrorIs(t, err, domain.ErrNotFound)
+
+		_, err = VerifyLeaseToken(context.Background(), env.deps, "l-9", "lease-l-9-tok")
+		require.ErrorIs(t, err, domain.ErrNotFound)
+
+		_, err = VerifyInspectionToken(context.Background(), env.deps, "i-9", "inspection-i-9-tok")
+		require.ErrorIs(t, err, domain.ErrNotFound)
+
+		_, err = VerifyDepositToken(context.Background(), env.deps, "l-9", "deposit-l-9-tok")
+		require.ErrorIs(t, err, domain.ErrNotFound)
+	})
+}
+
+func TestCintCanAccessDocuments(t *testing.T) {
+	newEnv := func(t *testing.T) *covEnv {
+		t.Helper()
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-1", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		cintReceiptForDocument(t, env)
+		cintInspection(t, env, "l-1")
+		return env
+	}
+
+	t.Run("administrador vê tudo", func(t *testing.T) {
+		env := newEnv(t)
+
+		ok, err := CanAccessReceipt(context.Background(), env.deps, "r-1", "user-1", "")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "l-1", "user-1", "")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessDeposit(context.Background(), env.deps, "l-1", "user-1", "")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessInspection(context.Background(), env.deps, "i-1", "user-1", "")
+		require.NoError(t, err)
+		require.True(t, ok)
+	})
+
+	t.Run("sem solicitante nada é liberado", func(t *testing.T) {
+		env := newEnv(t)
+
+		ok, err := CanAccessReceipt(context.Background(), env.deps, "r-1", "", "")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "l-1", "", "")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessDeposit(context.Background(), env.deps, "l-1", "", "")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessInspection(context.Background(), env.deps, "i-1", "", "")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("documento não informado não pertence a ninguém", func(t *testing.T) {
+		env := newEnv(t)
+
+		ok, err := CanAccessReceipt(context.Background(), env.deps, "  ", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "  ", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessDeposit(context.Background(), env.deps, "  ", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessInspection(context.Background(), env.deps, "  ", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("titular acessa o próprio documento", func(t *testing.T) {
+		env := newEnv(t)
+
+		ok, err := CanAccessReceipt(context.Background(), env.deps, "r-1", "", "t-1")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "l-1", "", "t-1")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessInspection(context.Background(), env.deps, "i-1", "", "t-1")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		ok, err = CanAccessReceipt(context.Background(), env.deps, "r-1", "", "t-2")
+		require.NoError(t, err)
+		require.False(t, ok, "outro titular não vê o recibo")
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "l-1", "", "t-2")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("documento inexistente não pertence a ninguém", func(t *testing.T) {
+		env := newEnv(t)
+
+		ok, err := CanAccessReceipt(context.Background(), env.deps, "r-9", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessInspection(context.Background(), env.deps, "i-9", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		ok, err = CanAccessLease(context.Background(), env.deps, "l-9", "", "t-1")
+		require.NoError(t, err)
+		require.False(t, ok)
+	})
+
+	t.Run("falha ao ler o recibo", func(t *testing.T) {
+		env := newEnv(t)
+		env.receipts.byIDErr = errors.New("banco fora")
+
+		_, err := CanAccessReceipt(context.Background(), env.deps, "r-1", "", "t-1")
+
+		require.ErrorContains(t, err, "carregar o recibo r-1: banco fora")
+	})
+
+	t.Run("falha ao ler a vistoria", func(t *testing.T) {
+		env := newEnv(t)
+		env.inspections.byIDErr = errors.New("banco fora")
+
+		_, err := CanAccessInspection(context.Background(), env.deps, "i-1", "", "t-1")
+
+		require.ErrorContains(t, err, "carregar a vistoria i-1: banco fora")
+	})
+}
+
+func TestCintReceiptOwnerTenantID(t *testing.T) {
+	t.Run("contrato tem precedência", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		lease := covLeaseOf("l-1", "t-2", "p-1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 900)
+		require.NoError(t, env.leases.Create(context.Background(), &lease))
+		receipt := covReceiptOf("r-1", "t-1", "l-1", "2026-09-10", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+
+		owner, err := receiptOwnerTenantID(context.Background(), env.deps, "r-1")
+
+		require.NoError(t, err)
+		require.Equal(t, "t-2", owner)
+	})
+
+	t.Run("contrato removido cai no vínculo do lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		receipt := covReceiptOf("r-1", "t-1", "l-removido", "2026-09-10", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+
+		owner, err := receiptOwnerTenantID(context.Background(), env.deps, "r-1")
+
+		require.NoError(t, err)
+		require.Equal(t, "t-1", owner)
+	})
+
+	t.Run("lançamento sem titular", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		receipt := covReceiptOf("r-1", "", "", "2026-09-10", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+
+		owner, err := receiptOwnerTenantID(context.Background(), env.deps, "r-1")
+
+		require.NoError(t, err)
+		require.Empty(t, owner)
+	})
+
+	t.Run("lançamento inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		owner, err := receiptOwnerTenantID(context.Background(), env.deps, "r-9")
+
+		require.NoError(t, err)
+		require.Empty(t, owner)
+	})
+
+	t.Run("falha ao ler o lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.receipts.byIDErr = errors.New("banco fora")
+
+		_, err := receiptOwnerTenantID(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o recibo r-1: banco fora")
+	})
+
+	t.Run("falha ao ler o contrato do lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		receipt := covReceiptOf("r-1", "t-1", "l-1", "2026-09-10", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+		env.leases.byIDErr = errors.New("banco fora")
+
+		_, err := receiptOwnerTenantID(context.Background(), env.deps, "r-1")
+
+		require.ErrorContains(t, err, "carregar o contrato l-1 do recibo: banco fora")
 	})
 }

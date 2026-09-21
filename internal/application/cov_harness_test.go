@@ -129,9 +129,9 @@ func (r *covSettings) Set(_ context.Context, key, value string) error {
 
 // covUsers é o repositório de administradores em memória.
 type covUsers struct {
-	items                                        []domain.User
-	byIDErr, byUsernameErr, updatePassErr        error
-	passwordUpdates                              []covKV
+	items                                 []domain.User
+	byIDErr, byUsernameErr, updatePassErr error
+	passwordUpdates                       []covKV
 }
 
 func (r *covUsers) ByID(_ context.Context, id string) (*domain.User, error) {
@@ -190,10 +190,10 @@ func (r *covUsers) UpdatePassword(_ context.Context, id, hash, changedAt string)
 
 // covTenants é o repositório de locatários em memória.
 type covTenants struct {
-	items                                                     []domain.Tenant
+	items                                                              []domain.Tenant
 	listErr, byIDErr, byCPFErr, createErr, updateErr, delErr, countErr error
-	deleted                                                   []string
-	passwordUpdates                                           []covKV
+	deleted                                                            []string
+	passwordUpdates                                                    []covKV
 }
 
 func (r *covTenants) List(context.Context) ([]domain.Tenant, error) {
@@ -287,9 +287,9 @@ func (r *covTenants) Count(context.Context) (int, error) {
 
 // covProperties é o repositório de imóveis em memória.
 type covProperties struct {
-	items                                                                  []domain.Property
-	listErr, byIDErr, createErr, updateErr, delErr, countErr               error
-	deleted                                                                []string
+	items                                                    []domain.Property
+	listErr, byIDErr, createErr, updateErr, delErr, countErr error
+	deleted                                                  []string
 }
 
 func (r *covProperties) List(context.Context) ([]domain.Property, error) {
@@ -356,10 +356,10 @@ func (r *covProperties) Count(context.Context) (int, error) {
 // covLeases é o repositório de contratos em memória, com a mesma semântica de
 // sobreposição que a porta promete.
 type covLeases struct {
-	items                                                                []domain.Lease
+	items                                                                            []domain.Lease
 	listErr, byIDErr, byTenantErr, createErr, updateErr, statusErr, delErr, countErr error
-	statusUpdates                                                        []covKV
-	deleted                                                              []string
+	statusUpdates                                                                    []covKV
+	deleted                                                                          []string
 }
 
 func (r *covLeases) List(context.Context) ([]domain.Lease, error) {
@@ -508,10 +508,10 @@ func (r *covLeases) CountByStatus(_ context.Context, status domain.LeaseStatus) 
 // covReceipts é o repositório de lançamentos em memória. CreateIfAbsent respeita
 // a chave de geração mensal, como a porta promete.
 type covReceipts struct {
-	items                                                                             []domain.Receipt
+	items                                                                                     []domain.Receipt
 	listErr, byIDErr, byTenantErr, byLeaseErr, createErr, updateErr, payErr, delErr, countErr error
-	payments                                                                          []covKV
-	deleted                                                                           []string
+	payments                                                                                  []covKV
+	deleted                                                                                   []string
 }
 
 func (r *covReceipts) List(context.Context) ([]domain.Receipt, error) {
@@ -633,9 +633,9 @@ func (r *covReceipts) Count(context.Context) (int, error) {
 
 // covInspections é o repositório de vistorias em memória.
 type covInspections struct {
-	items                                                                []domain.Inspection
-	listErr, byIDErr, byLeaseErr, createErr, updateErr, delErr           error
-	deleted                                                              []string
+	items                                                      []domain.Inspection
+	listErr, byIDErr, byLeaseErr, createErr, updateErr, delErr error
+	deleted                                                    []string
 }
 
 func (r *covInspections) List(context.Context) ([]domain.Inspection, error) {
@@ -707,9 +707,9 @@ func (r *covInspections) Delete(_ context.Context, id string) error {
 
 // covAudit é a trilha em memória.
 type covAudit struct {
-	entries                        []domain.AuditLog
-	insertErr                      error
-	filter                         domain.AuditFilter
+	entries   []domain.AuditLog
+	insertErr error
+	filter    domain.AuditFilter
 }
 
 func (r *covAudit) Insert(_ context.Context, entry *domain.AuditLog) error {
@@ -733,10 +733,10 @@ func (r *covAudit) Actors(context.Context) ([]string, error) { return nil, nil }
 
 // covMessages é a caixa de mensagens do canal.
 type covMessages2 struct {
-	items        []domain.WhatsAppMessage
-	insertErr    error
-	inserts      int
-	byTenantErr  error
+	items       []domain.WhatsAppMessage
+	insertErr   error
+	inserts     int
+	byTenantErr error
 }
 
 func (r *covMessages2) InsertIfAbsent(_ context.Context, message *domain.WhatsAppMessage) (int64, error) {
@@ -773,9 +773,9 @@ func (r *covMessages2) ByTenant(_ context.Context, tenantID string, limit int) (
 
 // covJobs é a fila em memória.
 type covJobs struct {
-	items                                                       []domain.Job
-	createErr, byIDErr, listErr, updateErr                      error
-	updates                                                     []domain.Job
+	items                                  []domain.Job
+	createErr, byIDErr, listErr, updateErr error
+	updates                                []domain.Job
 }
 
 func (r *covJobs) Create(_ context.Context, job *domain.Job) error {
@@ -837,8 +837,8 @@ func (r *covJobs) Update(_ context.Context, job *domain.Job) error {
 
 // covProofs é o repositório de comprovantes em memória.
 type covProofs struct {
-	items                                                                    []domain.PaymentProof
-	createErr, byIDErr, listErr, updateErr                                   error
+	items                                  []domain.PaymentProof
+	createErr, byIDErr, listErr, updateErr error
 }
 
 func (r *covProofs) Create(_ context.Context, proof *domain.PaymentProof) error {
@@ -909,8 +909,8 @@ func (r *covProofs) UpdateDecision(_ context.Context, proof *domain.PaymentProof
 
 // covIntakes é o repositório de cadastros propostos em memória.
 type covIntakes struct {
-	items                                                       []domain.DocumentIntake
-	createErr, byIDErr, listErr, updateErr                      error
+	items                                  []domain.DocumentIntake
+	createErr, byIDErr, listErr, updateErr error
 }
 
 func (r *covIntakes) Create(_ context.Context, intake *domain.DocumentIntake) error {
@@ -975,9 +975,9 @@ func (r *covIntakes) Update(_ context.Context, intake *domain.DocumentIntake) er
 
 // covAttachments é o armazenamento de anexos em memória.
 type covAttachments struct {
-	files                       map[string][]byte
-	names                       []string
-	saveErr, openErr, delErr    error
+	files                    map[string][]byte
+	names                    []string
+	saveErr, openErr, delErr error
 }
 
 func newCovAttachments() *covAttachments {
@@ -1061,18 +1061,18 @@ func newCovEnv(t interface{ Helper() }) *covEnv {
 	}
 	env.deps = Deps{
 		Repos: Repositories{
-			Users:        env.users,
-			Tenants:      env.tenants,
-			Properties:   env.props,
-			Leases:       env.leases,
-			Receipts:     env.receipts,
-			Settings:     env.settings,
-			Audit:        env.audit,
-			WhatsApp:     env.messages,
-			Inspections:  env.inspections,
-			Jobs:         env.jobs,
+			Users:         env.users,
+			Tenants:       env.tenants,
+			Properties:    env.props,
+			Leases:        env.leases,
+			Receipts:      env.receipts,
+			Settings:      env.settings,
+			Audit:         env.audit,
+			WhatsApp:      env.messages,
+			Inspections:   env.inspections,
+			Jobs:          env.jobs,
 			PaymentProofs: env.proofs,
-			Intakes:      env.intakes,
+			Intakes:       env.intakes,
 		},
 		Clock:       env.clock,
 		IDs:         env.ids,

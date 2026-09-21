@@ -66,7 +66,7 @@ func caskSeedMonth(env *covEnv) {
 	}
 	// Nomes do join mandam sobre a listagem; ids fora da listagem exercitam o
 	// apoio e o rótulo de ausência.
-	joined := caskReceipt("r6", "t7", "p7", "2026-09-18", 300)
+	joined := caskReceipt("r6", "t7", "p7", "2026-09-28", 300)
 	joined.TenantName = "Heitor Join"
 	joined.PropertyName = "Sobrado Join"
 
@@ -75,7 +75,7 @@ func caskSeedMonth(env *covEnv) {
 		covPaidReceipt(caskReceipt("r2", "t1", "p1", "2026-09-12", 800), "2026-09-12", 300),
 		caskReceipt("r3", "t2", "p2", "2026-09-30", 1200),
 		caskReceipt("r4", "t3", "p3", "2026-09-05", 500),
-		caskReceipt("r5", "", "", "2026-09-20", 250),
+		caskReceipt("r5", "", "", "2026-09-25", 250),
 		joined,
 		caskReceipt("r9", "t1", "p1", "2026-08-15", 9999),
 	}
@@ -355,19 +355,19 @@ func TestCaskAskAbertos(t *testing.T) {
 		t.Fatalf("cabeçalho inesperado: %+v", data)
 	}
 	rows := data["receipts"].([]ReportReceiptRow)
-	// Ordem de vencimento: 18/09, 20/09 e 30/09.
+	// Ordem de vencimento: 25/09, 28/09 e 30/09.
 	want := []ReportReceiptRow{
-		{
-			ID: "r6", TenantName: "Heitor Join", PropertyName: "Sobrado Join",
-			Status: "due", StatusLabel: "A vencer",
-			DueDate: "2026-09-18", DueDateLabel: "18/09/2026",
-			Amount: 300, AmountLabel: "R$ 300,00",
-		},
 		{
 			ID: "r5", TenantName: "Sem titular", PropertyName: "Sem imóvel",
 			Status: "due", StatusLabel: "A vencer",
-			DueDate: "2026-09-20", DueDateLabel: "20/09/2026",
+			DueDate: "2026-09-25", DueDateLabel: "25/09/2026",
 			Amount: 250, AmountLabel: "R$ 250,00",
+		},
+		{
+			ID: "r6", TenantName: "Heitor Join", PropertyName: "Sobrado Join",
+			Status: "due", StatusLabel: "A vencer",
+			DueDate: "2026-09-28", DueDateLabel: "28/09/2026",
+			Amount: 300, AmountLabel: "R$ 300,00",
 		},
 		{
 			ID: "r3", TenantName: "Bruno", PropertyName: "Casa B",
@@ -906,6 +906,83 @@ func TestCaskAskReportStopsAtRoundLimit(t *testing.T) {
 	}
 	if answer.Refused || !strings.Contains(answer.Answer, "esperado R$ 4.050,00") {
 		t.Fatalf("resumo determinístico inesperado: %+v", answer)
+	}
+}
+
+func TestCaskReportMonthRowsTieBreakByTenant(t *testing.T) {
+	env := newCovEnv(t)
+	env.tenants.items = []domain.Tenant{covTenantOf("t1", "Zélia"), covTenantOf("t2", "Ana")}
+	env.props.items = []domain.Property{covPropertyOf("p1", "Casa A")}
+	env.receipts.items = []domain.Receipt{
+		caskReceipt("a1", "t1", "p1", "2026-09-30", 100),
+		caskReceipt("a2", "t2", "p1", "2026-09-30", 200),
+	}
+
+	selection, err := reportMonthOf(context.Background(), env.deps, 2026, 9)
+	if err != nil {
+		t.Fatalf("reportMonthOf devolveu erro: %v", err)
+	}
+	rows := selection.rows(func(status domain.ReceiptStatus) bool {
+		return status == domain.ReceiptStatusDue
+	})
+	// Mesmo vencimento: o desempate é pelo nome do titular.
+	if len(rows) != 2 || rows[0].ID != "a2" || rows[1].ID != "a1" {
+		t.Fatalf("ordem inesperada: %+v", rows)
+	}
+	if rows[0].TenantName != "Ana" || rows[1].TenantName != "Zélia" {
+		t.Fatalf("nomes inesperados: %+v", rows)
+	}
+}
+
+func TestCaskAskInadimplentesEmpatePorNome(t *testing.T) {
+	env := newCovEnv(t)
+	env.tenants.items = []domain.Tenant{covTenantOf("t1", "Zélia"), covTenantOf("t2", "Ana")}
+	env.receipts.items = []domain.Receipt{
+		caskReceipt("d1", "t1", "p1", "2026-09-05", 400),
+		caskReceipt("d2", "t2", "p1", "2026-09-06", 400),
+	}
+
+	result, _, err := askInadimplentes(context.Background(), env.deps, nil)
+	if err != nil {
+		t.Fatalf("askInadimplentes devolveu erro: %v", err)
+	}
+	rows := result.(map[string]any)["delinquents"].([]reportDelinquentRow)
+	// Mesma dívida: o desempate é pelo nome do titular.
+	if len(rows) != 2 || rows[0].TenantName != "Ana" || rows[1].TenantName != "Zélia" {
+		t.Fatalf("ordem inesperada: %+v", rows)
+	}
+}
+
+func TestCaskAskReportKeepsModelTextBetweenRounds(t *testing.T) {
+	env := newCovEnv(t)
+	caskSeedMonth(env)
+	chat := &caskChat{responses: []ChatResponse{
+		{
+			Message:   "Vou consultar o resumo.",
+			ToolCalls: []ChatToolCall{{Name: "resumo_mes", Arguments: caskMonthArgs(2026, 9)}},
+		},
+		{Message: "Feito."},
+	}}
+	env.deps.Chat = chat
+
+	answer, err := AskReport(context.Background(), env.deps, "resuma setembro")
+	if err != nil {
+		t.Fatalf("AskReport devolveu erro: %v", err)
+	}
+	if answer.Answer != "Feito." {
+		t.Fatalf("resposta inesperada: %+v", answer)
+	}
+	// O texto do modelo entra na conversa antes do resultado da ferramenta.
+	messages := chat.requests[1].Messages
+	if len(messages) != 3 {
+		t.Fatalf("conversa: esperado 3 mensagens, veio %d", len(messages))
+	}
+	if messages[1] != (ChatMessage{Role: "assistant", Content: "Vou consultar o resumo."}) {
+		t.Fatalf("turno do modelo inesperado: %+v", messages[1])
+	}
+	if messages[2].Role != "user" ||
+		!strings.HasPrefix(messages[2].Content, "Resultado da ferramenta resumo_mes: ") {
+		t.Fatalf("turno do resultado inesperado: %+v", messages[2])
 	}
 }
 

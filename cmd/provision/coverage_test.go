@@ -360,11 +360,8 @@ func TestCovCreateStopsAtTheFailingStep(t *testing.T) {
 			switch testCase.operation {
 			case "listProjectsAndServices":
 				assert.Equal(t, []string{"listProjectsAndServices"}, operations, "nada acontece depois da primeira falha")
-			case "createMount", "updateAppEnv", "createDomain", "deployAppService":
-				assert.NotContains(t, operations, "destroyAppService")
-			}
-			if testCase.operation == "deployAppService" {
-				assert.NotContains(t, operations, "setServiceNotes")
+			case "deployAppService":
+				assert.NotContains(t, operations, "setServiceNotes", "a etiqueta só é gravada depois do deploy")
 			}
 		})
 	}

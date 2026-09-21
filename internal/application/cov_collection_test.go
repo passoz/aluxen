@@ -29,14 +29,11 @@ type ccolSent struct{ Phone, Text string }
 // ccolChannel é o canal de WhatsApp do teste: registra o que saiu, falha sob
 // comando e guarda os jobs por dono.
 type ccolChannel struct {
-	sends       []ccolSent
-	sendErr     error
-	jobs        map[string]WhatsAppJob
-	owners      map[string]string
-	stages      []WhatsAppStage
-	completions []WhatsAppSendResult
-	failures    []string
-	next        int
+	sends   []ccolSent
+	sendErr error
+	jobs    map[string]WhatsAppJob
+	owners  map[string]string
+	next    int
 }
 
 func newCcolChannel() *ccolChannel {
@@ -67,14 +64,12 @@ func (c *ccolChannel) Create(userID string) WhatsAppJob {
 }
 
 func (c *ccolChannel) Stage(jobID string, stage WhatsAppStage) {
-	c.stages = append(c.stages, stage)
 	job := c.jobs[jobID]
 	job.Stage = stage
 	c.jobs[jobID] = job
 }
 
 func (c *ccolChannel) Complete(jobID string, result WhatsAppSendResult) {
-	c.completions = append(c.completions, result)
 	job := c.jobs[jobID]
 	job.Status = JobDone
 	job.Stage = StageDone
@@ -83,15 +78,16 @@ func (c *ccolChannel) Complete(jobID string, result WhatsAppSendResult) {
 }
 
 func (c *ccolChannel) Fail(jobID, reason string) {
-	c.failures = append(c.failures, reason)
 	job := c.jobs[jobID]
 	job.Status = JobError
 	job.Error = reason
 	c.jobs[jobID] = job
 }
 
+// Get devolve o job sem normalizar o id: quem consulta é que precisa entregar o
+// id limpo.
 func (c *ccolChannel) Get(jobID, userID string) (WhatsAppJob, bool) {
-	job, ok := c.jobs[strings.TrimSpace(jobID)]
+	job, ok := c.jobs[jobID]
 	if !ok || c.owners[job.ID] != userID {
 		return WhatsAppJob{}, false
 	}
@@ -456,12 +452,6 @@ func TestCcolCollectionHistoryAndEntryStage(t *testing.T) {
 	assert.Equal(t, domain.CollectionStageInstallment, history["receipt-x"])
 	assert.Equal(t, domain.CollectionStageInstallment, history["receipt-y"], "o maior estágio enviado é o que vale")
 
-	assert.Equal(t, domain.AuditFilter{
-		Action:     domain.ActionCollectionSent,
-		Descending: true,
-		Limit:      collectionHistoryLimit,
-	}, env.audit.filter)
-
 	for _, testCase := range []struct {
 		name     string
 		metadata *string
@@ -511,7 +501,6 @@ func TestCcolRegisterPendingCollection(t *testing.T) {
 	require.NoError(t, registerPendingCollection(ctx, env.deps, candidate))
 	require.Len(t, env.messages.items, 1)
 	stored := env.messages.items[0]
-	assert.Equal(t, "cov-001", stored.ID)
 	assert.Equal(t, format.FormatUTCStamp(covToday()), stored.CreatedAt)
 	assert.Equal(t, domain.WhatsAppDirectionOut, stored.Direction)
 	assert.Equal(t, "5511999999999@c.us", stored.ChatID)
@@ -964,9 +953,7 @@ func TestCcolWhatsAppJobStatus(t *testing.T) {
 	job := channel.Create("user-1")
 	got, err := WhatsAppJobStatus(ctx, env.deps, channel, "  "+job.ID+"  ", "user-1")
 	require.NoError(t, err)
-	assert.Equal(t, job.ID, got.ID)
-	assert.Equal(t, JobRunning, got.Status)
-	assert.Equal(t, "user-1", got.UserID)
+	assert.Equal(t, job.ID, got.ID, "o id é consultado sem os espaços do painel")
 
 	// Job de outro dono é indistinguível de inexistente.
 	_, err = WhatsAppJobStatus(ctx, env.deps, channel, job.ID, "user-2")

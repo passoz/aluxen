@@ -522,8 +522,8 @@ func TestCagtOpenMaintenanceRequestRecordsTheTrail(t *testing.T) {
 	entry := env.audit.entries[0]
 	assert.Equal(t, domain.ActionMaintenanceOpened, entry.Action)
 	assert.Equal(t, domain.EntityWhatsApp, entry.Entity)
-	assert.Equal(t, tenant.ID, entry.EntityID)
-	assert.Equal(t, tenant.Name, entry.EntityLabel)
+	assert.Equal(t, tenant.ID, domain.Str(entry.EntityID))
+	assert.Equal(t, tenant.Name, domain.Str(entry.EntityLabel))
 	metadata := cagtMetadata(t, entry)
 	assert.Equal(t, "****7777", metadata["phone"], "telefone do locatário não vai inteiro para a trilha")
 	assert.Equal(t, agentKindMaintenance, metadata["kind"])
@@ -705,6 +705,32 @@ func TestCagtListConversationsOrdersByRecencyThenName(t *testing.T) {
 		[]string{rows[0].TenantName, rows[1].TenantName, rows[2].TenantName})
 }
 
+// O atraso do titular entra na conversa: contagem, total e o estágio que a
+// régua sustenta para o lançamento mais atrasado.
+func TestCagtListConversationsSummarizesTheOverdueOfTheConversation(t *testing.T) {
+	env := newCovEnv(t)
+	tenant := cagtTenant("Maria")
+	cagtAddTenant(t, env, tenant)
+	cagtAddMessage(t, env, cagtMessage(tenant.ID, "m1", "2026-09-21 09:00:00"))
+	cagtAddReceipt(t, env, covReceiptOf("r-atraso", tenant.ID, "l1", "2026-09-01", 900))
+	cagtAddReceipt(t, env, covPaidReceipt(covReceiptOf("r-pago", tenant.ID, "l1", "2026-08-01", 900), "2026-08-01", 900))
+	cagtAddReceipt(t, env, covReceiptOf("r-futuro", tenant.ID, "l1", "2026-10-10", 900))
+
+	rows, err := ListConversations(context.Background(), env.deps, 10)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 1, rows[0].OverdueCount, "só o lançamento vencido conta")
+	assert.Equal(t, 900.0, rows[0].OverdueTotal)
+
+	require.NotNil(t, rows[0].Overdue)
+	assert.Equal(t, "r-atraso", rows[0].Overdue.ReceiptID)
+	assert.Equal(t, 20, rows[0].Overdue.DaysLate)
+	assert.Equal(t, domain.CollectionStageInstallment, rows[0].Overdue.Stage)
+	assert.NotEmpty(t, rows[0].Overdue.StageLabel)
+	assert.Empty(t, rows[0].Overdue.StageSentLabel, "nada foi cobrado ainda")
+	assert.True(t, rows[0].Overdue.StagePending, "o estágio sustentado pelo atraso ainda falta cobrar")
+}
+
 func TestCagtListConversationsReportsRepositoryFailures(t *testing.T) {
 	t.Run("titulares ilegíveis", func(t *testing.T) {
 		env := newCovEnv(t)
@@ -825,6 +851,11 @@ func TestCagtConversationTenantByIDRequiresKnownTenant(t *testing.T) {
 
 	_, err = conversationTenantByID(context.Background(), env.deps, "cagt-inexistente")
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+
+	env.tenants.byIDErr = errors.New("banco fora")
+	_, err = conversationTenantByID(context.Background(), env.deps, tenant.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "banco fora")
 }
 
 // ── Prompt do atendimento ──────────────────────────────────────────

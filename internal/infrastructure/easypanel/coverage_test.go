@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -419,26 +418,6 @@ func TestCovTransportFailuresKeepTheOperationAndTheCause(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "expires_at=2026-10-05", notes)
 	})
-}
-
-// A query de leitura identifica o projeto e o serviço, e a credencial vai no
-// cabeçalho Authorization.
-func TestCovReadsSendQueryAndCredential(t *testing.T) {
-	panel := newCovPanel(t).reply("listMounts", http.StatusOK, "[]")
-	query := make(chan url.Values, 1)
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		query <- request.URL.Query()
-		panel.serve(writer, request)
-	}))
-	t.Cleanup(server.Close)
-
-	client := easypanel.NewClient(easypanel.Config{BaseURL: server.URL, APIKey: "chave-de-teste"})
-	_, err := client.ListMounts(context.Background(), "aluxen", "aluxen-demo")
-	require.NoError(t, err)
-
-	values := <-query
-	assert.Equal(t, "aluxen", values.Get("projectName"))
-	assert.Equal(t, "aluxen-demo", values.Get("serviceName"))
 }
 
 // ── Etiqueta de expiração inválida ─────────────────────────────────

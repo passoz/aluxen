@@ -732,65 +732,6 @@
       "visual": "N/A",
       "documentation": "N/A",
       "status": "pending"
-    },
-    {
-      "id": "1.16",
-      "title": "Cutover: remoção do app Bun legado",
-      "requirement_id": "FR-016",
-      "spec_reference": "CAP-001",
-      "contract_id": "CTR-016",
-      "complexity": "standard",
-      "depends_on": [
-        "1.15"
-      ],
-      "behavior": "o branch devgo contém apenas o app Go, com Dockerfile multi-stage e documentação atualizada",
-      "components": [
-        "ops"
-      ],
-      "files": [
-        "README.md",
-        "docs/**",
-        "Dockerfile",
-        ".gitignore"
-      ],
-      "implementation_files": [
-        "README.md",
-        "docs/**",
-        "Dockerfile",
-        ".gitignore",
-        "src/**",
-        "package.json",
-        "drizzle/**",
-        "bun.lock",
-        "test/**",
-        "drizzle.config.ts",
-        "tsconfig.json"
-      ],
-      "test_files": [
-        "internal/**"
-      ],
-      "red": {
-        "command": "go build ./...",
-        "description": "a asserção do comportamento \"o branch devgo contém apenas o app Go, com Dockerfile multi-stage e documentação atualizada\" falha antes da implementação"
-      },
-      "implementation_steps": [
-        "Confirmar paridade funcional rota a rota contra o inventário",
-        "Remover o app Bun e a CI antiga, atualizar README e docs",
-        "Rodar os gates finais"
-      ],
-      "acceptance_criteria": [
-        {
-          "command": "go build ./...",
-          "description": "o projeto compila apenas com Go"
-        },
-        {
-          "command": "go test ./...",
-          "description": "a suíte Go passa sem o legado"
-        }
-      ],
-      "visual": "N/A",
-      "documentation": "N/A",
-      "status": "pending"
     }
   ]
 }
