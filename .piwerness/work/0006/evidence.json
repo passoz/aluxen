@@ -1,0 +1,78 @@
+{
+  "$schema": "../../../schemas/evidence.schema.json",
+  "meta": {
+    "created_at": "2026-09-21T21:51:42Z",
+    "agent": "operator",
+    "model": "omp/deepseek-v4.1-flash",
+    "duration_seconds": 0
+  },
+  "task_id": "T-001",
+  "status": "green",
+  "red": {
+    "test_file": "test/cutover-baseline.txt",
+    "exit_code": 1,
+    "output": "Baseline RED (antes do cutover): a árvore de trabalho ainda continha o app Bun — `test -d src && test -f package.json && test -f drizzle.config.ts` passava, e o requisito FR-601 exige a árvore apenas com o app Go. Verificação: `git ls-files | grep -E '^(src/|test/.*\\.tsx?|package.json|bun.lock|tsconfig.json|drizzle/|public/)' | wc -l` → 78 arquivos.",
+    "timestamp": "2026-09-21T18:50:15Z",
+    "attempts": 1
+  },
+  "green": {
+    "impl_file": "README.md",
+    "exit_code": 0,
+    "output": "Cutover executado sob aprovação humana registrada na fila AFK do pwn (Work 0006, risco L4): run RUN-mubrjap7 suspenso em pre-execution e aprovado com `pwn queue approve RUN-mubrjap7`.\n\nRemovidos da árvore: src/, drizzle/, public/, data-test/, test/*.ts(x) do app original, package.json, bun.lock, tsconfig.json, drizzle.config.ts, Dockerfile.dev, Dockerfile.test (e binários soltos `app`/`migrate`/`provision` que estavam versionados por engano).\n\nVerificação: `go build ./...` sem saída (exit 0); `go test ./... -count=1 -race` com todos os pacotes `ok`; `go test ./... -coverpkg=./... -coverprofile` com Postgres de teste → total 93,6% (gate do CI em 90%).\n\nHistórico preservado: o app original continua acessível em `main`/`release` e nos commits anteriores do git.",
+    "timestamp": "2026-09-21T21:51:42Z",
+    "attempts": 1
+  },
+  "checks": [
+    {
+      "name": "compilação sem o legado",
+      "type": "build",
+      "command": "go build ./...",
+      "passed": true,
+      "exit_code": 0,
+      "timestamp": "2026-09-21T21:51:42Z"
+    },
+    {
+      "name": "suíte Go com detector de corrida",
+      "type": "test",
+      "command": "go test ./... -count=1 -race",
+      "passed": true,
+      "exit_code": 0,
+      "timestamp": "2026-09-21T21:51:42Z"
+    },
+    {
+      "name": "gate de cobertura entre pacotes (com Postgres)",
+      "type": "test",
+      "command": "TEST_DATABASE_URL=postgres://… go test ./... -coverpkg=./... -coverprofile=coverage.out && go tool cover -func=coverage.out | tail -1",
+      "passed": true,
+      "exit_code": 0,
+      "output": "total: (statements) 93.6%",
+      "timestamp": "2026-09-21T21:51:42Z"
+    },
+    {
+      "name": "árvore sem referência ao app anterior",
+      "type": "custom",
+      "command": "test ! -d src && test ! -f package.json && test ! -f drizzle.config.ts",
+      "passed": true,
+      "exit_code": 0,
+      "timestamp": "2026-09-21T21:51:42Z"
+    }
+  ],
+  "files_modified": [
+    { "path": "src/", "action": "deleted" },
+    { "path": "drizzle/", "action": "deleted" },
+    { "path": "public/", "action": "deleted" },
+    { "path": "data-test/", "action": "deleted" },
+    { "path": "package.json", "action": "deleted" },
+    { "path": "bun.lock", "action": "deleted" },
+    { "path": "tsconfig.json", "action": "deleted" },
+    { "path": "drizzle.config.ts", "action": "deleted" },
+    { "path": "Dockerfile.dev", "action": "deleted" },
+    { "path": "Dockerfile.test", "action": "deleted" }
+  ],
+  "contract_compliance": {
+    "scope_respected": true,
+    "budget_respected": true,
+    "tools_used_only_allowed": true,
+    "violations": []
+  }
+}
