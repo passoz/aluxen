@@ -354,7 +354,7 @@ func (s *testServer) portalLogin(t *testing.T, cpf, password string) *httptest.R
 
 // ── Testes ─────────────────────────────────────────────────────────
 
-func TestPortalLoginPageRendersFormWithoutAdminLink(t *testing.T) {
+func TestPortalLoginPageRendersFormAndAdminEntry(t *testing.T) {
 	server := newPortalServer(t)
 
 	recorder := server.portalGet(t, "/portal/login", nil)
@@ -362,13 +362,25 @@ func TestPortalLoginPageRendersFormWithoutAdminLink(t *testing.T) {
 		t.Fatalf("status = %d, esperado 200", recorder.Code)
 	}
 	body := recorder.Body.String()
-	for _, expected := range []string{`name="csrf_token"`, `action="/portal/login"`, `name="cpf"`, `name="password"`, "Área do Cliente"} {
+	// O app original mostra a porta de entrada do painel nesta tela
+	// (src/client/portal.tsx): a paridade exige o link, e o isolamento é do
+	// acesso — não da tela.
+	for _, expected := range []string{`name="csrf_token"`, `action="/portal/login"`, `name="cpf"`, `name="password"`, "Área do Cliente", `href="/login"`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("página de acesso sem %s", expected)
 		}
 	}
-	if strings.Contains(body, `href="/login"`) {
-		t.Fatal("a Área do Cliente não pode ter link para o painel administrativo")
+}
+
+func TestPortalSessionDoesNotOpenTheAdminPanel(t *testing.T) {
+	server := newPortalServer(t)
+
+	// A sessão do locatário é o cookie do portal; ela não autoriza o painel.
+	portalCookie := portalSession(t, server.portalLogin(t, portalCPF, portalPassword))
+	recorder := server.portalGet(t, "/dashboard?tab=dashboard", []*http.Cookie{portalCookie})
+	if recorder.Code != http.StatusFound || recorder.Header().Get("Location") != "/login" {
+		t.Fatalf("sessão do locatário não pode abrir o painel: status %d, location %q",
+			recorder.Code, recorder.Header().Get("Location"))
 	}
 }
 

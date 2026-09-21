@@ -22,11 +22,15 @@
   /* ── Constantes ───────────────────────────────────────────────────────── */
 
   var THEME_KEY = 'aluxen.theme';
+  var SIDEBAR_KEY = 'aluxen.sidebar';
   var QUEUE_KEY = 'aluxen.offline.queue';
   var CACHE_KEY = 'aluxen.cache';
   var PAGESIZE_KEY = 'aluxen.pagesize.';
   var PAGESIZE_OPTIONS = [10, 25, 50, 100];
   var CACHE_LIMIT = 8;
+
+  var IMPORT_CONFIRM = 'Importar dados do arquivo? Isso adicionará novos registros ao banco.';
+  var SYSTEM_INFO_ERROR = 'Não foi possível carregar as informações.';
 
   var OFFLINE_NOTICE = 'Modo offline ativo. As alterações serão sincronizadas quando a conexão voltar.';
   var SYNC_FAILURE = 'Falha ao sincronizar dados pendentes.';
@@ -870,10 +874,19 @@
       if (busy) {
         if (button.hasAttribute('data-busy-original')) return;
         button.setAttribute('data-busy-original', button.disabled ? '1' : '0');
+        var busyLabel = button.getAttribute('data-busy-label');
+        if (busyLabel) {
+          button.setAttribute('data-idle-label', button.textContent);
+          button.textContent = busyLabel;
+        }
         button.disabled = true;
       } else if (button.hasAttribute('data-busy-original')) {
         button.disabled = button.getAttribute('data-busy-original') === '1';
         button.removeAttribute('data-busy-original');
+        if (button.hasAttribute('data-idle-label')) {
+          button.textContent = button.getAttribute('data-idle-label');
+          button.removeAttribute('data-idle-label');
+        }
       }
     });
     if (busy) form.setAttribute('aria-busy', 'true');
@@ -1148,8 +1161,10 @@
     var sizeLabel = document.createElement('span');
     sizeLabel.className = 'pagination-label';
     sizeLabel.textContent = 'Itens por página';
+    var sizeWrap = document.createElement('div');
+    sizeWrap.className = 'small-select';
     var sizeSelect = document.createElement('select');
-    sizeSelect.className = 'pagination-size-select';
+    sizeSelect.className = 'small-select-display';
     sizeSelect.setAttribute('aria-label', 'Itens por página');
     PAGESIZE_OPTIONS.forEach(function (option) {
       var item = document.createElement('option');
@@ -1164,8 +1179,9 @@
       storageSet(PAGESIZE_KEY + state.key, String(state.pageSize));
       applyTable(table);
     });
+    sizeWrap.appendChild(sizeSelect);
     sizeHost.appendChild(sizeLabel);
-    sizeHost.appendChild(sizeSelect);
+    sizeHost.appendChild(sizeWrap);
 
     host.appendChild(nav);
     host.appendChild(sizeHost);
@@ -1364,8 +1380,18 @@
 
       $$('[data-batch-action]', container).forEach(function (button) {
         var template = button.getAttribute('data-batch-label');
-        if (template) button.textContent = template.replace('{n}', String(count));
-        if (!button.hasAttribute('data-batch-allow-empty')) button.disabled = count === 0;
+        var buttonCount = count;
+        if (button.hasAttribute('data-batch-payable')) {
+          // O app original conta apenas os selecionados que ainda podem ser
+          // pagos (a baixa em lote ignora os já pagos).
+          buttonCount = selected.filter(function (item) {
+            var row = item.closest('tr');
+            return !row || row.getAttribute('data-status') !== 'paid';
+          }).length;
+          button.hidden = buttonCount === 0;
+        }
+        if (template) button.textContent = template.replace('{n}', String(buttonCount));
+        if (!button.hasAttribute('data-batch-allow-empty')) button.disabled = buttonCount === 0;
       });
 
       $$('[data-batch-toolbar]', container).forEach(function (toolbar) {
@@ -1400,7 +1426,10 @@
     if (!ids.length && !button.hasAttribute('data-batch-allow-empty')) return;
 
     var confirmText = button.getAttribute('data-confirm');
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirmText) {
+      confirmText = confirmText.replace('{n}', String(ids.length));
+      if (!window.confirm(confirmText)) return;
+    }
 
     var form = button.closest('form') || container.querySelector('form');
     if (form) {
@@ -1525,13 +1554,28 @@
     Object.keys(fill).forEach(function (key) {
       var field = modal.querySelector('[name="' + key + '"], [data-field="' + key + '"]');
       if (!field) return;
+      setFieldValue(field, fill[key]);
+    });
+  }
+
+  /**
+   * Preenche um campo do modal. Campos de formulário recebem valor; elementos
+   * de texto (rótulos de leitura, como o valor total da baixa) recebem o texto,
+   * formatado como moeda quando o elemento pede (`data-field-format="money"`).
+   */
+  function setFieldValue(field, value) {
+    var text = value === null || value === undefined ? '' : String(value);
+    var tag = field.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
       if (field.type === 'checkbox' || field.type === 'radio') {
-        field.checked = truthy(fill[key]);
+        field.checked = truthy(value);
         return;
       }
-      field.value = fill[key] === null || fill[key] === undefined ? '' : String(fill[key]);
+      field.value = text;
       syncFieldDisplay(field);
-    });
+      return;
+    }
+    field.textContent = field.getAttribute('data-field-format') === 'money' && text ? moneyFromDecimal(text) : text;
   }
 
   function focusFirstField(modal) {
@@ -1850,23 +1894,61 @@
     });
   }
 
-  /* ── Menu lateral no mobile ───────────────────────────────────────────── */
+  /* ── Menu lateral ─────────────────────────────────────────────────────── */
+
+  /**
+   * Recolhe/expande o menu. O estado é do navegador (`aluxen.sidebar`) e a
+   * classe `open` do próprio menu é a fonte da verdade do layout — a mesma do
+   * app original. O `<html>` também recebe o estado para o CSS aplicá-lo antes
+   * da primeira pintura (`head.html`).
+   */
+  function setSidebarCollapsed(sidebar, collapsed) {
+    sidebar.classList.toggle('open', !collapsed);
+    root().classList.toggle('sidebar-collapsed', collapsed);
+    var main = document.querySelector('main');
+    if (main) main.classList.toggle('sidebar-open', !collapsed);
+    var button = sidebar.querySelector('[data-sidebar-toggle]');
+    if (button) {
+      button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      button.setAttribute('aria-label', collapsed ? 'Expandir menu' : 'Recolher menu');
+    }
+  }
+
+  function initSidebar() {
+    var sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+    setSidebarCollapsed(sidebar, storageGet(SIDEBAR_KEY) === 'collapsed');
+    var button = sidebar.querySelector('[data-sidebar-toggle]');
+    if (!button) return;
+    button.addEventListener('click', function () {
+      var collapsed = sidebar.classList.contains('open');
+      storageSet(SIDEBAR_KEY, collapsed ? 'collapsed' : 'expanded');
+      setSidebarCollapsed(sidebar, collapsed);
+    });
+  }
 
   function initMobileMenu() {
     var sidebar = document.querySelector('.sidebar');
-    if (!sidebar || document.querySelector('.hamburger-float')) return;
-    var button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'hamburger-float';
-    button.setAttribute('aria-label', 'Abrir menu');
-    button.setAttribute('aria-expanded', 'false');
-    button.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">'
-      + '<path d="M4 7h16M4 12h16M4 17h16"/></svg>';
-    var backdrop = document.createElement('div');
-    backdrop.className = 'sidebar-backdrop';
-    backdrop.hidden = true;
-    document.body.appendChild(button);
-    document.body.appendChild(backdrop);
+    if (!sidebar) return;
+    var button = document.querySelector('.hamburger-float');
+    var backdrop = document.querySelector('.sidebar-backdrop');
+    if (!button) {
+      // Sem o botão no HTML (telas antigas), ele é criado aqui.
+      button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'hamburger-float';
+      button.setAttribute('aria-label', 'Abrir menu');
+      button.setAttribute('aria-expanded', 'false');
+      button.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">'
+        + '<path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+      document.body.appendChild(button);
+    }
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.className = 'sidebar-backdrop';
+      backdrop.hidden = true;
+      document.body.appendChild(backdrop);
+    }
 
     var setOpen = function (open) {
       sidebar.classList.toggle('mobile-open', open);
@@ -1889,6 +1971,190 @@
     });
   }
 
+  /* ── Importar backup (menu lateral) ───────────────────────────────────── */
+
+  function initImport() {
+    document.addEventListener('change', function (event) {
+      var input = element(event.target);
+      if (!input || !input.hasAttribute('data-import-input')) return;
+      var form = input.closest('form');
+      if (!form) return;
+      if (!input.files || !input.files.length) return;
+      if (!window.confirm(IMPORT_CONFIRM)) {
+        input.value = '';
+        return;
+      }
+      // Envio nativo (multipart): o servidor responde com o redirecionamento.
+      form.submit();
+    });
+  }
+
+  /* ── Informações do sistema ───────────────────────────────────────────── */
+
+  function pad2(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  /** `YYYY-MM-DDTHH:mm` do servidor em `dd/mm/aaaa HH:mm` (igual ao original). */
+  function formatDateTimeBr(value) {
+    if (!value) return '-';
+    var parts = String(value).split(/[T ]/);
+    var date = parts[0].split('-');
+    var time = parts[1] || '';
+    if (date.length < 3) return String(value);
+    var formatted = pad2(date[2]) + '/' + pad2(date[1]) + '/' + date[0];
+    if (!time) return formatted;
+    var clock = time.split(':');
+    return formatted + ' ' + clock[0] + ':' + (clock[1] || '00');
+  }
+
+  function formatBytes(bytes) {
+    var total = Number(bytes) || 0;
+    if (total < 1024) return total + ' B';
+    var units = ['KB', 'MB', 'GB'];
+    var value = total / 1024;
+    var unit = units[0];
+    for (var index = 0; index < units.length - 1 && value >= 1024; index += 1) {
+      value /= 1024;
+      unit = units[index + 1];
+    }
+    return value.toFixed(1) + ' ' + unit;
+  }
+
+  function formatUptime(seconds) {
+    var total = Number(seconds) || 0;
+    var days = Math.floor(total / 86400);
+    var hours = Math.floor((total % 86400) / 3600);
+    var minutes = Math.floor((total % 3600) / 60);
+    var parts = [];
+    if (days) parts.push(days + 'd');
+    if (hours) parts.push(hours + 'h');
+    if (minutes || (!days && !hours)) parts.push(minutes + 'min');
+    return parts.join(' ');
+  }
+
+  function infoRow(label, value, mono) {
+    var row = document.createElement('div');
+    row.className = 'info-row';
+    var labelNode = document.createElement('span');
+    labelNode.className = 'info-row-label';
+    labelNode.textContent = label;
+    var valueNode = document.createElement('span');
+    valueNode.className = 'info-row-value' + (mono ? ' info-row-mono' : '');
+    valueNode.textContent = value;
+    row.appendChild(labelNode);
+    row.appendChild(valueNode);
+    return row;
+  }
+
+  function fillInfoSection(host, rows) {
+    if (!host) return;
+    host.innerHTML = '';
+    rows.forEach(function (row) {
+      host.appendChild(infoRow(row.label, row.value, row.mono));
+    });
+  }
+
+  function renderSystemInfo(modal, info) {
+    var database = info.database || {};
+    var counts = info.counts || {};
+    fillInfoSection(modal.querySelector('[data-system-info-system]'), [
+      { label: 'Aplicação', value: (info.app || '') + ' ' + (info.version || '') },
+      { label: 'Runtime', value: info.runtime || '' },
+      { label: 'Ambiente', value: info.nodeEnv || '' },
+      { label: 'Fuso horário', value: info.timezone || '' },
+      { label: 'Iniciado em', value: formatDateTimeBr(String(info.startedAt || '').replace('Z', '')) + ' (UTC)' },
+      { label: 'No ar há', value: formatUptime(info.uptimeSeconds) },
+      { label: 'Banco de dados', value: database.path || '—', mono: true },
+      { label: 'Tamanho do banco', value: formatBytes(database.sizeBytes) },
+      { label: 'URL pública', value: info.appUrl || '—' }
+    ]);
+    fillInfoSection(modal.querySelector('[data-system-info-counts]'), [
+      { label: 'Inquilinos', value: String(counts.tenants || 0) },
+      { label: 'Imóveis', value: String(counts.properties || 0) },
+      { label: 'Contratos', value: String(counts.leases || 0) },
+      { label: 'Recibos', value: String(counts.receipts || 0) }
+    ]);
+  }
+
+  /** Carrega a parte dinâmica do modal de Informações (`GET /api/info`). */
+  function loadSystemInfo() {
+    var modal = document.getElementById('system-info-modal');
+    if (!modal || modal.__aluxenInfoLoaded) return;
+    var loading = modal.querySelector('[data-system-info-loading]');
+    var errorBox = modal.querySelector('[data-system-info-error]');
+    if (loading) loading.hidden = false;
+    if (errorBox) {
+      errorBox.hidden = true;
+      errorBox.textContent = '';
+    }
+    fetch('/api/info', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          return { ok: response.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        if (loading) loading.hidden = true;
+        if (!result.ok) {
+          throw new Error((result.body && result.body.error) || SYSTEM_INFO_ERROR);
+        }
+        renderSystemInfo(modal, result.body || {});
+        modal.__aluxenInfoLoaded = true;
+      })
+      .catch(function (error) {
+        if (loading) loading.hidden = true;
+        if (errorBox) {
+          errorBox.hidden = false;
+          errorBox.textContent = (error && error.message) || SYSTEM_INFO_ERROR;
+        }
+      });
+  }
+
+  /* ── Modal de lançamento (aluguel × taxa avulsa) ──────────────────────── */
+
+  function setReceiptMode(modal, mode) {
+    var next = mode === 'extra' ? 'extra' : 'rent';
+    var category = modal.querySelector('[data-receipt-category]');
+    if (category) category.value = next;
+    $$('[data-receipt-mode]', modal).forEach(function (button) {
+      var active = button.getAttribute('data-receipt-mode') === next;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    $$('[data-receipt-fields]', modal).forEach(function (group) {
+      var active = group.getAttribute('data-receipt-fields') === next;
+      group.hidden = !active;
+      // Campo do modo inativo sai do envio e da validação (o app original
+      // simplesmente não monta o bloco).
+      $$('input, select, textarea', group).forEach(function (field) {
+        field.disabled = !active;
+      });
+    });
+    var title = modal.querySelector('[data-receipt-title]');
+    if (title) title.textContent = next === 'extra' ? 'Nova Taxa Avulsa' : 'Novo Pagamento de Aluguel';
+    var submit = modal.querySelector('[data-receipt-submit]');
+    if (submit) submit.textContent = next === 'extra' ? 'Cadastrar taxa avulsa' : 'Adicionar pagamento';
+  }
+
+  /** Preenche a data/hora da baixa com o agora, quando o campo está vazio. */
+  function prefillPayNow(modal) {
+    var field = modal.querySelector('[data-pay-now]');
+    if (!field || field.value) return;
+    var now = new Date();
+    field.value = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate())
+      + 'T' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+    syncFieldDisplay(field);
+  }
+
+  /** Ajustes feitos a cada abertura do modal (`data-modal-prepare` do abridor). */
+  function prepareModal(modal, kind) {
+    if (!modal || !kind) return;
+    if (kind === 'receipt-mode') setReceiptMode(modal, 'rent');
+    if (kind === 'pay-now') prefillPayNow(modal);
+    if (kind === 'system-info') loadSystemInfo();
+  }
+
   /* ── Delegação de eventos ─────────────────────────────────────────────── */
 
   document.addEventListener('click', function (event) {
@@ -1909,7 +2175,18 @@
     var opener = target.closest('[data-modal-open]');
     if (opener) {
       event.preventDefault();
-      openModal(opener.getAttribute('data-modal-open'), opener);
+      var modalId = opener.getAttribute('data-modal-open');
+      var modal = document.getElementById(modalId);
+      openModal(modalId, opener);
+      prepareModal(modal, opener.getAttribute('data-modal-prepare'));
+      return;
+    }
+
+    var modeButton = target.closest('[data-receipt-mode]');
+    if (modeButton) {
+      event.preventDefault();
+      var modeModal = modeButton.closest('.modal-backdrop');
+      if (modeModal) setReceiptMode(modeModal, modeButton.getAttribute('data-receipt-mode'));
       return;
     }
 
@@ -2008,6 +2285,12 @@
     var target = element(event.target);
     if (!target) return;
 
+    if (target.matches('select[data-nav-select]')) {
+      // Filtro servido pela URL (ex.: situação dos contratos): navega.
+      if (target.value) window.location.assign(target.value);
+      return;
+    }
+
     if (target.matches('[data-batch-item]')) {
       applyBatch();
       return;
@@ -2054,7 +2337,12 @@
   document.addEventListener('submit', function (event) {
     var form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
-    if (form.hasAttribute('data-native')) return;
+    if (form.hasAttribute('data-native')) {
+      // POST nativo (login, área do cliente): a resposta substitui a página,
+      // mas o botão precisa mostrar o envio enquanto o navegador navega.
+      setBusy(form, true);
+      return;
+    }
     var method = (form.getAttribute('method') || 'get').toLowerCase();
     if (method !== 'post') return;
 
@@ -2119,7 +2407,9 @@
   function boot() {
     if (booted) return;
     booted = true;
+    initSidebar();
     initMobileMenu();
+    initImport();
     refresh();
     saveTabCache();
     registerServiceWorker();

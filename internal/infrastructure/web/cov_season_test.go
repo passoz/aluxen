@@ -28,7 +28,7 @@ func covMultipartPost(panel *covPanel, target string, fields map[string][]string
 
 	page := httptest.NewRecorder()
 	panel.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
-	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	token := covCookieValue(page.Result().Cookies(), csrfCookieName)
 	if token == "" {
 		panel.t.Fatal("cookie de CSRF não emitido")
 	}

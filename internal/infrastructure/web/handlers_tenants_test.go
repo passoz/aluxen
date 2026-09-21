@@ -420,7 +420,8 @@ func TestDashboardPropertiesTabRendersWithSession(t *testing.T) {
 		`data-filter="properties"`,
 		"Casa de Praia 202",
 		"Av. Atlântica, 500",
-		"Cabo Frio/RJ",
+		"Cabo Frio",
+		"RJ",
 		"28900-000",
 		`data-mask="cep"`,
 		`name="intent" value="property.delete"`,
@@ -430,7 +431,12 @@ func TestDashboardPropertiesTabRendersWithSession(t *testing.T) {
 	} {
 		require.Contains(t, body, expected, "aba de imóveis sem %q", expected)
 	}
-	require.Contains(t, body, `<td data-label="Contratos">2</td>`, "coluna de contratos deveria contar os dois contratos do imóvel")
+	// A coluna de contagem de contratos não existe no app original (a aba de
+	// imóveis mostra nome, endereço, cidade, UF e CEP): a paridade visual a
+	// removeu, então o que se afirma é que o imóvel aparece com a sua localidade.
+	require.Contains(t, body, "Casa de Praia 202", "aba de imóveis sem o imóvel")
+	require.Contains(t, body, "Cabo Frio", "aba de imóveis sem a cidade")
+	require.Contains(t, body, "RJ", "aba de imóveis sem a UF")
 
 	fill := firstModalFill(t, body)
 	require.Equal(t, map[string]string{

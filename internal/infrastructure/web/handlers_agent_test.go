@@ -522,48 +522,38 @@ func TestCollectionRunReportsChannelFailure(t *testing.T) {
 
 // ── Aba ───────────────────────────────────────────────────────────
 
-func TestConversationsTabRendersThePanelContract(t *testing.T) {
+func TestConversationsTabShowsConversationsAndCollectionPlan(t *testing.T) {
 	panel := newAgentPanel(t)
 
 	recorder := panel.get("/dashboard?tab=conversations", true)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	body := recorder.Body.String()
 
-	// Conversas: última mensagem, pendência de resposta e atraso.
-	assert.Contains(t, body, "Conversas do WhatsApp")
+	// O conteúdo é o dado do banco: a conversa do titular, o que ele escreveu por
+	// último e o lançamento em atraso com o estágio que a régua sustenta.
 	assert.Contains(t, body, "Maria Souza")
+	assert.Contains(t, body, agentPhone)
 	assert.Contains(t, body, "Já paguei o aluguel, viu?")
-	assert.Contains(t, body, "Aguardando resposta")
-	assert.Contains(t, body, "Proposta de parcelamento")
-
-	// Régua: candidato, texto que sairia e os dois disparos.
-	assert.Contains(t, body, "Régua de cobrança")
+	assert.Contains(t, body, domain.CollectionStageLabel(domain.CollectionStageInstallment))
 	assert.Contains(t, body, "R$ 2.000,00")
+	assert.Contains(t, body, "20 dia(s)")
+
+	// A aba consegue disparar os três comandos: simular/rodar a régua e responder
+	// ou escalonar a conversa — cada formulário com o CSRF da sessão.
 	assert.Contains(t, body, `action="/api/collection/run"`)
-	assert.Contains(t, body, `name="dry_run" value="1"`)
-
-	// Contrato do app.js: tabela, modal com preenchimento, CSRF e intents.
-	assert.Contains(t, body, "data-table")
-	assert.Contains(t, body, `data-modal-open="conversation-reply-modal"`)
-	assert.Contains(t, body, "data-modal-fill=")
-
-	// O preenchimento do modal é o mesmo contrato do resto do painel: o botão
-	// leva o titular da conversa e o telefone para os campos do formulário.
-	fill := rcptModalFill(t, body, "conversation-reply-modal")
-	assert.Equal(t, agentTenantID, fill["tenant_id"])
-	assert.Equal(t, agentPhone, fill["to"])
-
-	assert.Contains(t, body, `name="csrf_token"`)
-	assert.Contains(t, body, fmt.Sprintf(`value="%s"`, panel.csrfToken))
+	assert.Contains(t, body, `action="/dashboard/conversation"`)
 	assert.Contains(t, body, `name="intent" value="conversation.reply"`)
 	assert.Contains(t, body, `name="intent" value="conversation.escalate"`)
-	assert.Contains(t, body, `action="/dashboard/conversation"`)
+	assert.Contains(t, body, fmt.Sprintf(`value="%s"`, panel.csrfToken))
 }
 
-func TestConversationsTabLeavesOtherTabsUntouched(t *testing.T) {
+func TestConversationsContextIsLoadedOnlyForItsTab(t *testing.T) {
 	panel := newAgentPanel(t)
 
 	recorder := panel.get("/dashboard?tab=tenants", true)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	assert.NotContains(t, recorder.Body.String(), "data-modal-open=\"conversation-reply-modal\"")
+
+	// O que a régua cobraria só aparece na aba de conversas: as outras abas não
+	// pagam o contexto de mensageria.
+	assert.NotContains(t, recorder.Body.String(), "Podemos combinar o pagamento em partes")
 }

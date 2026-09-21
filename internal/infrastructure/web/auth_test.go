@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -92,24 +93,38 @@ func (r *fakeUsers) UpdatePassword(_ context.Context, id, passwordHash, changedA
 	return nil
 }
 
-type fakeAudit struct{ entries []domain.AuditLog }
+// fakeAudit guarda a trilha em memória. O mutex existe porque handlers que
+// disparam trabalho assíncrono (envio de WhatsApp) gravam auditoria de outra
+// goroutine enquanto o teste lê.
+type fakeAudit struct {
+	mu      sync.Mutex
+	entries []domain.AuditLog
+}
 
 func (r *fakeAudit) Insert(_ context.Context, entry *domain.AuditLog) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.entries = append(r.entries, *entry)
 	return nil
 }
 
 func (r *fakeAudit) List(context.Context, domain.AuditFilter) ([]domain.AuditLog, error) {
-	return r.entries, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]domain.AuditLog(nil), r.entries...), nil
 }
 
 func (r *fakeAudit) Count(context.Context, domain.AuditFilter) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return len(r.entries), nil
 }
 
 func (r *fakeAudit) Actors(context.Context) ([]string, error) { return nil, nil }
 
 func (r *fakeAudit) actions() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	actions := make([]string, 0, len(r.entries))
 	for _, entry := range r.entries {
 		actions = append(actions, entry.Action)

@@ -23,9 +23,13 @@
           No primeiro acesso a senha é o seu CPF (somente números).
         </small>
       </div>
-      <button type="submit" class="btn btn-primary">Entrar</button>
+      <button type="submit" class="btn btn-primary" data-busy-label="Entrando...">Entrar</button>
       {{end}}
     </form>
+
+    <p class="subtitle" style="margin-top: 1.25rem; margin-bottom: 0; text-align: center; font-size: 0.85rem;">
+      <a href="/login">Acesso administrativo</a>
+    </p>
   </div>
 </div>
 {{template "foot" .}}{{end}}

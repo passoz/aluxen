@@ -499,18 +499,18 @@ func TestTier2AdjustmentApplyRouteUsesProviderForNotice(t *testing.T) {
 
 // ── Aba de reajuste ────────────────────────────────────────────────
 
-func TestTier2AdjustmentTabRendersContractsAndHistory(t *testing.T) {
+func TestTier2AdjustmentTabShowsContractsAndTrailHistory(t *testing.T) {
 	panel := newTier2Panel(t)
 
 	recorder := panel.getPage("/dashboard?tab=adjustment")
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	page := recorder.Body.String()
 
-	assert.Contains(t, page, "Reajuste assistido")
-	assert.Contains(t, page, "Apto 12")
-	assert.Contains(t, page, "R$ 2.500,00")
-	assert.Contains(t, page, "Nunca reajustado")
-	assert.Contains(t, page, `data-adjustment-select="`+tier2LeaseID+`"`)
+	assert.Contains(t, page, "Maria Souza", "a aba lista o titular do contrato")
+	assert.Contains(t, page, "Apto 12", "a aba lista o imóvel do contrato")
+	assert.Contains(t, page, "R$ 2.500,00", "a aba mostra o valor atual do contrato")
+	assert.Contains(t, page, tier2LeaseID, "o contrato entra na aba para a simulação")
+	assert.NotContains(t, page, "01/10/2026", "sem reajuste aplicado não há vigência na trilha da aba")
 
 	requireTier2JSON(t, panel.post("/api/adjustment/apply", map[string]string{
 		"lease_id":       tier2LeaseID,
@@ -524,18 +524,30 @@ func TestTier2AdjustmentTabRendersContractsAndHistory(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	page = recorder.Body.String()
 
-	assert.Contains(t, page, "R$ 2.612,50", "a aba mostra o valor atualizado")
-	assert.Contains(t, page, "Histórico", "o reajuste aplicado aparece na trilha da aba")
-	assert.Contains(t, page, "01/10/2026")
-	assert.NotContains(t, page, "Nunca reajustado")
+	assert.Contains(t, page, "R$ 2.612,50", "a aba mostra o valor reajustado")
+	assert.Contains(t, page, "01/10/2026", "a vigência do reajuste vem da trilha")
+	assert.Contains(t, page, "4,5%", "o percentual do reajuste vem da trilha")
 }
 
 func TestTier2AdjustmentTabOnlyLoadsForItsOwnTab(t *testing.T) {
 	panel := newTier2Panel(t)
 
-	recorder := panel.getPage("/dashboard?tab=tenants")
-	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
-	assert.NotContains(t, recorder.Body.String(), "Reajuste assistido", "a aba de inquilinos não carrega o reajuste")
+	requireTier2JSON(t, panel.post("/api/adjustment/apply", map[string]string{
+		"lease_id":       tier2LeaseID,
+		"index":          "igpm",
+		"rate":           "4,5",
+		"effective_date": "2026-10-01",
+		"confirm":        "1",
+	}))
+
+	adjustment := panel.getPage("/dashboard?tab=adjustment")
+	require.Equal(t, http.StatusOK, adjustment.Code, adjustment.Body.String())
+	assert.Contains(t, adjustment.Body.String(), "R$ 2.612,50")
+
+	tenants := panel.getPage("/dashboard?tab=tenants")
+	require.Equal(t, http.StatusOK, tenants.Code, tenants.Body.String())
+	assert.NotContains(t, tenants.Body.String(), "R$ 2.612,50",
+		"a aba de inquilinos não carrega o contexto do reajuste")
 }
 
 // ── Sessão ─────────────────────────────────────────────────────────

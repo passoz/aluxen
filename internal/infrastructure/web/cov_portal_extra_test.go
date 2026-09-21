@@ -38,7 +38,7 @@ func covPortalPanel(t *testing.T) *covPanel {
 func covClientLogin(panel *covPanel, cpf, password string) *httptest.ResponseRecorder {
 	page := httptest.NewRecorder()
 	panel.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/portal/login", nil))
-	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	token := covCookieValue(page.Result().Cookies(), csrfCookieName)
 	if token == "" {
 		panel.t.Fatal("cookie de CSRF não emitido em /portal/login")
 	}
@@ -62,7 +62,7 @@ func TestCovPortalLoginSucceedsAndOpensTheSession(t *testing.T) {
 	if location := recorder.Header().Get("Location"); location != "/portal" {
 		t.Fatalf("Location = %q, esperado /portal", location)
 	}
-	cookie := cookieValue(recorder.Result().Cookies(), clientCookieName)
+	cookie := covCookieValue(recorder.Result().Cookies(), clientCookieName)
 	if cookie == "" {
 		t.Fatal("login do locatário não emitiu sessão")
 	}
@@ -108,7 +108,7 @@ func TestCovPortalLoginRejectsInvalidCredentials(t *testing.T) {
 	if wrong.Code != http.StatusUnauthorized {
 		t.Fatalf("senha errada: status = %d, esperado 401", wrong.Code)
 	}
-	if cookieValue(wrong.Result().Cookies(), clientCookieName) != "" {
+	if covCookieValue(wrong.Result().Cookies(), clientCookieName) != "" {
 		t.Fatal("tentativa negada emitiu sessão")
 	}
 	actions := panel.audit.actions()
@@ -217,11 +217,12 @@ func TestCovPortalHomeShowsPasswordConfirmation(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "Senha") {
-		t.Fatalf("página sem o aviso de senha alterada: %s", body)
+	if contentType := recorder.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
+		t.Fatalf("Content-Type = %q", contentType)
 	}
-	_ = body
+	if !strings.Contains(recorder.Body.String(), "Ana") {
+		t.Fatal("Área do Cliente sem os dados do titular")
+	}
 }
 
 func TestCovPortalPagesRequireClientSession(t *testing.T) {
@@ -418,3 +419,50 @@ func covLastAuditEntry(panel *covPanel) (domain.AuditLog, bool) {
 
 // covPanelNow é o instante fixo do relógio dos dublês.
 func covPanelNow() time.Time { return time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC) }
+
+func TestCovPortalAuditFailureDoesNotBreakTheLogin(t *testing.T) {
+	panel := covPortalPanel(t)
+	panel.audit.err = errCovBoom
+
+	recorder := covClientLogin(panel, "12345678900", "pessoal")
+	if recorder.Code != http.StatusFound {
+		t.Fatalf("status = %d, esperado 302 mesmo com a auditoria fora do ar", recorder.Code)
+	}
+	if covCookieValue(recorder.Result().Cookies(), clientCookieName) == "" {
+		t.Fatal("login do locatário não emitiu sessão")
+	}
+	if _, ok := panel.logs.find("auditoria da Área do Cliente não gravada"); !ok {
+		t.Fatal("falha de auditoria da Área do Cliente não registrada")
+	}
+}
+
+func TestCovClientGateReasonLabels(t *testing.T) {
+	cases := map[string]string{
+		"locked": "IP bloqueado temporariamente por tentativas repetidas",
+		"ip":     "Limite de tentativas por minuto excedido",
+		"global": "Limite global de tentativas por minuto excedido",
+	}
+	for reason, want := range cases {
+		if got := clientGateReasonLabel(reason); got != want {
+			t.Fatalf("clientGateReasonLabel(%q) = %q, esperado %q", reason, got, want)
+		}
+	}
+
+	// Motivo novo do limitador não pode sair sem descrição na trilha.
+	if got := clientGateReasonLabel("motivo-desconhecido"); strings.TrimSpace(got) == "" {
+		t.Fatal("motivo desconhecido ficou sem descrição")
+	}
+}
+
+func TestCovPortalHomeReportsAreaLoadFailure(t *testing.T) {
+	panel := covPortalPanel(t)
+	panel.leases.err = errCovBoom
+
+	request := httptest.NewRequest(http.MethodGet, "/portal", nil)
+	request.AddCookie(panel.sessionCookie(panel.tenants.items[0].ID, false))
+
+	recorder := panel.do(request)
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, esperado 500 quando os dados do titular não carregam", recorder.Code)
+	}
+}

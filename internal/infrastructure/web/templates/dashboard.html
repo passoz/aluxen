@@ -1,37 +1,70 @@
 {{define "dashboard.html"}}{{template "head" .}}
 <div class="app-shell">
   {{template "sidebar" .}}
-  <main class="page">
-    <div class="page-header">
-      <div class="page-header-text">
-        <h1 class="page-title">Aluxen</h1>
-        <p class="subtitle">Gestão de locação, recibos e prova de autenticidade.</p>
+  <main class="sidebar-open">
+    <div class="page">
+      <div class="page-header">
+        <div class="page-header-text">
+          <h1>
+            {{if eq .Page "dashboard"}}Dashboard
+            {{else if eq .Page "tenants"}}Inquilinos
+            {{else if eq .Page "properties"}}Imóveis
+            {{else if eq .Page "leases"}}Contratos de Locação
+            {{else if eq .Page "receipts"}}Pagamentos e Recibos
+            {{else if eq .Page "season"}}Temporada
+            {{else if eq .Page "calendar"}}Calendário
+            {{else if eq .Page "review"}}Revisão de comprovantes
+            {{else if eq .Page "intake"}}Cadastros propostos
+            {{else if eq .Page "conversations"}}Conversas
+            {{else if eq .Page "adjustment"}}Reajuste
+            {{else if eq .Page "metrics"}}Indicadores
+            {{else}}Histórico e Auditoria{{end}}
+          </h1>
+          <p class="subtitle">
+            Aluxen &bull; Sessão ativa para <strong>{{with .Data}}{{with .User}}{{.Username}}{{end}}{{end}}</strong>
+          </p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+          <span class="status-badge paid" style="font-size: 0.8125rem; padding: 0.4rem 0.8rem;">
+            {{if eq .Page "dashboard"}}Visão Geral
+            {{else if eq .Page "tenants"}}{{len .Data.Snapshot.Tenants}} inquilino(s)
+            {{else if eq .Page "properties"}}{{len .Data.Snapshot.Properties}} imóvel(is)
+            {{else if eq .Page "leases"}}{{leaseStatusSummary .Data.Snapshot.Leases}}
+            {{else if eq .Page "receipts"}}{{len .Data.Snapshot.Receipts}} recibo(s)
+            {{else if eq .Page "season"}}{{with .Data.Season}}{{.SeasonCount}} temporada(s){{end}}
+            {{else if eq .Page "calendar"}}{{with .Data.Calendar}}{{.Month.Label}}{{end}}
+            {{else if eq .Page "review"}}{{len .Data.Review}} comprovante(s)
+            {{else if eq .Page "intake"}}Cadastros propostos
+            {{else if eq .Page "conversations"}}Régua de cobrança
+            {{else if eq .Page "adjustment"}}Reajuste assistido
+            {{else if eq .Page "metrics"}}Visão Geral
+            {{else}}Trilha de auditoria{{end}}
+          </span>
+        </div>
       </div>
-      <div class="auth-actions">
-        <span class="cell-muted">{{with .Data}}{{with .User}}{{.Username}}{{end}}{{end}}</span>
-      </div>
+
+      <div id="sync-banner" class="sync-banner" hidden></div>
+      <div id="toast-host" class="toast-host"></div>
+
+      {{with .Data}}{{if .Toast}}<div class="success">{{.Toast}}</div>{{end}}{{end}}
+
+      <nav class="tabs" aria-label="Seções do painel">
+        <a class="tab-link{{if eq .Page "dashboard"}} active{{end}}" href="/dashboard?tab=dashboard">Dashboard</a>
+        <a class="tab-link{{if eq .Page "tenants"}} active{{end}}" href="/dashboard?tab=tenants">Inquilinos</a>
+        <a class="tab-link{{if eq .Page "properties"}} active{{end}}" href="/dashboard?tab=properties">Imóveis</a>
+        <a class="tab-link{{if eq .Page "leases"}} active{{end}}" href="/dashboard?tab=leases">Contratos</a>
+        <a class="tab-link{{if eq .Page "receipts"}} active{{end}}" href="/dashboard?tab=receipts">Pagamentos</a>
+        <a class="tab-link{{if eq .Page "history"}} active{{end}}" href="/dashboard?tab=history">Histórico</a>
+        <a class="tab-link{{if eq .Page "season"}} active{{end}}" href="/dashboard?tab=season">Temporada</a>
+        <a class="tab-link{{if eq .Page "calendar"}} active{{end}}" href="/dashboard?tab=calendar">Calendário</a>
+        <a class="tab-link{{if eq .Page "review"}} active{{end}}" href="/dashboard?tab=review">Revisão</a>
+        <a class="tab-link{{if eq .Page "conversations"}} active{{end}}" href="/dashboard?tab=conversations">Conversas</a>
+        <a class="tab-link{{if eq .Page "adjustment"}} active{{end}}" href="/dashboard?tab=adjustment">Reajuste</a>
+        <a class="tab-link{{if eq .Page "metrics"}} active{{end}}" href="/dashboard?tab=metrics">Indicadores</a>
+      </nav>
+
+      {{.Content}}
     </div>
-
-    <div id="sync-banner" class="sync-banner" hidden></div>
-
-    <nav class="tabs" aria-label="Seções do painel">
-      <a class="tab-link{{if eq .Page "dashboard"}} active{{end}}" href="/dashboard?tab=dashboard">Visão geral</a>
-      <a class="tab-link{{if eq .Page "tenants"}} active{{end}}" href="/dashboard?tab=tenants">Inquilinos</a>
-      <a class="tab-link{{if eq .Page "properties"}} active{{end}}" href="/dashboard?tab=properties">Imóveis</a>
-      <a class="tab-link{{if eq .Page "leases"}} active{{end}}" href="/dashboard?tab=leases">Contratos</a>
-      <a class="tab-link{{if eq .Page "receipts"}} active{{end}}" href="/dashboard?tab=receipts">Recibos</a>
-      <a class="tab-link{{if eq .Page "review"}} active{{end}}" href="/dashboard?tab=review">Revisão</a>
-      <a class="tab-link{{if eq .Page "conversations"}} active{{end}}" href="/dashboard?tab=conversations">Conversas</a>
-      <a class="tab-link{{if eq .Page "adjustment"}} active{{end}}" href="/dashboard?tab=adjustment">Reajuste</a>
-      <a class="tab-link{{if eq .Page "history"}} active{{end}}" href="/dashboard?tab=history">Histórico</a>
-      <a class="tab-link{{if eq .Page "metrics"}} active{{end}}" href="/dashboard?tab=metrics">Indicadores</a>
-    </nav>
-
-    <div id="toast-host" class="toast-host"></div>
-
-    {{with .Data}}{{if .Toast}}<div class="success">{{.Toast}}</div>{{end}}{{end}}
-
-    {{.Content}}
   </main>
 </div>
 {{template "foot" .}}{{end}}

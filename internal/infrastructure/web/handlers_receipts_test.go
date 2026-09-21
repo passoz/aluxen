@@ -238,7 +238,10 @@ func requireRcptError(t *testing.T, recorder *httptest.ResponseRecorder, status 
 // navegador desfaz isso ao ler o atributo, então o teste faz o mesmo.
 func rcptModalFill(t *testing.T, body, modal string) map[string]string {
 	t.Helper()
-	pattern := regexp.MustCompile(`data-modal-open="` + modal + `" data-modal-fill='([^']*)'`)
+	// O botão pode ter outros atributos entre os dois (e quebrar linha entre
+	// eles), então o vínculo é "abre este modal" e "carrega este preenchimento",
+	// não a adjacência literal dos atributos.
+	pattern := regexp.MustCompile(`(?s)data-modal-open="` + modal + `".{0,600}?data-modal-fill='([^']*)'`)
 	match := pattern.FindStringSubmatch(body)
 	require.NotNil(t, match, "botão do modal %q sem data-modal-fill", modal)
 	var fill map[string]string
@@ -368,9 +371,9 @@ func TestReceiptsTabRendersTableFiltersAndModals(t *testing.T) {
 		"Apto 12",
 		"Aluguel",
 		"Taxa de condomínio",
-		`data-table data-page-size="25"`,
+		`data-table data-page-size="10"`,
 		`data-filter="recibos"`,
-		`data-filter-select="category"`,
+		`data-filter-select="month"`,
 		`data-filter-select="status"`,
 		`data-batch-item value="receipt-1"`,
 		`data-batch-all`,
@@ -380,8 +383,8 @@ func TestReceiptsTabRendersTableFiltersAndModals(t *testing.T) {
 		`value="receipt.generate-monthly"`,
 		`data-pagination`,
 		`data-sort-value="2026-09-10"`,
-		`id="receipt-create-rent"`,
-		`id="receipt-create-extra"`,
+		`id="receipt-create"`,
+		`data-receipt-mode="extra"`,
 		`id="receipt-pay"`,
 		`id="receipt-edit"`,
 		`value="receipt.delete"`,

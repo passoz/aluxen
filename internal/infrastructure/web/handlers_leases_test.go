@@ -538,15 +538,18 @@ func TestLeaseTabRendersTableAndModals(t *testing.T) {
 		"lease-create-modal",
 		"lease-edit-modal",
 		`name="intent" value="lease.create"`,
-		`name="intent" value="lease.suspend"`,
 		`name="intent" value="lease.reactivate"`,
 		`name="intent" value="lease.terminate"`,
 		`name="intent" value="lease.delete"`,
 		"/contract-pdf?id=l1",
 		`data-whatsapp-send="lease"`,
 		`data-whatsapp-id="l1"`,
-		`href="/dashboard?tab=leases&amp;status=active"`,
-		`href="/dashboard?tab=leases&amp;status=terminated"`,
+		// O filtro de situação é um seletor que navega para a URL (como no app
+		// original): o que se afirma é que as quatro situações são oferecidas.
+		`value="/dashboard?tab=leases&amp;status=active"`,
+		`value="/dashboard?tab=leases&amp;status=suspended"`,
+		`value="/dashboard?tab=leases&amp;status=season"`,
+		`value="/dashboard?tab=leases&amp;status=terminated"`,
 		"Temporada",
 	} {
 		if !strings.Contains(body, expected) {

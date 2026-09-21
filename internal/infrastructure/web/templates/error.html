@@ -1,15 +1,11 @@
 {{define "error.html"}}{{template "head" .}}
-<div class="login-page">
-  <div class="card login-card">
-    <div class="brand-lockup">
-      <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
-      <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
-    </div>
-    <h1 class="page-title" style="text-align: center;">{{with .Data}}{{.Status}}{{end}}</h1>
-    <p class="subtitle" style="text-align: center;">{{with .Data}}{{.Message}}{{end}}</p>
-    <p style="text-align: center; margin-bottom: 0;">
-      <a class="btn btn-outline btn-sm" href="/dashboard?tab=dashboard">Voltar ao painel</a>
-    </p>
-  </div>
-</div>
+{{with .Data}}
+<main class="login-page">
+  <section class="card login-card">
+    <h1>{{if eq .Status 404}}Página não encontrada{{else if eq .Status 500}}Erro interno{{else}}{{.Status}}{{end}}</h1>
+    <p class="subtitle">{{.Message}}</p>
+    <a class="btn btn-primary" href="/dashboard?tab=dashboard">Voltar ao painel</a>
+  </section>
+</main>
+{{end}}
 {{template "foot" .}}{{end}}

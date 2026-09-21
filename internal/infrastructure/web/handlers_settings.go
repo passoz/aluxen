@@ -87,6 +87,22 @@ func (h *Handlers) SettingsMutation(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// successMessage e errorMessage separam o texto pelo tom: o app original pinta
+// erro em vermelho e sucesso em verde, e a tela recebe os dois campos.
+func successMessage(message string, status int) string {
+	if status >= http.StatusBadRequest {
+		return ""
+	}
+	return message
+}
+
+func errorMessage(message string, status int) string {
+	if status < http.StatusBadRequest {
+		return ""
+	}
+	return message
+}
+
 func (h *Handlers) renderSettingsError(w http.ResponseWriter, r *http.Request, user *domain.User, err error) {
 	if domain.IsValidation(err) {
 		h.renderSettings(w, r, user, http.StatusBadRequest, domain.ValidationMessage(err), false)
@@ -118,7 +134,8 @@ func (h *Handlers) renderSettings(w http.ResponseWriter, r *http.Request, user *
 		Data: map[string]any{
 			"User":    user,
 			"View":    view,
-			"Message": message,
+			"Message": successMessage(message, status),
+			"Error":   errorMessage(message, status),
 			"Forced":  forced,
 		},
 	}

@@ -10,9 +10,12 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/domain"
 	"github.com/passoz/aluxen/internal/domain/format"
 	"github.com/passoz/aluxen/internal/infrastructure/buildinfo"
@@ -134,6 +137,80 @@ func NewRenderer() (*Renderer, error) {
 			}
 			return values
 		},
+		// As funções abaixo desenham os gráficos da aba de indicadores em SVG.
+		// A aritmética de escala fica fora do template para que ele apenas
+		// posicione os elementos.
+		"svgNum":          svgNum,
+		"metricValueFont": metricValueFont,
+		"categoryColor":   categoryColor,
+		"donutSlices":     donutSlices,
+		"monthlyChart":    monthlyChart,
+		"categoryBars":    categoryBars,
+		"occupancyBars":   occupancyBars,
+		// leaseStatusSummary reproduz o texto do badge de contratos do app
+		// original: os totais por status que existem, na ordem ativo, suspenso e
+		// temporada; sem nenhum deles, o total de contratos.
+		"leaseStatusSummary": func(leases []domain.Lease) string {
+			counts := map[domain.LeaseStatus]int{}
+			for _, lease := range leases {
+				counts[lease.Status]++
+			}
+			parts := make([]string, 0, 3)
+			for _, entry := range []struct {
+				status domain.LeaseStatus
+				format string
+			}{
+				{domain.LeaseStatusActive, "%d ativo(s)"},
+				{domain.LeaseStatusSuspended, "%d suspenso(s)"},
+				{domain.LeaseStatusSeason, "%d temporada(s)"},
+			} {
+				if total := counts[entry.status]; total > 0 {
+					parts = append(parts, fmt.Sprintf(entry.format, total))
+				}
+			}
+			if len(parts) == 0 {
+				return fmt.Sprintf("%d contrato(s)", len(leases))
+			}
+			return strings.Join(parts, " • ")
+		},
+		// moneyPtr formata um valor opcional como moeda, tratando o nulo como
+		// zero (o app original faz `valor || 0`).
+		"moneyPtr": func(value *float64) string {
+			if value == nil {
+				return format.FormatCurrency(0)
+			}
+			return format.FormatCurrency(*value)
+		},
+		// receiptRemaining é o que falta pagar de um lançamento parcial; nunca
+		// negativo (pagamento a mais não vira crédito na tela).
+		"receiptRemaining": func(receipt domain.Receipt) float64 {
+			if receipt.PaidAmount == nil {
+				return receipt.Amount
+			}
+			remaining := receipt.Amount - *receipt.PaidAmount
+			if remaining < 0 {
+				return 0
+			}
+			return remaining
+		},
+		// moneyValuePtr formata um valor opcional no formato decimal do
+		// formulário (`2500.00`), deixando o campo vazio quando não há valor.
+		"moneyValuePtr": func(value *float64) string {
+			if value == nil {
+				return ""
+			}
+			return domain.FormatFloat(*value)
+		},
+		// recentYears é a janela de anos do filtro de lançamentos: o ano
+		// corrente e os dois de cada lado, como no app original.
+		"recentYears": func() []int {
+			current := time.Now().Year()
+			years := make([]int, 0, 5)
+			for year := current - 2; year <= current+2; year++ {
+				years = append(years, year)
+			}
+			return years
+		},
 	}
 
 	templates, err := template.New("aluxen").Funcs(funcs).ParseFS(templateFS, "templates/*.html", "templates/partials/*.html")
@@ -171,6 +248,272 @@ func labelOf[T ~string](label func(T) string) func(any) string {
 			return fmt.Sprint(value)
 		}
 	}
+}
+
+// ── Gráficos de indicadores ──────────────────────────────────────────────
+// A aba de indicadores desenha os gráficos em SVG no template. Para que o
+// template apenas posicione os elementos, a escala das séries e os atributos
+// de traço ficam calculados nestas funções.
+
+// svgNum formata um número para uso em atributos de SVG: menor representação
+// decimal possível e sem zero negativo (o JavaScript também imprime "0").
+func svgNum(value float64) string {
+	if value == 0 {
+		return "0"
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+// truncateText encurta o texto ao limite de runas informado, marcando o corte
+// com reticências. A contagem é em runas para não partir acentos.
+func truncateText(value string, limit int) string {
+	if limit < 0 {
+		return value
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "…"
+}
+
+// barWidth devolve a largura percentual de um valor dentro de uma série
+// escalada pelo maior valor dela: a maior barra ocupa a barra inteira. Uma
+// série zerada não divide por zero.
+func barWidth(value, max float64) string {
+	if max <= 0 {
+		max = 1
+	}
+	return svgNum(value / max * 100)
+}
+
+// metricValueFont devolve o tamanho de fonte do valor de um cartão de
+// indicador: valores em moeda ou longos precisam de fonte menor para caber.
+func metricValueFont(value string) string {
+	if strings.HasPrefix(value, "R$") || utf8.RuneCountInString(value) > 5 {
+		return "1.35rem"
+	}
+	return "1.75rem"
+}
+
+// categoryColor devolve a cor da categoria de recibo nas barras por categoria.
+func categoryColor(category string) string {
+	switch category {
+	case string(domain.ReceiptCategoryExtra):
+		return "#14b8a6"
+	default:
+		return "#6366f1"
+	}
+}
+
+// categoryBar é uma linha do gráfico de recibos por categoria.
+type categoryBar struct {
+	Category string
+	Label    string
+	Count    int
+	Total    string
+	Width    string
+}
+
+// categoryBars monta as barras por categoria, escaladas pelo maior total do
+// conjunto: a categoria de maior valor ocupa a barra inteira.
+func categoryBars(categories []application.MetricsCategory) []categoryBar {
+	max := 1.0
+	for _, category := range categories {
+		if category.Total > max {
+			max = category.Total
+		}
+	}
+	bars := make([]categoryBar, 0, len(categories))
+	for _, category := range categories {
+		bars = append(bars, categoryBar{
+			Category: category.Category,
+			Label:    category.Label,
+			Count:    category.Count,
+			Total:    format.FormatCurrency(category.Total),
+			Width:    barWidth(category.Total, max),
+		})
+	}
+	return bars
+}
+
+// occupancyBar é uma linha do gráfico de ocupação por imóvel.
+type occupancyBar struct {
+	ID     string
+	Name   string
+	Title  string
+	Width  string
+	Leases string
+}
+
+// occupancyBars monta as barras de ocupação: mantém os primeiros imóveis do
+// recorte, encurta o nome para caber na coluna e escala a barra pelo imóvel
+// mais ocupado do recorte.
+func occupancyBars(properties []application.MetricsProperty, limit int) []occupancyBar {
+	if limit <= 0 || limit > len(properties) {
+		limit = len(properties)
+	}
+	properties = properties[:limit]
+
+	max := 1.0
+	for _, property := range properties {
+		if leases := float64(property.ActiveLeases); leases > max {
+			max = leases
+		}
+	}
+	bars := make([]occupancyBar, 0, len(properties))
+	for _, property := range properties {
+		bars = append(bars, occupancyBar{
+			ID:     property.ID,
+			Name:   truncateText(property.Name, 30),
+			Title:  property.Name,
+			Width:  barWidth(float64(property.ActiveLeases), max),
+			Leases: fmt.Sprintf("%d contrato(s)", property.ActiveLeases),
+		})
+	}
+	return bars
+}
+
+// donutSlice é uma fatia do gráfico de rosca com o traço já calculado.
+type donutSlice struct {
+	DashArray  string
+	DashOffset float64
+}
+
+// donutView é a rosca pronta para o template: o total das contagens e as
+// fatias na ordem de desenho.
+type donutView struct {
+	Total  int
+	Slices []donutSlice
+}
+
+// donutSlices distribui as contagens sobre a circunferência de uma rosca do
+// raio informado. Uma série sem contagens devolve total zero e nenhuma fatia.
+func donutSlices(status []application.MetricsStatus, radius float64) donutView {
+	total := 0
+	for _, entry := range status {
+		total += entry.Count
+	}
+	if total == 0 {
+		return donutView{}
+	}
+
+	circumference := 2 * math.Pi * radius
+	slices := make([]donutSlice, 0, len(status))
+	offset := 0.0
+	for _, entry := range status {
+		length := float64(entry.Count) / float64(total) * circumference
+		slices = append(slices, donutSlice{
+			DashArray:  svgNum(length) + " " + svgNum(circumference-length),
+			DashOffset: offset,
+		})
+		offset -= length
+	}
+	return donutView{Total: total, Slices: slices}
+}
+
+// chartLine é uma linha dos eixos do gráfico, em unidades do viewBox.
+type chartLine struct {
+	X1, Y1, X2, Y2 float64
+}
+
+// chartGuide é uma linha de grade do gráfico com o rótulo de valor.
+type chartGuide struct {
+	X1, X2 float64
+	Y      float64
+	LabelX float64
+	LabelY float64
+	Label  string
+}
+
+// chartColumn é uma coluna do gráfico de barras verticais: o esperado fica
+// atrás e o recebido à frente.
+type chartColumn struct {
+	Label     string
+	X         float64
+	Width     float64
+	ExpectedY float64
+	ExpectedH float64
+	ReceivedY float64
+	ReceivedH float64
+	LabelX    float64
+	LabelY    float64
+}
+
+// chartView é a geometria de um gráfico de barras verticais.
+type chartView struct {
+	Width   float64
+	Height  float64
+	Axis    []chartLine
+	Guides  []chartGuide
+	Columns []chartColumn
+}
+
+// monthlyChart posiciona eixos, linhas de grade e colunas do gráfico de
+// recebimentos mensais no viewBox usado pela tela. A escala usa o maior valor
+// recebido ou esperado do período.
+func monthlyChart(months []application.MetricsMonth) chartView {
+	const (
+		width     = 600.0
+		height    = 200.0
+		padTop    = 16.0
+		padRight  = 16.0
+		padBottom = 28.0
+		padLeft   = 42.0
+	)
+
+	baseline := height - padBottom
+	view := chartView{
+		Width:  width,
+		Height: height,
+		Axis: []chartLine{
+			{X1: padLeft, Y1: baseline, X2: width - padRight, Y2: baseline},
+			{X1: padLeft, Y1: padTop, X2: padLeft, Y2: baseline},
+		},
+	}
+
+	chartW := width - padLeft - padRight
+	chartH := height - padTop - padBottom
+
+	max := 1.0
+	for _, month := range months {
+		if value := math.Max(month.Received, month.Expected); value > max {
+			max = value
+		}
+	}
+	slot := chartW / math.Max(float64(len(months)), 1)
+	columnWidth := math.Max(12, slot-16)
+
+	view.Columns = make([]chartColumn, 0, len(months))
+	for index, month := range months {
+		x := padLeft + slot*float64(index) + (slot-columnWidth)/2
+		expected := month.Expected / max * chartH
+		received := month.Received / max * chartH
+		view.Columns = append(view.Columns, chartColumn{
+			Label:     month.Label,
+			X:         x,
+			Width:     columnWidth,
+			ExpectedY: baseline - expected,
+			ExpectedH: expected,
+			ReceivedY: baseline - received,
+			ReceivedH: received,
+			LabelX:    x + columnWidth/2,
+			LabelY:    height - 8,
+		})
+	}
+
+	for _, ratio := range []float64{0, 0.5, 1} {
+		y := baseline - chartH*ratio
+		view.Guides = append(view.Guides, chartGuide{
+			X1:     padLeft,
+			X2:     width - padRight,
+			Y:      y,
+			LabelX: padLeft - 4,
+			LabelY: y + 4,
+			Label:  format.FormatCurrency(max * ratio),
+		})
+	}
+	return view
 }
 
 // Has informa se o template existe. Permite que áreas independentes publiquem

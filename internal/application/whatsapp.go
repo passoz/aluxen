@@ -199,6 +199,9 @@ func receiptPreview(ctx context.Context, deps Deps, id string) (*WhatsAppPreview
 	if err != nil {
 		return nil, err
 	}
+	if tenant == nil {
+		return nil, domain.Invalid("Lançamento sem titular resolvido: não há para quem enviar.")
+	}
 	phone := domain.Str(tenant.Phone)
 
 	base := ResolvePublicBaseURL(ctx, deps, "")
@@ -248,6 +251,9 @@ func leasePreview(ctx context.Context, deps Deps, id string) (*WhatsAppPreviewPa
 	tenant, err := tenantByID(ctx, deps, lease.TenantID)
 	if err != nil {
 		return nil, err
+	}
+	if tenant == nil {
+		return nil, domain.Invalid("Contrato sem titular resolvido: não há para quem enviar.")
 	}
 	phone := domain.Str(tenant.Phone)
 

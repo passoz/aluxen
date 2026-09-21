@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/passoz/aluxen/internal/domain"
+	"github.com/passoz/aluxen/internal/infrastructure/authz"
 )
 
 func TestCovCSRFValidTokenWithoutSeparator(t *testing.T) {
@@ -55,8 +56,9 @@ func TestCovCSRFExportedFieldNameIsTheOneTheMiddlewareReads(t *testing.T) {
 func TestCovSessionRejectsTokenWithUndecodablePayload(t *testing.T) {
 	manager := NewSessionManager("cov-secret", false)
 
-	// Assinatura correta sobre um payload que não é base64url.
-	encoded := "não-é-base64!"
+	// Assinatura correta sobre um payload que não é base64url (o `!` é válido em
+	// cookie, então a requisição chega até a verificação da assinatura).
+	encoded := "!!nao-e-base64!!"
 	token := encoded + "." + manager.mac(encoded)
 
 	if id := manager.AdminID(covRequestWithCookie(adminCookieName, token)); id != "" {
@@ -273,16 +275,42 @@ func TestCovSeasonDocumentsRequireAccess(t *testing.T) {
 	}
 }
 
-func TestCovDocumentVerificationPagesForUnknownDocuments(t *testing.T) {
+func TestCovDocumentVerificationPagesRejectLinksWithoutToken(t *testing.T) {
 	panel := covSeedPanel(t)
 
-	inspection := panel.as(http.MethodGet, "/validar/vistoria/nao-existe", nil, "")
-	if inspection.Code != http.StatusNotFound {
-		t.Fatalf("vistoria pública: status = %d, esperado 404", inspection.Code)
+	for _, target := range []string{"/validar/vistoria/insp-1", "/validar/caucao/lease-1"} {
+		recorder := panel.as(http.MethodGet, target, nil, "")
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, esperado 400 sem chave de autenticidade", target, recorder.Code)
+		}
 	}
+}
 
-	deposit := panel.as(http.MethodGet, "/validar/caucao/nao-existe", nil, "")
-	if deposit.Code != http.StatusNotFound {
-		t.Fatalf("caução pública: status = %d, esperado 404", deposit.Code)
+func TestCovDocumentVerificationPagesReportMissingDocuments(t *testing.T) {
+	panel := covSeedPanel(t)
+
+	cases := []struct {
+		kind    string
+		id      string
+		message string
+	}{
+		{kind: authz.KindInspection, id: "insp-nao-existe", message: "Vistoria não localizada na base oficial de registros."},
+		{kind: authz.KindDeposit, id: "lease-nao-existe", message: "Caução não localizada na base oficial de registros."},
+	}
+	for _, testCase := range cases {
+		token := panel.common.Deps.Signer.Generate(testCase.kind, testCase.id)
+		base := "/validar/vistoria/"
+		if testCase.kind == authz.KindDeposit {
+			base = "/validar/caucao/"
+		}
+		target := base + testCase.id + "?token=" + url.QueryEscape(token)
+
+		recorder := panel.as(http.MethodGet, target, nil, "")
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("%s: status = %d, esperado 404: %s", target, recorder.Code, recorder.Body.String())
+		}
+		if body := recorder.Body.String(); !strings.Contains(body, testCase.message) {
+			t.Fatalf("%s: página sem a mensagem %q", target, testCase.message)
+		}
 	}
 }

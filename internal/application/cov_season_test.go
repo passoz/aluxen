@@ -912,7 +912,7 @@ func TestCseaCalendarDaysAndOverlap(t *testing.T) {
 		cseaBlockingPeriod("l-active", "2026-09-05", "2026-09-10", domain.LeaseStatusActive, "Ana"),
 		cseaBlockingPeriod("l-susp", "2026-09-08", "2026-09-12", domain.LeaseStatusSuspended, "Bia"),
 	}
-	days := buildCalendarDays(periods, 30)
+	days := buildCalendarDays(periods, 2026, 9, 30)
 	if len(days) != 30 {
 		t.Fatalf("dias = %d", len(days))
 	}
@@ -942,17 +942,21 @@ func TestCseaCalendarDaysAndOverlap(t *testing.T) {
 	reversed := buildCalendarDays([]CalendarPeriod{
 		cseaBlockingPeriod("l-susp", "2026-09-08", "2026-09-12", domain.LeaseStatusSuspended, "Bia"),
 		cseaBlockingPeriod("l-active", "2026-09-05", "2026-09-10", domain.LeaseStatusActive, "Ana"),
-	}, 30)
+	}, 2026, 9, 30)
 	if reversed[8].Status != domain.LeaseStatusActive || reversed[8].TenantName != "Ana" {
 		t.Fatalf("dia 9 deveria ser do ativo: %+v", reversed[8])
 	}
 
-	// Período que cobre o mês inteiro marca início no dia 1 e fim no último dia.
+	// Período que começa no dia 1 e passa do mês: o dia 1 é o início do período,
+	// mas o dia 30 NÃO é o fim (o contrato segue em outubro).
 	full := buildCalendarDays([]CalendarPeriod{
 		cseaBlockingPeriod("l-full", "2026-09-01", "2026-10-10", domain.LeaseStatusSeason, "Caio"),
-	}, 30)
-	if !full[0].Starts || !full[29].Ends {
-		t.Fatalf("bordas do mês não marcadas: %+v %+v", full[0], full[29])
+	}, 2026, 9, 30)
+	if !full[0].Starts || full[0].Ends {
+		t.Fatalf("dia 1 deveria marcar início e não fim: %+v", full[0])
+	}
+	if full[29].Ends || full[29].Starts {
+		t.Fatalf("dia 30 não é borda de um período que segue em outubro: %+v", full[29])
 	}
 
 	monthStart := time.Date(2026, 9, 1, 0, 0, 0, 0, time.Local)
@@ -971,23 +975,45 @@ func TestCseaCalendarDaysAndOverlap(t *testing.T) {
 	}
 }
 
-// TestCseaBuildCalendarDaysAcrossMonthBoundary documenta um defeito real de
-// produção (`season_calendar.go`, `buildCalendarDays`): a grade monta as datas
-// no mês de INÍCIO do período, não no mês exibido. Para um contrato que começou
-// em agosto e cobre setembro inteiro, os dias 1 a 14 de setembro aparecem
-// livres na grade, embora `OccupiedDays`/`overlapDays` contem o mês cheio.
+// TestCseaBuildCalendarDaysAcrossMonthBoundary fixa o comportamento correto da
+// grade: o dia é montado no mês EXIBIDO, então um contrato que começou em agosto
+// e cobre setembro inteiro pinta os 30 dias de setembro (antes a grade usava o
+// mês de início do período e deixava os primeiros dias livres).
 func TestCseaBuildCalendarDaysAcrossMonthBoundary(t *testing.T) {
 	days := buildCalendarDays([]CalendarPeriod{
 		cseaBlockingPeriod("l-span", "2026-08-15", "2026-10-20", domain.LeaseStatusSeason, "Clarice"),
-	}, 30)
-	if days[0].Occupied() {
-		t.Fatalf("dia 1: comportamento do defeito mudou: %+v", days[0])
+	}, 2026, 9, 30)
+
+	if len(days) != 30 {
+		t.Fatalf("grade com %d dias, esperado 30", len(days))
 	}
-	if days[13].Occupied() {
-		t.Fatalf("dia 14: comportamento do defeito mudou: %+v", days[13])
+	for _, day := range days {
+		if !day.Occupied() || day.TenantName != "Clarice" {
+			t.Fatalf("dia %d deveria estar ocupado pelo período que atravessa o mês: %+v", day.Day, day)
+		}
 	}
-	if !days[14].Occupied() || days[14].TenantName != "Clarice" {
-		t.Fatalf("dia 15 é onde a grade começa a marcar: %+v", days[14])
+	if days[0].Starts {
+		t.Fatalf("o período começou antes do mês exibido: o dia 1 não é o início: %+v", days[0])
+	}
+	if days[29].Ends {
+		t.Fatalf("o período termina depois do mês exibido: o dia 30 não é o fim: %+v", days[29])
+	}
+
+	// Período que começa e termina dentro do mês marca início e fim nos dias certos.
+	inner := buildCalendarDays([]CalendarPeriod{
+		cseaBlockingPeriod("l-inner", "2026-09-05", "2026-09-10", domain.LeaseStatusActive, "Carlos"),
+	}, 2026, 9, 30)
+	if inner[3].Occupied() {
+		t.Fatalf("dia 4 fica livre antes do início do período: %+v", inner[3])
+	}
+	if !inner[4].Occupied() {
+		t.Fatalf("dia 5 é o início do período e deve estar ocupado: %+v", inner[4])
+	}
+	if !inner[4].Starts || !inner[9].Ends {
+		t.Fatalf("início/fim do período dentro do mês: dia 5 começa=%v, dia 10 termina=%v", inner[4].Starts, inner[9].Ends)
+	}
+	if inner[10].Occupied() {
+		t.Fatalf("dia 11 deveria ficar livre depois do fim do período")
 	}
 }
 

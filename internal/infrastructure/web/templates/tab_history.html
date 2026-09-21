@@ -1,13 +1,10 @@
 {{define "tab_history"}}
 <section class="card stack-lg history-section" id="history-section">
   <div class="section-header">
-    <div>
-      <h2>Histórico e Auditoria</h2>
-      <p class="subtitle">Trilha de auditoria</p>
-    </div>
+    <h2>Histórico e Auditoria</h2>
     <div class="auth-actions">
-      <span class="status-badge paid" id="history-total">0 evento(s)</span>
-      <a class="btn btn-secondary" id="history-export" href="/audit/export" download>Exportar CSV</a>
+      <span class="status-badge paid" id="history-total" style="font-size: 0.8125rem; padding: 0.4rem 0.8rem;">0 evento(s)</span>
+      <a class="btn btn-secondary" id="history-export" href="/audit/export">Exportar CSV</a>
     </div>
   </div>
 
@@ -19,13 +16,13 @@
   ></div>
 
   <div class="filter-bar">
-    <label class="filter-field filter-field-grow">
-      <span class="filter-label">Buscar</span>
-      <input type="search" id="history-search" placeholder="Buscar por resumo, registro ou usuário" autocomplete="off">
-    </label>
-    <label class="filter-field">
+    <div class="filter-field filter-field-grow">
+      <label class="filter-label" for="history-search">Buscar</label>
+      <input id="history-search" placeholder="Buscar por resumo, registro ou usuário" aria-label="Buscar por resumo, registro ou usuário" value="">
+    </div>
+    <div class="filter-field">
       <span class="filter-label">Área</span>
-      <select id="history-entity">
+      <select class="small-select-display" id="history-entity" aria-label="Área">
         <option value="">Todas as áreas</option>
         <option value="tenant">Inquilino</option>
         <option value="property">Imóvel</option>
@@ -42,10 +39,10 @@
         <option value="document-intake">Cadastro por documento</option>
         <option value="collection">Cobrança</option>
       </select>
-    </label>
-    <label class="filter-field">
+    </div>
+    <div class="filter-field">
       <span class="filter-label">Ação</span>
-      <select id="history-action">
+      <select class="small-select-display" id="history-action" aria-label="Ação">
         <option value="">Todas as ações</option>
         <option value="tenant.create" data-entity="tenant" data-tone="create">Inquilino cadastrado</option>
         <option value="tenant.update" data-entity="tenant" data-tone="update">Inquilino alterado</option>
@@ -96,31 +93,31 @@
         <option value="collection.sent" data-entity="collection" data-tone="issue">Cobrança enviada</option>
         <option value="adjustment.applied" data-entity="lease" data-tone="update">Reajuste aplicado</option>
       </select>
-    </label>
-    <label class="filter-field">
+    </div>
+    <div class="filter-field">
       <span class="filter-label">Usuário</span>
-      <select id="history-actor">
+      <select class="small-select-display" id="history-actor" aria-label="Usuário">
         <option value="">Todos os usuários</option>
       </select>
-    </label>
-    <label class="filter-field">
-      <span class="filter-label">De</span>
-      <input type="date" id="history-from">
-    </label>
-    <label class="filter-field">
-      <span class="filter-label">Até</span>
-      <input type="date" id="history-to">
-    </label>
+    </div>
+    <div class="form-group">
+      <label for="history-from">De</label>
+      <input type="date" id="history-from" name="history-from" data-datepicker>
+    </div>
+    <div class="form-group">
+      <label for="history-to">Até</label>
+      <input type="date" id="history-to" name="history-to" data-datepicker>
+    </div>
   </div>
 
   <div class="error" id="history-error" hidden></div>
 
   <div class="table-wrap">
-    <table class="history-table">
+    <table class="history-table" data-page-size="25">
       <thead>
         <tr>
           <th style="width: 11rem;">
-            <button type="button" class="sort-header" id="history-order" aria-label="Ordenar por data e hora">
+            <button type="button" class="sort-header active" id="history-order" aria-label="Ordenar por data e hora">
               Data e hora
               <span class="sort-arrows">
                 <svg class="sort-arrow asc" width="8" height="5" viewBox="0 0 8 5" fill="none"><path d="M4 0L7.5 5H0.5L4 0Z" /></svg>
@@ -142,39 +139,42 @@
 
   <div class="pagination" id="history-pagination">
     <div class="pagination-nav">
-      <button type="button" class="btn btn-sm btn-outline" id="history-prev">Anterior</button>
+      <button type="button" class="btn btn-sm btn-secondary" id="history-prev" disabled>Anterior</button>
       <span class="pagination-label" id="history-page-label">Página 1 de 1</span>
-      <button type="button" class="btn btn-sm btn-outline" id="history-next">Próxima</button>
+      <button type="button" class="btn btn-sm btn-secondary" id="history-next" disabled>Próxima</button>
     </div>
     <div class="pagination-size">
       <span class="pagination-label">Itens por página</span>
-      <select id="history-pagesize">
-        <option value="10">10</option>
-        <option value="25" selected>25</option>
-        <option value="50">50</option>
-        <option value="100">100</option>
-      </select>
+      <div>
+        <select class="small-select-display" id="history-pagesize" aria-label="Itens por página">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
     </div>
   </div>
 
-  <div class="modal-backdrop" id="history-detail" hidden>
-    <div class="modal-card modal-card-wide">
+  <div class="modal-backdrop" id="history-detail" role="presentation" hidden>
+    <div class="modal-card modal-card-wide" id="history-detail-card" role="dialog" aria-modal="true" aria-label="Detalhes do evento">
       <div class="modal-header">
         <h3 id="history-detail-title">Detalhes do evento</h3>
-        <button type="button" class="btn btn-sm btn-outline" data-modal-close>Fechar</button>
+        <button type="button" class="btn btn-sm btn-secondary" id="history-detail-close" data-modal-close>Fechar</button>
       </div>
       <div class="history-detail">
         <p class="history-summary" id="history-detail-summary"></p>
         <dl class="history-meta" id="history-detail-meta"></dl>
-        <div class="table-wrap">
+        <div class="table-wrap" id="history-detail-changes">
           <table class="history-changes">
             <thead>
               <tr><th>Campo</th><th>Antes</th><th>Depois</th></tr>
             </thead>
-            <tbody id="history-detail-changes"></tbody>
+            <tbody id="history-detail-rows"></tbody>
           </table>
         </div>
-        <dl class="history-meta" id="history-detail-metadata"></dl>
+        <p class="subtitle" id="history-detail-changes-empty" hidden>Este evento não alterou valores de campos.</p>
+        <dl class="history-meta" id="history-detail-metadata" hidden></dl>
       </div>
     </div>
   </div>
@@ -191,6 +191,8 @@
     var ORIGIN_LABELS = labelHost ? JSON.parse(labelHost.getAttribute('data-origins') || '{}') : {};
     var METADATA_LABELS = labelHost ? JSON.parse(labelHost.getAttribute('data-metadata') || '{}') : {};
 
+    // Os rótulos de área, de ação e o tom de cada ação saem das opções marcadas:
+    // a lista de ações já filtra por área no próprio HTML.
     var ENTITY_LABELS = {};
     Array.prototype.forEach.call(root.querySelectorAll('#history-entity option'), function (option) {
       if (option.value) ENTITY_LABELS[option.value] = option.textContent.trim();
@@ -222,10 +224,13 @@
       pageLabel: document.getElementById('history-page-label'),
       pageSize: document.getElementById('history-pagesize'),
       modal: document.getElementById('history-detail'),
+      modalCard: document.getElementById('history-detail-card'),
       modalTitle: document.getElementById('history-detail-title'),
       modalSummary: document.getElementById('history-detail-summary'),
       modalMeta: document.getElementById('history-detail-meta'),
       modalChanges: document.getElementById('history-detail-changes'),
+      modalChangesRows: document.getElementById('history-detail-rows'),
+      modalChangesEmpty: document.getElementById('history-detail-changes-empty'),
       modalMetadata: document.getElementById('history-detail-metadata')
     };
 
@@ -242,6 +247,8 @@
     };
     var requestSeq = 0;
     var searchTimer = null;
+
+    /* ── Consulta e renderização ─────────────────────────────────── */
 
     function params() {
       var query = new URLSearchParams();
@@ -303,17 +310,21 @@
       return td;
     }
 
+    function emptyRow(text) {
+      var row = document.createElement('tr');
+      var td = document.createElement('td');
+      td.colSpan = 5;
+      td.style.textAlign = 'center';
+      td.style.color = 'var(--text-muted)';
+      td.textContent = text;
+      row.appendChild(td);
+      return row;
+    }
+
     function renderRows(items) {
       els.rows.textContent = '';
       if (!items.length) {
-        var empty = document.createElement('tr');
-        var td = document.createElement('td');
-        td.colSpan = 5;
-        td.style.textAlign = 'center';
-        td.style.color = 'var(--text-muted)';
-        td.textContent = 'Nenhum evento encontrado com os filtros atuais.';
-        empty.appendChild(td);
-        els.rows.appendChild(empty);
+        els.rows.appendChild(emptyRow('Nenhum evento encontrado com os filtros atuais.'));
         return;
       }
 
@@ -321,9 +332,7 @@
         var row = document.createElement('tr');
 
         row.appendChild(cell(formatDateTime(entry.createdAt), 'history-when'));
-
-        var actor = entry.actorName || 'Sistema';
-        row.appendChild(cell(actor));
+        row.appendChild(cell(entry.actorName || 'Sistema'));
 
         var badgeCell = document.createElement('td');
         var badge = document.createElement('span');
@@ -365,63 +374,64 @@
       });
     }
 
-    function metaItem(term, value) {
+    function metaItem(term, text) {
       var wrap = document.createElement('div');
       var dt = document.createElement('dt');
       dt.textContent = term;
       var dd = document.createElement('dd');
-      dd.textContent = displayValue(value);
+      dd.textContent = text;
       wrap.appendChild(dt);
       wrap.appendChild(dd);
       return wrap;
     }
 
+    function renderChanges(changes) {
+      els.modalChangesRows.textContent = '';
+      els.modalChanges.hidden = changes.length === 0;
+      els.modalChangesEmpty.hidden = changes.length !== 0;
+      changes.forEach(function (change) {
+        var row = document.createElement('tr');
+        var field = document.createElement('td');
+        var strong = document.createElement('strong');
+        strong.textContent = change.label || change.field;
+        field.appendChild(strong);
+        row.appendChild(field);
+        row.appendChild(cell(displayValue(change.from), 'history-old'));
+        row.appendChild(cell(displayValue(change.to), 'history-new'));
+        els.modalChangesRows.appendChild(row);
+      });
+    }
+
+    function renderMetadata(metadata) {
+      var keys = Object.keys(metadata || {});
+      els.modalMetadata.textContent = '';
+      els.modalMetadata.hidden = keys.length === 0;
+      keys.forEach(function (key) {
+        var value = metadata[key];
+        els.modalMetadata.appendChild(metaItem(METADATA_LABELS[key] || key, value === null || value === undefined ? '—' : String(value)));
+      });
+    }
+
     function openDetail(entry) {
       els.modalTitle.textContent = actionLabel(entry.action);
+      els.modalCard.setAttribute('aria-label', actionLabel(entry.action));
       els.modalSummary.textContent = entry.summary;
 
       els.modalMeta.textContent = '';
       els.modalMeta.appendChild(metaItem('Data e hora', formatDateTime(entry.createdAt)));
       els.modalMeta.appendChild(metaItem('Usuário', entry.actorName || 'Sistema'));
       els.modalMeta.appendChild(metaItem('Área', entityLabel(entry.entity)));
-      els.modalMeta.appendChild(metaItem('Registro', entry.entityLabel || entry.entityId));
+      els.modalMeta.appendChild(metaItem('Registro', displayValue(entry.entityLabel || entry.entityId)));
       els.modalMeta.appendChild(metaItem('Origem', ORIGIN_LABELS[entry.origin] || entry.origin));
-      els.modalMeta.appendChild(metaItem('IP', entry.ip));
-      els.modalMeta.appendChild(metaItem('Protocolo', entry.requestId));
-      els.modalMeta.appendChild(metaItem('Identificador', entry.entityId));
+      els.modalMeta.appendChild(metaItem('IP', displayValue(entry.ip)));
+      els.modalMeta.appendChild(metaItem('Protocolo', displayValue(entry.requestId)));
+      els.modalMeta.appendChild(metaItem('Identificador', displayValue(entry.entityId)));
 
-      els.modalChanges.textContent = '';
-      var changes = entry.changes || [];
-      if (!changes.length) {
-        var row = document.createElement('tr');
-        var td = document.createElement('td');
-        td.colSpan = 3;
-        td.textContent = 'Este evento não alterou valores de campos.';
-        row.appendChild(td);
-        els.modalChanges.appendChild(row);
-      } else {
-        changes.forEach(function (change) {
-          var row = document.createElement('tr');
-          var field = document.createElement('td');
-          var strong = document.createElement('strong');
-          strong.textContent = change.label || change.field;
-          field.appendChild(strong);
-          row.appendChild(field);
-          row.appendChild(cell(displayValue(change.from), 'history-old'));
-          row.appendChild(cell(displayValue(change.to), 'history-new'));
-          els.modalChanges.appendChild(row);
-        });
-      }
-
-      els.modalMetadata.textContent = '';
-      var keys = Object.keys(entry.metadata || {});
-      keys.forEach(function (key) {
-        var value = entry.metadata[key];
-        if (value === null || value === undefined || value === '') return;
-        els.modalMetadata.appendChild(metaItem(METADATA_LABELS[key] || key, value));
-      });
+      renderChanges(entry.changes || []);
+      renderMetadata(entry.metadata);
 
       els.modal.hidden = false;
+      els.modal.setAttribute('aria-hidden', 'false');
     }
 
     function renderActors(actors) {
@@ -450,7 +460,7 @@
     }
 
     function filterActionOptions() {
-      Array.prototype.forEach.call(els.action.querySelectorAll('option'), function (option) {
+      Array.prototype.forEach.call(els.action.options, function (option) {
         if (!option.value) return;
         option.hidden = Boolean(state.entity) && option.getAttribute('data-entity') !== state.entity;
       });
@@ -524,6 +534,7 @@
     });
     els.order.addEventListener('click', function () {
       state.order = state.order === 'desc' ? 'asc' : 'desc';
+      els.order.classList.toggle('active', state.order === 'desc');
       els.order.querySelector('.sort-arrow.asc').classList.toggle('active', state.order === 'asc');
       els.order.querySelector('.sort-arrow.desc').classList.toggle('active', state.order === 'desc');
       reset({ page: 1 });

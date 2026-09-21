@@ -1,110 +1,190 @@
 {{define "tab_metrics"}}
 {{$metrics := .Snapshot.Metrics}}
+{{$totals := $metrics.Totals}}
 <div class="stack-lg">
-  <div class="metrics-grid">
-    <div class="card metric-card">
-      <div class="metric-label">Inquilinos</div>
-      <div class="metric-value">{{$metrics.Totals.Tenants}}</div>
-      <div class="metric-sub">{{$metrics.Totals.Properties}} imóveis cadastrados</div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.75rem;">
+    {{$tenants := printf "%d" $totals.Tenants}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Inquilinos</div>
+      <div style="font-size: {{metricValueFont $tenants}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$tenants}}">{{$tenants}}</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Contratos ativos</div>
-      <div class="metric-value">{{$metrics.Totals.ActiveLeases}}</div>
-      <div class="metric-sub">{{$metrics.Totals.TerminatedLeases}} encerrados</div>
+
+    {{$properties := printf "%d" $totals.Properties}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Imóveis</div>
+      <div style="font-size: {{metricValueFont $properties}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$properties}}">{{$properties}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.ActiveLeases}} contrato(s) ativo(s)</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Receita mensal esperada</div>
-      <div class="metric-value">{{money $metrics.Totals.ExpectedMonthly}}</div>
-      <div class="metric-sub">soma dos contratos ativos</div>
+
+    {{$receipts := printf "%d" $totals.Receipts}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Recibos</div>
+      <div style="font-size: {{metricValueFont $receipts}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$receipts}}">{{$receipts}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{add $totals.PaidReceipts $totals.PartialReceipts}} pagos</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Recebido</div>
-      <div class="metric-value">{{money $metrics.Totals.PaidAmount}}</div>
-      <div class="metric-sub">{{$metrics.Totals.PaidReceipts}} pagos · {{$metrics.Totals.PartialReceipts}} parciais</div>
+
+    {{$received := money $totals.PaidAmount}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Recebido</div>
+      <div style="font-size: {{metricValueFont $received}}; font-weight: 700; color: #10b981; margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$received}}">{{$received}}</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">A receber</div>
-      <div class="metric-value">{{money $metrics.Totals.OpenAmount}}</div>
-      <div class="metric-sub">{{$metrics.Totals.DueReceipts}} lançamentos a vencer</div>
+
+    {{$open := money $totals.OpenAmount}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Em aberto</div>
+      <div style="font-size: {{metricValueFont $open}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$open}}">{{$open}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.DueReceipts}} a vencer</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Inadimplência</div>
-      <div class="metric-value">{{money $metrics.Totals.OverdueAmount}}</div>
-      <div class="metric-sub">{{$metrics.Totals.OverdueReceipts}} lançamentos vencidos</div>
+
+    {{$overdue := money $totals.OverdueAmount}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Em atraso</div>
+      <div style="font-size: {{metricValueFont $overdue}}; font-weight: 700; color: {{if gt $totals.OverdueReceipts 0}}#ef4444{{else}}var(--text){{end}}; margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$overdue}}">{{$overdue}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.OverdueReceipts}} vencido(s)</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Lançamentos</div>
-      <div class="metric-value">{{$metrics.Totals.Receipts}}</div>
-      <div class="metric-sub">{{money $metrics.Totals.TotalAmount}} lançados</div>
+
+    {{$expected := money $totals.ExpectedMonthly}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Esperado mensal</div>
+      <div style="font-size: {{metricValueFont $expected}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$expected}}">{{$expected}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Soma dos aluguéis ativos</div>
     </div>
-    <div class="card metric-card">
-      <div class="metric-label">Ocupação</div>
-      <div class="metric-value">{{$metrics.Totals.ActiveLeases}} / {{$metrics.Totals.Properties}}</div>
-      <div class="metric-sub">contratos ativos por imóvel</div>
+
+    {{$total := money $totals.TotalAmount}}
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;">
+      <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Total previsto</div>
+      <div style="font-size: {{metricValueFont $total}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$total}}">{{$total}}</div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Soma de todos os recibos</div>
     </div>
   </div>
 
+  {{$chart := monthlyChart $metrics.Monthly}}
   <section class="card" style="padding: 1.25rem;">
     <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Recebimentos mensais (últimos 6 meses)</h2>
-    {{range $metrics.Monthly}}
-      <div class="bar-row">
-        <div class="cell-nowrap">{{.Label}}</div>
-        <div class="bar-track">
-          <div class="bar-fill" style="width: {{if gt .Expected 0.0}}{{percent .Received .Expected}}{{else}}0{{end}}%"></div>
-        </div>
-        <div class="bar-value">{{money .Received}}</div>
+    <div>
+      <svg width="100%" height="auto" viewBox="0 0 {{svgNum $chart.Width}} {{svgNum $chart.Height}}" style="max-height: 220px; display: block;" role="img" aria-label="Recebimentos por mês">
+        {{range $chart.Axis}}
+          <line x1="{{svgNum .X1}}" x2="{{svgNum .X2}}" y1="{{svgNum .Y1}}" y2="{{svgNum .Y2}}" stroke="var(--glass-border)" />
+        {{end}}
+        {{range $chart.Guides}}
+          <g>
+            <line x1="{{svgNum .X1}}" x2="{{svgNum .X2}}" y1="{{svgNum .Y}}" y2="{{svgNum .Y}}" stroke="var(--glass-border)" stroke-dasharray="3 3" />
+            <text x="{{svgNum .LabelX}}" y="{{svgNum .LabelY}}" text-anchor="end" style="font-size: 0.65rem; fill: var(--text-muted);">{{.Label}}</text>
+          </g>
+        {{end}}
+        {{range $chart.Columns}}
+          <g>
+            <rect x="{{svgNum .X}}" y="{{svgNum .ExpectedY}}" width="{{svgNum .Width}}" height="{{svgNum .ExpectedH}}" fill="#cbd5e1" rx="2" />
+            <rect x="{{svgNum .X}}" y="{{svgNum .ReceivedY}}" width="{{svgNum .Width}}" height="{{svgNum .ReceivedH}}" fill="#6366f1" rx="2" />
+            <text x="{{svgNum .LabelX}}" y="{{svgNum .LabelY}}" text-anchor="middle" style="font-size: 0.65rem; fill: var(--text-muted);">{{.Label}}</text>
+          </g>
+        {{end}}
+      </svg>
+      <div style="display: flex; gap: 1rem; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem;">
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #6366f1; border-radius: 2px; margin-right: 4px;"></span>Recebido</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #cbd5e1; border-radius: 2px; margin-right: 4px;"></span>Esperado</span>
       </div>
-    {{end}}
-    <p class="metric-sub" style="margin-top: 0.75rem;">A barra compara o recebido com o esperado no mês.</p>
+    </div>
   </section>
 
-  <div class="metrics-grid">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0.75rem;">
+    {{$radius := 60.0}}
+    {{$donut := donutSlices $metrics.Status $radius}}
     <section class="card" style="padding: 1.25rem;">
       <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Distribuição por status</h2>
-      <ul class="status-list">
-        {{range $metrics.Status}}
-          <li>
-            <span class="status-dot" style="background: {{statusColor .Status}};"></span>
-            <span style="flex: 1;">{{.Label}}</span>
-            <strong>{{.Count}}</strong>
-          </li>
-        {{end}}
-      </ul>
+      {{if eq $donut.Total 0}}
+        <div style="color: var(--text-muted); font-size: 0.875rem;">Sem dados ainda.</div>
+      {{else}}
+        <div style="display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;">
+          <svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label="Distribuição de status dos recibos">
+            <g transform="translate(80,80) rotate(-90)">
+              <circle r="{{svgNum $radius}}" fill="none" stroke="var(--glass-border)" stroke-width="20" />
+              {{range $index, $entry := $metrics.Status}}
+                {{$slice := index $donut.Slices $index}}
+                <circle r="{{svgNum $radius}}" fill="none" stroke="{{statusColor $entry.Status}}" stroke-width="20" stroke-dasharray="{{$slice.DashArray}}" stroke-dashoffset="{{svgNum $slice.DashOffset}}" />
+              {{end}}
+            </g>
+            <text x="80" y="78" text-anchor="middle" style="font-size: 1.4rem; font-weight: 700; fill: var(--text);">{{$donut.Total}}</text>
+            <text x="80" y="98" text-anchor="middle" style="font-size: 0.7rem; fill: var(--text-muted);">recibos</text>
+          </svg>
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; min-width: 140px;">
+            {{range $metrics.Status}}
+              <li style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;">
+                <span style="width: 12px; height: 12px; border-radius: 3px; background: {{statusColor .Status}}; flex-shrink: 0;"></span>
+                <span style="flex: 1;">{{.Label}}</span>
+                <strong>{{.Count}}</strong>
+              </li>
+            {{end}}
+          </ul>
+        </div>
+      {{end}}
     </section>
 
+    {{$categories := categoryBars $metrics.Categories}}
     <section class="card" style="padding: 1.25rem;">
       <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Por categoria</h2>
-      {{if not $metrics.Categories}}<div class="cell-muted">Sem lançamentos.</div>{{end}}
-      {{range $metrics.Categories}}
-        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.5rem;">
-          <div>{{.Label}} <span class="cell-muted">({{.Count}})</span></div>
-          <div class="bar-value">{{money .Total}}</div>
-        </div>
-      {{end}}
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        {{if not $categories}}<div style="color: var(--text-muted);">Sem recibos.</div>{{end}}
+        {{range $categories}}
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.25rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+              <span>{{.Label}}</span>
+              <span style="color: var(--text-muted);">{{.Count}} recibo(s)</span>
+            </div>
+            <div style="grid-column: 1 / -1; background: var(--glass-border); height: 10px; border-radius: 5px; overflow: hidden;">
+              <div style="width: {{.Width}}%; height: 100%; background: {{categoryColor .Category}}; transition: width 0.4s;"></div>
+            </div>
+            <div style="font-size: 0.85rem; font-variant-numeric: tabular-nums; color: var(--text-muted);">{{.Total}}</div>
+          </div>
+        {{end}}
+      </div>
     </section>
   </div>
 
-  <div class="metrics-grid">
-    <section class="card" style="padding: 1.25rem;">
-      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Ocupação por imóvel</h2>
-      {{range $metrics.Properties}}
-        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.4rem;">
-          <div>{{.Name}}</div>
-          <div class="bar-value">{{.ActiveLeases}} ativo(s)</div>
-        </div>
-      {{end}}
-    </section>
+  {{$occupancy := occupancyBars $metrics.Properties 10}}
+  <section class="card" style="padding: 1.25rem;">
+    <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Ocupação por imóvel</h2>
+    {{if not $occupancy}}
+      <div style="color: var(--text-muted);">Sem imóveis cadastrados.</div>
+    {{else}}
+      <div style="display: flex; flex-direction: column; gap: 0.625rem;">
+        {{range $occupancy}}
+          <div style="display: grid; grid-template-columns: minmax(140px, 240px) 1fr 90px; gap: 0.75rem; align-items: center; font-size: 0.85rem;">
+            <div style="color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{.Title}}">{{.Name}}</div>
+            <div style="background: var(--glass-border); border-radius: 4px; height: 14px; overflow: hidden;">
+              <div style="width: {{.Width}}%; height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8); border-radius: 4px; transition: width 0.4s;"></div>
+            </div>
+            <div style="text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted);">{{.Leases}}</div>
+          </div>
+        {{end}}
+      </div>
+    {{end}}
+  </section>
 
-    <section class="card" style="padding: 1.25rem;">
-      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Maiores pagadores</h2>
-      {{if not $metrics.TopTenants}}<div class="cell-muted">Sem pagamentos registrados.</div>{{end}}
-      {{range $metrics.TopTenants}}
-        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.4rem;">
-          <div>{{.Name}}</div>
-          <div class="bar-value">{{money .PaidTotal}} <span class="cell-muted">({{.Receipts}})</span></div>
-        </div>
-      {{end}}
-    </section>
-  </div>
+  <section class="card" style="padding: 1.25rem;">
+    <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Top inquilinos por valor pago</h2>
+    {{if not $metrics.TopTenants}}
+      <div style="color: var(--text-muted);">Sem pagamentos registrados.</div>
+    {{else}}
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
+        <thead>
+          <tr style="text-align: left; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">
+            <th style="padding: 0.5rem;">Inquilino</th>
+            <th style="padding: 0.5rem; text-align: right;">Recibos pagos</th>
+            <th style="padding: 0.5rem; text-align: right;">Total pago</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $metrics.TopTenants}}
+            <tr style="border-top: 1px solid var(--glass-border);">
+              <td style="padding: 0.5rem;">{{.Name}}</td>
+              <td style="padding: 0.5rem; text-align: right; font-variant-numeric: tabular-nums;">{{.Receipts}}</td>
+              <td style="padding: 0.5rem; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600;">{{money .PaidTotal}}</td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    {{end}}
+  </section>
 </div>
 {{end}}

@@ -337,18 +337,14 @@ tbody tr:has([data-batch-item]:checked) {
 }
 
 /* ── Paginação local ────────────────────────────────────────────── */
-.pagination-size-select {
-  height: 32px;
-  padding: 0 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.8125rem;
+/* O seletor de itens por página é um `select` nativo com a aparência do
+   `.small-select-display` do app original (mesmo componente do Bun). */
+.pagination .pagination-label {
+  white-space: nowrap;
 }
 
-.pagination-size-select:hover {
-  border-color: var(--border-focus);
+.pagination-size .small-select {
+  flex-shrink: 0;
 }
 
 /* ── Datepicker próprio ─────────────────────────────────────────── */
@@ -589,4 +585,178 @@ input[data-mask="money"] {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/* ── Menu lateral recolhível ────────────────────────────────────── */
+/* O app original esconde os rótulos por renderização condicional; aqui o menu
+   é server-side, então o mesmo efeito vem do CSS (o estado recolhido é a
+   ausência da classe `open`, igual ao original). */
+.sidebar:not(.open) .nav-label {
+  display: none;
+}
+
+/* Estado do menu aplicado antes da primeira pintura (`head.html` marca o
+   <html> a partir da preferência salva): sem isso o menu pisca expandido para
+   quem o deixou recolhido. Espelha as regras do estado recolhido acima. */
+html.sidebar-collapsed .sidebar {
+  width: var(--sidebar-collapsed-w);
+  padding: 1.25rem 0.625rem;
+}
+
+html.sidebar-collapsed .sidebar .nav-label {
+  display: none;
+}
+
+html.sidebar-collapsed .sidebar .sidebar-logomarca {
+  display: none !important;
+}
+
+html.sidebar-collapsed .sidebar .sidebar-marca {
+  display: block !important;
+}
+
+html.sidebar-collapsed main {
+  margin-left: var(--sidebar-collapsed-w);
+  width: calc(100% - var(--sidebar-collapsed-w));
+}
+
+/* O glifo do botão mostra o sentido da ação: chevron para recolher, barras
+   para expandir (o original desenha um dos dois). */
+.sidebar:not(.open) .menu-glyph-expanded,
+.sidebar.open .menu-glyph-collapsed {
+  display: none;
+}
+
+/* Botão flutuante do menu no mobile: vira um X quando o drawer está aberto. */
+.hamburger-float .mobile-menu-close,
+.hamburger-float[aria-expanded="true"] .mobile-menu-open {
+  display: none;
+}
+
+.hamburger-float[aria-expanded="true"] .mobile-menu-close {
+  display: block;
+}
+
+/* ── Selects com a aparência do `.small-select-display` ─────────── */
+/* Os filtros do app original são um dropdown próprio; aqui é um `select`
+   nativo com a mesma caixa (mesma altura, borda, raio e chevron), que mantém
+   teclado, leitor de tela e o filtro local do app.js sem JS extra. */
+select.small-select-display {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 1.9rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 14px 14px;
+}
+
+[data-theme="dark"] select.small-select-display {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ── Modal de lançamento: alternância aluguel × taxa avulsa ─────── */
+.receipt-mode {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.25rem;
+}
+
+.receipt-mode-btn {
+  flex: 1;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.receipt-mode-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Modal de Informações do sistema ────────────────────────────── */
+.system-info-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.system-info-note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.system-info-status {
+  margin: 0;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.info-row-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.info-row-value {
+  font-size: 0.9rem;
+  text-align: right;
+  word-break: break-word;
+}
+
+.info-row-mono {
+  font-family: monospace;
+}
+
+/* ── Tela estreita: o drawer é a única navegação ────────────────── */
+/* Recolhido, o menu não pode esconder rótulos nem encolher os itens: no
+   mobile ele é o drawer inteiro (260px), aberto pelo botão flutuante. */
+@media (max-width: 768px) {
+  .sidebar:not(.open) .nav-label,
+  html.sidebar-collapsed .sidebar .nav-label {
+    display: inline;
+  }
+
+  .sidebar:not(.open) a,
+  .sidebar:not(.open) button,
+  .sidebar:not(.open) .data-btn,
+  .sidebar:not(.open) .theme-toggle,
+  .sidebar:not(.open) .sidebar-footer .nav-link,
+  .sidebar:not(.open) .sidebar-footer form button,
+  html.sidebar-collapsed .sidebar a,
+  html.sidebar-collapsed .sidebar button,
+  html.sidebar-collapsed .sidebar .data-btn,
+  html.sidebar-collapsed .sidebar .theme-toggle,
+  html.sidebar-collapsed .sidebar .sidebar-footer .nav-link,
+  html.sidebar-collapsed .sidebar .sidebar-footer form button {
+    justify-content: flex-start;
+    padding: 0.6875rem 0.875rem;
+    width: 100%;
+    height: auto;
+    margin: 0;
+  }
+
+  .sidebar:not(.open) .sidebar-logomarca,
+  html.sidebar-collapsed .sidebar .sidebar-logomarca {
+    display: block !important;
+  }
+
+  .sidebar:not(.open) .sidebar-marca,
+  html.sidebar-collapsed .sidebar .sidebar-marca {
+    display: none !important;
+  }
 }

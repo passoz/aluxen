@@ -133,9 +133,8 @@ func (h *covLogHandler) last() (slog.Record, bool) {
 // ── Repositórios ───────────────────────────────────────────────────
 
 type covUsers struct {
-	items  map[string]*domain.User
-	err    error
-	byName error
+	items map[string]*domain.User
+	err   error
 	// failAfterIDReads injeta falha nas leituras de ByID depois das N primeiras,
 	// para exercitar o caminho em que a sessão vale e a leitura seguinte falha.
 	failAfterIDReads int
@@ -237,6 +236,9 @@ func (r *covTenants) ByCPF(_ context.Context, digits string) (*domain.Tenant, er
 }
 
 func (r *covTenants) Create(_ context.Context, tenant *domain.Tenant) error {
+	if r.err != nil {
+		return r.err
+	}
 	r.items = append(r.items, *tenant)
 	return nil
 }
@@ -364,6 +366,9 @@ func (r *covLeases) ByID(_ context.Context, id string) (*domain.Lease, error) {
 }
 
 func (r *covLeases) ByTenant(_ context.Context, tenantID string) ([]domain.Lease, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	filtered := make([]domain.Lease, 0, len(r.items))
 	for _, lease := range r.items {
 		if lease.TenantID == tenantID {
@@ -472,6 +477,9 @@ func (r *covReceipts) ByID(_ context.Context, id string) (*domain.Receipt, error
 }
 
 func (r *covReceipts) ByTenant(_ context.Context, tenantID string) ([]domain.Receipt, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	filtered := make([]domain.Receipt, 0, len(r.items))
 	for _, receipt := range r.items {
 		if receipt.TenantID != nil && *receipt.TenantID == tenantID {
@@ -894,29 +902,26 @@ func (r *covMessages) ByTenant(_ context.Context, tenantID string, limit int) ([
 // ── Montagem do painel de teste ────────────────────────────────────
 
 type covPanel struct {
-	t            *testing.T
-	handler      *Handlers
-	common       *Common
-	admin        *domain.User
-	clock        *covClock
-	users        *covUsers
-	tenants      *covTenants
-	properties   *covProperties
-	leases       *covLeases
-	receipts     *covReceipts
-	settings     *covSettings
-	audit        *covAudit
-	inspections  *covInspections
-	jobs         *covJobs
-	proofs       *covProofs
-	intakes      *covIntakes
-	messages     *covMessages
-	attachments  *covAttachments
-	logs         *covLogHandler
-	mustChange   func(context.Context, string) (bool, error)
-	ping         func(context.Context) error
-	dbSize       func() int64
-	whatsappGate bool
+	t           *testing.T
+	handler     *Handlers
+	common      *Common
+	admin       *domain.User
+	clock       *covClock
+	users       *covUsers
+	tenants     *covTenants
+	properties  *covProperties
+	leases      *covLeases
+	receipts    *covReceipts
+	settings    *covSettings
+	audit       *covAudit
+	inspections *covInspections
+	jobs        *covJobs
+	proofs      *covProofs
+	intakes     *covIntakes
+	messages    *covMessages
+	attachments *covAttachments
+	logs        *covLogHandler
+	mustChange  func(context.Context, string) (bool, error)
 }
 
 // newCovPanel monta o painel com todos os repositórios dublês e um
@@ -1029,6 +1034,17 @@ func newCovPanelWith(t *testing.T, admin *domain.User) *covPanel {
 	return panel
 }
 
+// covCookieValue devolve o valor do cookie de nome informado, ou string vazia.
+// O harness define o próprio leitor para não depender de dublês de outro arquivo.
+func covCookieValue(cookies []*http.Cookie, name string) string {
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
 // covString devolve o ponteiro para o valor.
 func covString(value string) *string { return &value }
 
@@ -1081,7 +1097,7 @@ func (p *covPanel) as(method, target string, form url.Values, userID string) *ht
 func (p *covPanel) csrfPost(target string, form url.Values) *httptest.ResponseRecorder {
 	page := httptest.NewRecorder()
 	p.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
-	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	token := covCookieValue(page.Result().Cookies(), csrfCookieName)
 	if token == "" {
 		p.t.Fatal("cookie de CSRF não emitido")
 	}
@@ -1113,7 +1129,7 @@ func (p *covPanel) asClient(method, target, tenantID string) *httptest.ResponseR
 func (p *covPanel) csrfPostAs(target string, form url.Values, userID string, admin bool) *httptest.ResponseRecorder {
 	page := httptest.NewRecorder()
 	p.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
-	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	token := covCookieValue(page.Result().Cookies(), csrfCookieName)
 	if token == "" {
 		p.t.Fatal("cookie de CSRF não emitido")
 	}
@@ -1140,7 +1156,7 @@ func covMalformedPost(panel *covPanel, target, sessionID string, asAdmin bool) *
 
 	page := httptest.NewRecorder()
 	panel.handler.Router().ServeHTTP(page, httptest.NewRequest(http.MethodGet, "/login", nil))
-	token := cookieValue(page.Result().Cookies(), csrfCookieName)
+	token := covCookieValue(page.Result().Cookies(), csrfCookieName)
 	if token == "" {
 		panel.t.Fatal("cookie de CSRF não emitido")
 	}

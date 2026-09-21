@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -754,8 +755,11 @@ func TestWhatsAppWebhookStoresSignedMessage(t *testing.T) {
 	if message.Body != "já paguei o aluguel" || message.Phone != "5511999999999" {
 		t.Fatalf("mensagem = %+v", message)
 	}
-	if actions := server.audit.actions(); len(actions) != 1 || actions[0] != domain.ActionWhatsAppMessageReceived {
-		t.Fatalf("trilha = %v, esperado whatsapp.message-received", actions)
+	// O atendimento responde a mensagem recebida, então a trilha tem o registro
+	// da chegada e o do envio da resposta; o que importa é a chegada registrada.
+	actions := server.audit.actions()
+	if !slices.Contains(actions, domain.ActionWhatsAppMessageReceived) {
+		t.Fatalf("trilha = %v, esperado conter %s", actions, domain.ActionWhatsAppMessageReceived)
 	}
 }
 

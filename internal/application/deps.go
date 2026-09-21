@@ -101,6 +101,6 @@ type Deps struct {
 	// Chat conversa com o provedor usando ferramentas tipadas (agente de
 	// atendimento e cobrança). Nulo desliga o agente.
 	Chat ChatClient
-	Log     *slog.Logger
-	Opts    Options
+	Log  *slog.Logger
+	Opts Options
 }

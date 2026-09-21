@@ -27,6 +27,15 @@
         }
       } catch (error) {}
     })();
+    // Estado do menu lateral, também antes da pintura: o app.js confirma e
+    // mantém a classe `open` do menu em sincronia depois do boot.
+    (function () {
+      try {
+        if (localStorage.getItem('aluxen.sidebar') === 'collapsed') {
+          document.documentElement.classList.add('sidebar-collapsed');
+        }
+      } catch (error) {}
+    })();
   </script>
 </head>
 <body>

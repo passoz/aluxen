@@ -333,7 +333,10 @@ func resolveSourcePath(source string) (string, error) {
 // openSource abre a origem SQLite em modo somente consulta: a migração lê e
 // nunca escreve, então o arquivo de origem fica intacto por construção.
 func openSource(path string) (*sql.DB, error) {
-	sqlDB, err := sql.Open("sqlite", "file:"+path+"?_pragma=query_only(true)")
+	// mode=ro faz o driver RECUSAR a abertura quando o arquivo não existe — sem
+	// isso o SQLite cria uma base vazia e o operador recebe "origem ilegível"
+	// em vez de "arquivo não existe".
+	sqlDB, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=query_only(true)")
 	if err != nil {
 		return nil, fmt.Errorf("%w: abrir %q: %v", ErrMigrateSource, path, err)
 	}

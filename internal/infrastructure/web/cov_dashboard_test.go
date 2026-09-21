@@ -410,7 +410,7 @@ func TestCovLoginSucceedsWithValidCredentials(t *testing.T) {
 	if location := recorder.Header().Get("Location"); location != "/dashboard?tab=dashboard" {
 		t.Fatalf("Location = %q", location)
 	}
-	if cookieValue(recorder.Result().Cookies(), adminCookieName) == "" {
+	if covCookieValue(recorder.Result().Cookies(), adminCookieName) == "" {
 		t.Fatal("login não emitiu o cookie de sessão")
 	}
 	if actions := panel.audit.actions(); len(actions) == 0 || actions[len(actions)-1] != domain.ActionLogin {
@@ -426,7 +426,7 @@ func TestCovAuditAuthSurvivesAuditFailure(t *testing.T) {
 	if recorder.Code != http.StatusFound {
 		t.Fatalf("status = %d, esperado 302 mesmo com a auditoria fora do ar", recorder.Code)
 	}
-	if cookieValue(recorder.Result().Cookies(), adminCookieName) == "" {
+	if covCookieValue(recorder.Result().Cookies(), adminCookieName) == "" {
 		t.Fatal("login não emitiu o cookie de sessão")
 	}
 }

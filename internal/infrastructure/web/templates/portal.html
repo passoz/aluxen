@@ -7,14 +7,14 @@
         <img src="/logomarca.png" alt="Aluxen" class="login-logomarca logo-theme-light">
         <img src="/logomarca-light.png" alt="Aluxen" class="login-logomarca logo-theme-dark">
       </div>
-      <div class="page-header" style="margin-bottom: 0;">
-        <div class="page-header-text">
-          <h1>Área do Cliente</h1>
-          <p>{{.Tenant.Name}}{{with deref .Tenant.CPF}} &bull; CPF {{.}}{{end}}</p>
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap;">
+        <div>
+          <h1 style="font-size: 1.4rem; margin: 0;">Área do Cliente</h1>
+          <p class="subtitle" style="margin: 0.25rem 0 0;">{{.Tenant.Name}}{{with deref .Tenant.CPF}} &bull; CPF {{.}}{{end}}</p>
         </div>
         <div class="auth-actions">
           <a class="btn btn-outline" href="/portal/password">Trocar senha</a>
-          <form method="post" action="/portal/logout" data-native>
+          <form method="post" action="/portal/logout" style="display: inline;" data-native>
             <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
             <button type="submit" class="btn btn-secondary">Sair</button>
           </form>
@@ -22,38 +22,37 @@
       </div>
     </header>
 
-    {{if .Message}}<div class="success">{{.Message}}</div>{{end}}
+    {{if .Message}}<div class="success" style="padding: 0.75rem 1rem; background: var(--color2); border-radius: 8px;">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="error" style="margin-top: 0;">{{.Error}}</div>{{end}}
 
     <section class="stack">
-      <div class="section-header">
-        <h2 style="font-size: 1.1rem; margin: 0;">Meus contratos</h2>
-      </div>
+      <h2 style="font-size: 1.1rem;">Meus contratos</h2>
       {{if not .Area.Leases}}
         <p class="subtitle" style="margin: 0;">Nenhum contrato vinculado ao seu cadastro.</p>
       {{else}}
-        {{range .Area.Leases}}
-          <div class="card stack" style="padding: 1rem 1.25rem; gap: 0.35rem;">
-            <div class="section-header" style="margin-bottom: 0;">
-              <strong style="font-size: 1rem;">{{.PropertyName}}</strong>
-              <span class="status-badge {{.StatusClass}}">{{.StatusLabel}}</span>
+        <div class="stack">
+          {{range .Area.Leases}}
+            <div class="card" style="padding: 1rem 1.25rem; display: grid; gap: 0.35rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <strong style="font-size: 1rem;">{{.PropertyName}}</strong>
+                <span class="status-badge {{.StatusClass}}">{{.StatusLabel}}</span>
+              </div>
+              {{if .PropertyAddress}}<span style="color: var(--text-muted); font-size: 0.875rem;">{{.PropertyAddress}}</span>{{end}}
+              <span style="color: var(--text-muted); font-size: 0.875rem;">
+                Vigência: {{.Period}} &bull; Vencimento todo dia {{.DueDay}} &bull; Aluguel {{.RentAmount}}
+              </span>
+              <div class="auth-actions" style="margin-top: 0.5rem;">
+                <a class="btn btn-outline btn-sm" href="{{.PDFURL}}" target="_blank" rel="noreferrer">Ver contrato (PDF)</a>
+                <a class="btn btn-outline btn-sm" href="{{.ValidationURL}}" target="_blank" rel="noreferrer">Autenticidade</a>
+              </div>
             </div>
-            {{if .PropertyAddress}}<span class="subtitle" style="margin: 0;">{{.PropertyAddress}}</span>{{end}}
-            <span class="subtitle" style="margin: 0;">
-              Vigência: {{.Period}} &bull; Vencimento todo dia {{.DueDay}} &bull; Aluguel {{.RentAmount}}
-            </span>
-            <div class="auth-actions" style="margin-top: 0.5rem;">
-              <a class="btn btn-sm btn-outline" href="{{.PDFURL}}" target="_blank" rel="noreferrer">Ver contrato (PDF)</a>
-              <a class="btn btn-sm btn-outline" href="{{.ValidationURL}}" target="_blank" rel="noreferrer">Autenticidade</a>
-            </div>
-          </div>
-        {{end}}
+          {{end}}
+        </div>
       {{end}}
     </section>
 
     <section class="stack">
-      <div class="section-header">
-        <h2 style="font-size: 1.1rem; margin: 0;">Meus recibos quitados</h2>
-      </div>
+      <h2 style="font-size: 1.1rem;">Meus recibos quitados</h2>
       {{if not .Area.Receipts}}
         <p class="subtitle" style="margin: 0;">Nenhum recibo quitado até o momento.</p>
       {{else}}
@@ -72,17 +71,17 @@
             <tbody>
               {{range .Area.Receipts}}
                 <tr>
-                  <td>
+                  <td data-label="Referência">
                     {{.Reference}}
                     {{if .IsPartial}}<span class="status-badge partial" style="margin-left: 0.5rem;">Parcial</span>{{end}}
                   </td>
-                  <td>{{if .PropertyName}}{{.PropertyName}}{{else}}&mdash;{{end}}</td>
-                  <td class="cell-nowrap">{{.DueDate}}</td>
-                  <td class="cell-nowrap">{{.PaidAt}}</td>
-                  <td class="cell-nowrap">{{.AmountPaid}}</td>
-                  <td style="text-align: right; white-space: nowrap;">
-                    <a class="btn btn-sm btn-outline" href="{{.PDFURL}}" target="_blank" rel="noreferrer">PDF</a>
-                    <a class="btn btn-sm btn-outline" href="{{.ValidationURL}}" target="_blank" rel="noreferrer">Autenticidade</a>
+                  <td data-label="Imóvel">{{if .PropertyName}}{{.PropertyName}}{{else}}&mdash;{{end}}</td>
+                  <td data-label="Vencimento">{{.DueDate}}</td>
+                  <td data-label="Pago em">{{.PaidAt}}</td>
+                  <td data-label="Valor pago">{{.AmountPaid}}</td>
+                  <td data-label="Documento" style="text-align: right; white-space: nowrap;">
+                    <a class="btn btn-outline btn-sm" href="{{.PDFURL}}" target="_blank" rel="noreferrer">PDF</a>
+                    <a class="btn btn-outline btn-sm" href="{{.ValidationURL}}" target="_blank" rel="noreferrer" style="margin-left: 0.35rem;">Autenticidade</a>
                   </td>
                 </tr>
               {{end}}

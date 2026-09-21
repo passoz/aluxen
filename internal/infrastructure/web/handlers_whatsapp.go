@@ -1,13 +1,16 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/domain"
+	"github.com/passoz/aluxen/internal/domain/format"
 	"github.com/passoz/aluxen/internal/infrastructure/whatsapp"
 )
 
@@ -241,6 +244,43 @@ func (h *Handlers) WhatsAppSendStatus(w http.ResponseWriter, r *http.Request) {
 // WhatsAppWebhook recebe as mensagens do WAHA. Não exige sessão nem CSRF — a
 // autenticação é a assinatura HMAC do corpo —, e responde 200 também para os
 // eventos que não são mensagem, para o WAHA não reentregá-los.
+// deliverAgentReply entrega a resposta do atendimento pelo canal. O webhook não
+// espera o envio: a resposta vira job e o WAHA confirma em segundo plano — do
+// contrário o provedor lento seguraria a entrega do evento.
+const agentReplyTimeout = 30 * time.Second
+
+func (h *Handlers) deliverAgentReply(message application.IncomingMessage, reply *application.AgentReply) {
+	if h.WhatsApp == nil {
+		h.Log.Warn("resposta do atendimento não enviada: canal indisponível",
+			"scope", "whatsapp", "tenant_id", reply.TenantID)
+		return
+	}
+
+	job := h.WhatsApp.Create("agent")
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), agentReplyTimeout)
+		defer cancel()
+
+		h.WhatsApp.Stage(job.ID, application.StagePreparing)
+		h.WhatsApp.Stage(job.ID, application.StageSending)
+		messageID, err := h.WhatsApp.SendText(ctx, message.Phone, reply.Reply)
+		if err != nil {
+			h.WhatsApp.Fail(job.ID, "falha ao enviar a resposta do atendimento")
+			h.Log.Warn("falha ao enviar a resposta do atendimento", "scope", "whatsapp",
+				"tenant_id", reply.TenantID, "job_id", job.ID, "err", err)
+			return
+		}
+		h.WhatsApp.Complete(job.ID, application.WhatsAppSendResult{
+			Success:   true,
+			To:        message.Phone,
+			Message:   messageID,
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+		})
+		h.Log.Info("resposta do atendimento enviada", "scope", "whatsapp",
+			"tenant_id", reply.TenantID, "job_id", job.ID, "escalated", reply.Escalated)
+	}()
+}
+
 func (h *Handlers) WhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxWhatsAppWebhookBody))
 	if err != nil {
@@ -277,6 +317,27 @@ func (h *Handlers) WhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		h.Log.Error("falha ao registrar mensagem recebida no WhatsApp", "scope", "whatsapp", "err", err)
 		h.mapError(w, r, err)
 		return
+	}
+
+	// Atendimento: o agente responde com dado do banco ou escala para o locador.
+	// A resposta sai pelo canal e o webhook não espera o envio terminar.
+	// O atendimento consome a mensagem no formato do domínio; o telefone é o
+	// vínculo (o webhook já tentou vincular pelo número ao registrar).
+	incoming := domain.WhatsAppMessage{
+		ID:         message.ID,
+		CreatedAt:  format.FormatLocalDateTimeMillis(time.Now()),
+		Direction:  domain.WhatsAppDirectionIn,
+		ChatID:     message.ChatID,
+		Phone:      message.Phone,
+		Body:       message.Body,
+		Status:     domain.WhatsAppStatusReceived,
+		ExternalID: domain.StrPtr(message.ID),
+	}
+	reply, err := application.HandleIncomingMessage(r.Context(), h.Deps, application.AuditContext{Origin: domain.AuditOriginPublic}, incoming)
+	if err != nil {
+		h.Log.Error("falha no atendimento da mensagem recebida", "scope", "whatsapp", "err", err)
+	} else if reply != nil && reply.Reply != "" {
+		h.deliverAgentReply(message, reply)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})

@@ -213,8 +213,6 @@ func TestCovTemplateFuncsRespectTheirBoundaries(t *testing.T) {
 		`{{statusColor "overdue"}}`,
 		`{{statusColor "outro"}}`,
 		`{{add 2 3}}`,
-		`{{upper "abc"}}`,
-		`{{if hasPrefix "abc" "a"}}sim{{else}}não{{end}}`,
 		`{{deref .Ptr}}`,
 		`{{len (seq 1 3)}}`,
 	}, "|"))
@@ -230,7 +228,7 @@ func TestCovTemplateFuncsRespectTheirBoundaries(t *testing.T) {
 		"25", "0", "100", "0",
 		"domingo", "sábado", "", "",
 		"#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#999999",
-		"5", "ABC", "sim", "", "3",
+		"5", "", "3",
 	}
 	if len(parts) != len(want) {
 		t.Fatalf("probe devolveu %d valores (%v)", len(parts), parts)

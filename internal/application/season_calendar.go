@@ -155,24 +155,28 @@ func BuildCalendar(ctx context.Context, deps Deps, year, month int) (*CalendarVi
 			City:         property.City,
 			State:        property.State,
 			Periods:      periods,
-			Days:         buildCalendarDays(periods, daysInMonth),
+			Days:         buildCalendarDays(periods, year, month, daysInMonth),
 			OccupiedDays: occupied[property.ID],
 		})
 	}
 	return view, nil
 }
 
-// buildCalendarDays monta a grade de dias do mês a partir dos períodos do
-// imóvel. Um dia sem período fica livre; quando dois períodos se tocam, o
-// primeiro que bloqueia sobreposição prevalece (é o que ocupa de fato).
-func buildCalendarDays(periods []CalendarPeriod, daysInMonth int) []CalendarDay {
+// buildCalendarDays monta a grade de dias do mês EXIBIDO a partir dos períodos
+// do imóvel. Um dia sem período fica livre; quando dois períodos se tocam, o que
+// bloqueia sobreposição prevalece (é o que ocupa de fato).
+//
+// O dia é construído com o ano/mês exibidos, e não com o mês do início do
+// período: um contrato que começa em agosto e termina em setembro precisa pintar
+// os dias de setembro, não repetir agosto.
+func buildCalendarDays(periods []CalendarPeriod, year, month, daysInMonth int) []CalendarDay {
 	days := make([]CalendarDay, 0, daysInMonth)
 	for day := 1; day <= daysInMonth; day++ {
 		entry := CalendarDay{Day: day}
+		date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local)
 		for _, period := range periods {
 			start := format.ParseLocalDate(period.StartDate)
 			end := format.ParseLocalDate(period.EndDate)
-			date := time.Date(start.Year(), start.Month(), day, 0, 0, 0, 0, time.Local)
 			if date.Before(start) || date.After(end) {
 				continue
 			}
@@ -181,8 +185,8 @@ func buildCalendarDays(periods []CalendarPeriod, daysInMonth int) []CalendarDay 
 			}
 			entry.Status = period.Status
 			entry.TenantName = period.TenantName
-			entry.Starts = day == start.Day() || day == 1
-			entry.Ends = day == end.Day() || day == daysInMonth
+			entry.Starts = !date.After(start)
+			entry.Ends = !date.Before(end)
 		}
 		days = append(days, entry)
 	}

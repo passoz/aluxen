@@ -222,8 +222,10 @@ func (h *harness) loginAdmin() {
 	if match := csrfPattern.FindStringSubmatch(panel); match != nil {
 		h.csrf = match[1]
 	}
-	if !strings.Contains(panel, "Visão geral") {
-		h.t.Fatal("painel não renderizou as abas")
+	// A casca do painel é o que prova que a sessão passou pela trava de senha:
+	// navegação e identificação do usuário aparecem na resposta.
+	if !strings.Contains(panel, "Inquilinos") || !strings.Contains(panel, adminUser) {
+		h.t.Fatal("painel não renderizou a navegação")
 	}
 }
 
