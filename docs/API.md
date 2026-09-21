@@ -112,11 +112,11 @@ Toda mutação concluída com sucesso é registrada na **trilha de auditoria** (
 #### Inquilinos (`tenants`):
 - `intent: "tenant.create"`:
   - `name` (string, obrigatório)
-  - `email` (string, obrigatório)
+  - `email` (string, obrigatório): validado no formato `usuario@dominio.tld`; endereços inválidos retornam `400` com *"Informe um e-mail válido."*
   - `phone` (string, opcional)
   - `cpf` (string, opcional)
 - `intent: "tenant.update"`:
-  - `id` (string, obrigatório) + campos a serem atualizados.
+  - `id` (string, obrigatório) + campos a serem atualizados (mesma validação de e-mail).
 - `intent: "tenant.delete"`:
   - `id` (string, obrigatório) — Retorna erro se o inquilino tiver contratos vinculados.
 
@@ -182,7 +182,7 @@ Processa mutações de configuração conforme o campo `intent`:
 - `intent: "save-landlord"`:
   - `name` (string, obrigatório)
   - `cpf` (string, opcional)
-  - `email` (string, opcional)
+  - `email` (string, opcional): validado no formato `usuario@dominio.tld` quando informado.
 - `intent: "save-app-url"`:
   - `app_url` (string, URL pública para geração de QR Codes)
 - `intent: "change-password"`:

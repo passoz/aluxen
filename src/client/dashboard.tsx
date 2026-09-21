@@ -16,6 +16,7 @@ import {
   MoneyInput,
   CpfInput,
   PhoneInput,
+  CepInput,
   CustomSelect,
   SortHeader,
   SmallSelect,
@@ -38,6 +39,7 @@ import {
   IconWhatsApp,
 } from '../components/icons';
 
+import { EMAIL_PATTERN_SOURCE } from '../utils/validation';
 import { MetricsView } from './metrics';
 import { HistoryView } from './history';
 import type { AuditPage } from '../utils/audit-meta';
@@ -1117,6 +1119,13 @@ export function DashboardPage(initialData: DashboardProps) {
     return leaseItems.find((item) => item.id === leaseId);
   }
 
+  /** Valor do aluguel do contrato selecionado, usado para sugerir o valor do pagamento. */
+  function suggestRentAmount(leaseId: string, fallback: string) {
+    const lease = receiptLeaseMeta(leaseId);
+    const rent = lease ? Number(lease.rent_amount) : Number.NaN;
+    return Number.isFinite(rent) && rent > 0 ? String(rent) : fallback;
+  }
+
   function toggleSort(current: SortState, key: string, setter: (sort: SortState) => void) {
     setter({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' });
   }
@@ -1525,7 +1534,7 @@ export function DashboardPage(initialData: DashboardProps) {
                 </button>
               </div>
               <FilterBar value={leaseSearch} onChange={setLeaseSearch} placeholder="Buscar por inquilino, imóvel ou período">
-                <SmallSelect value={leaseStatus} onChange={(v) => setLeaseStatus(v as 'all' | 'active' | 'suspended' | 'season' | 'terminated')}>
+                <SmallSelect label="Status" value={leaseStatus} onChange={(v) => setLeaseStatus(v as 'all' | 'active' | 'suspended' | 'season' | 'terminated')}>
                   <option value="all">Todos</option>
                   <option value="active">Ativos</option>
                   <option value="suspended">Suspensos</option>
@@ -1806,19 +1815,19 @@ export function DashboardPage(initialData: DashboardProps) {
                 </div>
               </div>
               <FilterBar value={receiptSearch} onChange={setReceiptSearch} placeholder="Buscar por contrato, imóvel, vencimento ou valor">
-                <SmallSelect value={receiptMonth} onChange={(v) => setReceiptMonth(v)}>
+                <SmallSelect label="Mês" value={receiptMonth} onChange={(v) => setReceiptMonth(v)}>
                   <option value="all">Todos</option>
                   {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </SmallSelect>
-                <SmallSelect value={receiptYear} onChange={(v) => setReceiptYear(v)}>
+                <SmallSelect label="Ano" value={receiptYear} onChange={(v) => setReceiptYear(v)}>
                   <option value="all">Todos</option>
                   {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - 2 + i)).map((y) => (
                     <option key={y} value={y}>{y}</option>
                   ))}
                 </SmallSelect>
-                <SmallSelect value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'partial' | 'paid')}>
+                <SmallSelect label="Status" value={receiptStatus} onChange={(v) => setReceiptStatus(v as 'all' | 'due' | 'overdue' | 'partial' | 'paid')}>
                   <option value="all">Todos</option>
                   <option value="due">A vencer</option>
                   <option value="overdue">Vencido</option>
@@ -2080,6 +2089,8 @@ export function DashboardPage(initialData: DashboardProps) {
                     id="modal-tenant-email"
                     name="email"
                     type="email"
+                    pattern={EMAIL_PATTERN_SOURCE}
+                    title="Informe um e-mail válido (ex.: nome@dominio.com.br)"
                     value={tenantDraft.email}
                     onChange={(e) => setTenantDraft((current) => ({ ...current, email: e.target.value }))}
                     required
@@ -2169,6 +2180,8 @@ export function DashboardPage(initialData: DashboardProps) {
                     id="create-tenant-email"
                     name="email"
                     type="email"
+                    pattern={EMAIL_PATTERN_SOURCE}
+                    title="Informe um e-mail válido (ex.: nome@dominio.com.br)"
                     value={tenantForm.email}
                     onChange={(e) => setTenantForm((current) => ({ ...current, email: e.target.value }))}
                     required
@@ -2248,11 +2261,26 @@ export function DashboardPage(initialData: DashboardProps) {
                     required
                   />
                 </div>
+                <CepInput
+                  id="modal-property-zip"
+                  name="zip"
+                  value={propertyDraft.zip}
+                  onChange={(v) => setPropertyDraft((current) => ({ ...current, zip: v }))}
+                  onAddress={({ address, city, state }) =>
+                    setPropertyDraft((current) => ({
+                      ...current,
+                      address: address || current.address,
+                      city: city || current.city,
+                      state: state || current.state,
+                    }))
+                  }
+                />
                 <div className="form-group">
                   <label htmlFor="modal-property-address">Endereço</label>
                   <input
                     id="modal-property-address"
                     name="address"
+                    placeholder="Rua, número e complemento"
                     value={propertyDraft.address}
                     onChange={(e) => setPropertyDraft((current) => ({ ...current, address: e.target.value }))}
                     required
@@ -2276,15 +2304,6 @@ export function DashboardPage(initialData: DashboardProps) {
                     value={propertyDraft.state}
                     onChange={(e) => setPropertyDraft((current) => ({ ...current, state: e.target.value }))}
                     required
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="modal-property-zip">CEP</label>
-                  <input
-                    id="modal-property-zip"
-                    name="zip"
-                    value={propertyDraft.zip}
-                    onChange={(e) => setPropertyDraft((current) => ({ ...current, zip: e.target.value }))}
                   />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -2352,11 +2371,26 @@ export function DashboardPage(initialData: DashboardProps) {
                     required
                   />
                 </div>
+                <CepInput
+                  id="create-property-zip"
+                  name="zip"
+                  value={propertyForm.zip}
+                  onChange={(v) => setPropertyForm((current) => ({ ...current, zip: v }))}
+                  onAddress={({ address, city, state }) =>
+                    setPropertyForm((current) => ({
+                      ...current,
+                      address: address || current.address,
+                      city: city || current.city,
+                      state: state || current.state,
+                    }))
+                  }
+                />
                 <div className="form-group">
                   <label htmlFor="create-property-address">Endereço</label>
                   <input
                     id="create-property-address"
                     name="address"
+                    placeholder="Rua, número e complemento"
                     value={propertyForm.address}
                     onChange={(e) => setPropertyForm((current) => ({ ...current, address: e.target.value }))}
                     required
@@ -2380,15 +2414,6 @@ export function DashboardPage(initialData: DashboardProps) {
                     value={propertyForm.state}
                     onChange={(e) => setPropertyForm((current) => ({ ...current, state: e.target.value }))}
                     required
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="create-property-zip">CEP</label>
-                  <input
-                    id="create-property-zip"
-                    name="zip"
-                    value={propertyForm.zip}
-                    onChange={(e) => setPropertyForm((current) => ({ ...current, zip: e.target.value }))}
                   />
                 </div>
                 <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -2765,7 +2790,13 @@ export function DashboardPage(initialData: DashboardProps) {
                   id="modal-receipt-lease"
                   name="lease_id"
                   value={receiptDraft.lease_id}
-                  onChange={(v) => setReceiptDraft((current) => ({ ...current, lease_id: v }))}
+                  onChange={(v) =>
+                    setReceiptDraft((current) => ({
+                      ...current,
+                      lease_id: v,
+                      amount: suggestRentAmount(v, current.amount),
+                    }))
+                  }
                   label="Contrato"
                   required
                 >
@@ -2962,7 +2993,13 @@ export function DashboardPage(initialData: DashboardProps) {
                     id="create-receipt-lease"
                     name="lease_id"
                     value={receiptForm.lease_id}
-                    onChange={(v) => setReceiptForm((current) => ({ ...current, lease_id: v }))}
+                    onChange={(v) =>
+                      setReceiptForm((current) => ({
+                        ...current,
+                        lease_id: v,
+                        amount: suggestRentAmount(v, current.amount),
+                      }))
+                    }
                     label="Contrato"
                     required
                   >

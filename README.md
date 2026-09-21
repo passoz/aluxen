@@ -24,6 +24,7 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
   - [13. Observabilidade & Logs Estruturados](#13-observabilidade--logs-estruturados)
   - [14. Área do Cliente (Portal do Locatário)](#14-área-do-cliente-portal-do-locatário)
   - [15. Informações do Sistema & Build em Execução](#15-informações-do-sistema--build-em-execução)
+  - [16. Interface, Componentes & Usabilidade](#16-interface-componentes--usabilidade)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Scripts Disponíveis](#-scripts-disponíveis)
@@ -71,10 +72,12 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - Cadastro completo de locatários: Nome, CPF formatado, Email e Telefone/WhatsApp com DDD.
 - Busca em tempo real e ordenação multi-coluna com paginação.
 - Modais rápidos de cadastro e edição.
+- **E-mail validado** no formulário (padrão `usuario@dominio.tld`) e também no servidor, garantindo o endereço usado nos envios de WhatsApp/e-mail.
 - **Exclusão Segura**: O sistema impede a exclusão acidental de locatários que possuam contratos ativos.
 
 ### 3. Gestão de Imóveis
 - Controle de propriedades residenciais e comerciais (Nome, Endereço, Cidade, Estado/UF, CEP).
+- **CEP como primeiro campo**: com a máscara `00000-000`, a consulta ao ViaCEP preenche automaticamente endereço, cidade e estado — número e complemento ficam por conta do usuário. Se a consulta falhar, o cadastro manual continua disponível.
 - Listagem com filtros, ordenação e contadores de ocupação.
 - Proteção de integridade referencial ao excluir imóveis com contratos em vigência.
 
@@ -89,6 +92,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 ### 5. Pagamentos, Recibos & Baixa em Lote
 - **Geração Mensal em Lote**: Botão que gera automaticamente os recibos de todos os contratos ativos do mês selecionado, com chave única (`generated_key`) que impede duplicidades.
 - **Recibos Avulsos / Extras**: Suporte a cobranças avulsas (IPTU, reparos, taxa de condomínio) desvinculadas de contrato obrigatório (`category = 'extra'`).
+- **Valor sugerido pelo contrato**: ao escolher o contrato em um lançamento de aluguel, o campo de valor já vem preenchido com o aluguel vigente (editável).
 - **Suporte a Pagamento Parcial**: Registro de `amount` (valor total) e `paid_amount` (valor efetivamente pago), permitindo quitações parciais.
 - **Status Inteligentes**:
   - `Pago`: Quitado integralmente.
@@ -163,6 +167,14 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Identificação do build**: origem (`Imagem publicada (GHCR)` ou `Execução local`), versão do `package.json`, commit, branch/tag, **tag da imagem** (`ghcr.io/passoz/aluxen:sha-<commit>`), data de construção (UTC) e link direto para a execução do GitHub Actions que gerou a imagem.
 - **Estado do sistema**: runtime do Bun, ambiente, fuso horário, hora de início e tempo no ar, caminho e tamanho do banco SQLite, URL pública configurada e contagem de inquilinos, imóveis, contratos e recibos.
 - Os metadados são injetados na imagem pelo workflow de publicação (`build-args` → `ENV` no `Dockerfile`) e lidos em runtime por `src/utils/build-info.ts`; fora da imagem, o sistema cai para o repositório git local. Sem metadados, o modal avisa que a execução não é identificável.
+
+### 16. Interface, Componentes & Usabilidade
+- **Seletores e calendários com abertura inteligente**: os popovers abrem abaixo do campo; sem espaço, abrem acima e, quando não há altura suficiente em nenhuma direção, ao lado — sempre limitados pela janela e sem empurrar a página. São renderizados em portal, então não ficam recortados dentro de modais com rolagem.
+- **Calendário destaca o dia corrente** (contorno na cor primária), independente da data selecionada, e traz os atalhos *Hoje*/*Agora* e *Limpar*.
+- **Modais com rolagem interna**: modais altos (como o de Informações) rolam dentro do próprio cartão, limitado à altura da janela — a página atrás não ganha rolagem.
+- **Filtros rotulados em todas as seções**: busca, mês, ano, status, área, ação e usuário aparecem com rótulo acima do controle, alinhados na mesma linha.
+- **Seleção sem opção duplicada**: os selects com busca exibem uma única opção de placeholder, fornecida pela tela.
+- **Formulários com validação nativa**: e-mail com `pattern` compartilhado entre cliente e servidor; a validação também roda no fluxo offline (`form.reportValidity()`).
 
 ---
 
@@ -379,7 +391,8 @@ aluxen/
 │   │   ├── logger.ts           # Logger estruturado (níveis, JSON/pretty, redação)
 │   │   ├── audit.ts            # Trilha de auditoria: gravação, diffs e consultas
 │   │   ├── audit-meta.ts       # Rótulos e formatação de eventos (cliente/servidor)
-│   │   ├── format.ts           # Formatadores de moeda, datas BR, CPF e telefone
+│   │   ├── format.ts           # Formatadores de moeda, datas BR, CPF, CEP e telefone
+│   │   ├── validation.ts       # Validações compartilhadas (formato de e-mail)
 │   │   ├── id.ts               # Gerador de identificadores únicos UUIDv7
 │   │   ├── pdf.ts              # Gerador do Recibo de Pagamento em PDF
 │   │   ├── contract-pdf.ts     # Gerador do Contrato de Locação em PDF

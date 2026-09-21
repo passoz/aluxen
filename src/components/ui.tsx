@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Tab, QueuePayload, SortDirection } from '../types/dashboard';
 import type { LoginState } from '../whatsapp/types';
 import {
@@ -6,6 +7,7 @@ import {
   normalizeMoneyInput,
   formatPhoneInput,
   formatCpfInput,
+  formatCepInput,
   parseLocalDate,
   formatLocalDate,
   parseLocalDateTime,
@@ -367,21 +369,30 @@ export function FilterBar({
   value,
   onChange,
   placeholder,
+  label = 'Buscar',
   children,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  label?: string;
   children?: React.ReactNode;
 }) {
+  const inputId = React.useId();
   return (
     <div className="filter-bar">
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-      />
+      <div className="filter-field filter-field-grow">
+        <label className="filter-label" htmlFor={inputId}>
+          {label}
+        </label>
+        <input
+          id={inputId}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          aria-label={placeholder}
+        />
+      </div>
       {children}
     </div>
   );
@@ -457,19 +468,22 @@ export function Pagination({
   );
 }
 
-export function SmallSelect({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: React.ReactNode }) {
+export function SmallSelect({
+  value,
+  onChange,
+  label,
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label?: string;
+  children: React.ReactNode;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const { triggerRef: displayRef, popoverRef: dropdownRef, style: popoverStyle } = usePopoverPosition(isOpen, { minWidth: 150, capHeight: 320 });
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useCloseOnOutsideClick(isOpen, [wrapperRef, dropdownRef], () => setIsOpen(false));
 
   const options = React.Children.toArray(children);
   const selectedOption = options.find((opt) => {
@@ -481,50 +495,154 @@ export function SmallSelect({ value, onChange, children }: { value: string; onCh
     : value;
 
   return (
-    <div className="small-select" ref={wrapperRef}>
-      <button type="button" className="small-select-display" onClick={() => setIsOpen(!isOpen)}>
-        <span>{displayText}</span>
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-      {isOpen && (
-        <div className="small-select-dropdown">
-          {options.map((opt, i) => {
-            const optReact = opt as React.ReactElement<{ value: string; children: React.ReactNode }>;
-            const isSelected = optReact.props.value === value;
-            return (
-              <button
-                key={i}
-                type="button"
-                className={`small-select-option ${isSelected ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange(optReact.props.value);
-                  setIsOpen(false);
-                }}
-              >
-                {optReact.props.children}
-              </button>
-            );
-          })}
-        </div>
-      )}
+    <div className={label ? 'filter-field' : undefined}>
+      {label ? <span className="filter-label">{label}</span> : null}
+      <div className="small-select" ref={wrapperRef}>
+        <button type="button" ref={displayRef} className="small-select-display" onClick={() => setIsOpen(!isOpen)}>
+          <span>{displayText}</span>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {isOpen && (
+          <Popover innerRef={dropdownRef} className="small-select-dropdown" style={popoverStyle}>
+            {options.map((opt, i) => {
+              const optReact = opt as React.ReactElement<{ value: string; children: React.ReactNode }>;
+              const isSelected = optReact.props.value === value;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className={`small-select-option ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    onChange(optReact.props.value);
+                    setIsOpen(false);
+                  }}
+                >
+                  {optReact.props.children}
+                </button>
+              );
+            })}
+          </Popover>
+        )}
+      </div>
     </div>
   );
 }
 
-function getPopoverPlacement(triggerRect: DOMRect, popoverHeight: number): { dropup: boolean; maxHeight: number; alignRight: boolean } {
-  const margin = 16;
-  const spaceAbove = Math.max(0, triggerRect.top - margin);
-  const spaceBelow = Math.max(0, window.innerHeight - triggerRect.bottom - margin);
-  const fitsBelow = spaceBelow >= popoverHeight;
-  const fitsAbove = spaceAbove >= popoverHeight;
+/**
+ * Posiciona um popover (calendário ou lista de opções) em coordenadas de viewport,
+ * escolhendo a abertura que não estoura a janela: abaixo do gatilho, acima dele ou,
+ * quando não há altura suficiente em nenhuma das direções, ao lado.
+ *
+ * O popover é renderizado em um portal no `body`, então não é recortado por
+ * contêineres com rolagem (modal) nem empurra a página.
+ */
+function usePopoverPosition(open: boolean, options: { minWidth: number; matchTriggerWidth?: boolean; capHeight?: number }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [style, setStyle] = useState<React.CSSProperties | undefined>(undefined);
 
-  const dropup = fitsBelow ? false : fitsAbove ? true : spaceAbove > spaceBelow;
-  const maxHeight = dropup ? spaceAbove : spaceBelow;
-  const alignRight = triggerRect.left + 290 > (typeof window !== 'undefined' ? window.innerWidth : 1000) && triggerRect.right >= 280;
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle(undefined);
+      return;
+    }
 
-  return { dropup, maxHeight, alignRight };
+    const update = () => {
+      const trigger = triggerRef.current;
+      const popover = popoverRef.current;
+      if (!trigger || !popover) return;
+
+      const rect = trigger.getBoundingClientRect();
+      const margin = 12;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.max(options.minWidth, options.matchTriggerWidth ? rect.width : popover.offsetWidth);
+      const height = popover.scrollHeight;
+      const cap = options.capHeight ?? Number.POSITIVE_INFINITY;
+      const spaceBelow = Math.min(viewportHeight - rect.bottom - margin, cap);
+      const spaceAbove = Math.min(rect.top - margin, cap);
+      const spaceRight = viewportWidth - rect.right - margin;
+      const spaceLeft = rect.left - margin;
+      const left = Math.min(Math.max(margin, rect.left), Math.max(margin, viewportWidth - margin - width));
+
+      let top: number;
+      let maxHeight: number;
+
+      if (height <= spaceBelow) {
+        top = rect.bottom + 6;
+        maxHeight = spaceBelow;
+      } else if (height <= spaceAbove) {
+        top = rect.top - 6 - height;
+        maxHeight = spaceAbove;
+      } else if (spaceRight >= width) {
+        // Sem espaço vertical: abre ao lado direito do gatilho.
+        top = Math.max(margin, Math.min(rect.top, viewportHeight - margin - Math.min(height, viewportHeight - margin * 2)));
+        maxHeight = viewportHeight - margin * 2;
+        setStyle({ position: 'fixed', top, left: rect.right + 8, width, maxHeight, zIndex: 1200 });
+        return;
+      } else if (spaceLeft >= width) {
+        top = Math.max(margin, Math.min(rect.top, viewportHeight - margin - Math.min(height, viewportHeight - margin * 2)));
+        maxHeight = viewportHeight - margin * 2;
+        setStyle({ position: 'fixed', top, left: rect.left - 8 - width, width, maxHeight, zIndex: 1200 });
+        return;
+      } else {
+        // Último recurso: fica na direção com mais espaço, limitado pela janela.
+        const openUp = spaceAbove >= spaceBelow;
+        maxHeight = Math.max(160, openUp ? spaceAbove : spaceBelow);
+        top = openUp ? margin : rect.bottom + 6;
+      }
+
+      setStyle({ position: 'fixed', top, left, width, maxHeight, zIndex: 1200 });
+    };
+
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open, options.minWidth, options.matchTriggerWidth]);
+
+  return { triggerRef, popoverRef, style };
+}
+
+/** Popover em portal, invisível até a primeira medição de posição. */
+function Popover({
+  innerRef,
+  className,
+  style,
+  children,
+}: {
+  innerRef: React.RefObject<HTMLDivElement | null>;
+  className: string;
+  style: React.CSSProperties | undefined;
+  children: React.ReactNode;
+}) {
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div ref={innerRef} className={className} style={{ visibility: style ? 'visible' : 'hidden', ...style }}>
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+/** Fecha o popover quando o clique acontece fora do gatilho e do próprio popover. */
+function useCloseOnOutsideClick(open: boolean, refs: React.RefObject<HTMLElement | null>[], onClose: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (refs.some((ref) => ref.current?.contains(target))) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 }
 
 export function DatePickerInput({
@@ -545,11 +663,7 @@ export function DatePickerInput({
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => (value ? parseLocalDate(value) : new Date()));
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropup, setDropup] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(340);
+  const { triggerRef: buttonRef, popoverRef: dropdownRef, style: popoverStyle } = usePopoverPosition(isOpen, { minWidth: 280, capHeight: 460 });
 
   useEffect(() => {
     if (value) {
@@ -557,31 +671,14 @@ export function DatePickerInput({
     }
   }, [value]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (isOpen && buttonRef.current && dropdownRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
-      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
-      setDropup(placement.dropup);
-      setAlignRight(placement.alignRight);
-      setMaxDropdownHeight(Math.max(160, placement.maxHeight));
-    }
-  }, [isOpen]);
+  useCloseOnOutsideClick(isOpen, [wrapperRef, dropdownRef], () => setIsOpen(false));
 
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
 
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDay }, (_, i) => i);
@@ -622,11 +719,7 @@ export function DatePickerInput({
           </svg>
         </button>
         {isOpen && (
-          <div
-            ref={dropdownRef}
-            className={`date-picker-dropdown ${dropup ? 'dropup' : ''} ${alignRight ? 'align-right' : ''}`}
-            style={{ maxHeight: `${maxDropdownHeight}px` }}
-          >
+          <Popover innerRef={dropdownRef} className="date-picker-dropdown" style={popoverStyle}>
             <div className="date-picker-header">
               <button type="button" className="date-picker-nav" onClick={prevMonth} title="Mês anterior" aria-label="Mês anterior">
                 <svg viewBox="0 0 24 24" fill="none">
@@ -682,8 +775,10 @@ export function DatePickerInput({
               ))}
               {days.map((day) => {
                 const isSelected = value && formatLocalDate(new Date(year, month, day)) === value;
+                const isToday = isCurrentMonth && today.getDate() === day;
+                const classes = [isSelected ? 'selected' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
                 return (
-                  <button key={day} type="button" className={isSelected ? 'selected' : ''} onClick={() => selectDate(day)}>
+                  <button key={day} type="button" className={classes} onClick={() => selectDate(day)}>
                     {day}
                   </button>
                 );
@@ -714,7 +809,7 @@ export function DatePickerInput({
                 </button>
               ) : null}
             </div>
-          </div>
+          </Popover>
         )}
       </div>
     </div>
@@ -740,11 +835,7 @@ export function DateTimePickerInput({
   const [viewDate, setViewDate] = useState(() => (value ? parseLocalDateTime(value) : new Date()));
   const [showTime, setShowTime] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropup, setDropup] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
-  const [maxDropdownHeight, setMaxDropdownHeight] = useState(380);
+  const { triggerRef: buttonRef, popoverRef: dropdownRef, style: popoverStyle } = usePopoverPosition(isOpen, { minWidth: 300, capHeight: 480 });
 
   useEffect(() => {
     if (value) {
@@ -752,32 +843,17 @@ export function DateTimePickerInput({
     }
   }, [value]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setShowTime(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (isOpen && buttonRef.current && dropdownRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const dropdownHeight = dropdownRef.current.getBoundingClientRect().height;
-      const placement = getPopoverPlacement(rect, dropdownHeight + 8);
-      setDropup(placement.dropup);
-      setAlignRight(placement.alignRight);
-      setMaxDropdownHeight(Math.max(160, placement.maxHeight));
-    }
-  }, [isOpen, showTime]);
+  useCloseOnOutsideClick(isOpen, [wrapperRef, dropdownRef], () => {
+    setIsOpen(false);
+    setShowTime(false);
+  });
 
   const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
   const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
 
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const blanks = Array.from({ length: firstDay }, (_, i) => i);
@@ -829,11 +905,7 @@ export function DateTimePickerInput({
           </svg>
         </button>
         {isOpen && (
-          <div
-            ref={dropdownRef}
-            className={`date-picker-dropdown datetime ${dropup ? 'dropup' : ''} ${alignRight ? 'align-right' : ''}`}
-            style={{ maxHeight: `${maxDropdownHeight}px` }}
-          >
+          <Popover innerRef={dropdownRef} className="date-picker-dropdown datetime" style={popoverStyle}>
             <div className="date-picker-header">
               <button type="button" className="date-picker-nav" onClick={prevMonth} title="Mês anterior" aria-label="Mês anterior">
                 <svg viewBox="0 0 24 24" fill="none">
@@ -889,8 +961,10 @@ export function DateTimePickerInput({
               ))}
               {days.map((day) => {
                 const isSelected = value && formatLocalDate(new Date(year, month, day)) === value?.split('T')[0];
+                const isToday = isCurrentMonth && today.getDate() === day;
+                const classes = [isSelected ? 'selected' : '', isToday ? 'today' : ''].filter(Boolean).join(' ');
                 return (
-                  <button key={day} type="button" className={isSelected ? 'selected' : ''} onClick={() => selectDay(day)}>
+                  <button key={day} type="button" className={classes} onClick={() => selectDay(day)}>
                     {day}
                   </button>
                 );
@@ -961,7 +1035,7 @@ export function DateTimePickerInput({
                 </button>
               ) : null}
             </div>
-          </div>
+          </Popover>
         )}
       </div>
     </div>
@@ -996,6 +1070,94 @@ export function MoneyInput({
         placeholder="R$ 0,00"
         required={required}
       />
+    </div>
+  );
+}
+
+/** Endereço devolvido pela consulta de CEP (sem número/complemento). */
+export type CepAddress = { address: string; city: string; state: string };
+
+/**
+ * Campo de CEP com máscara e preenchimento automático de endereço, cidade e
+ * estado via ViaCEP. Número e complemento continuam por conta do usuário.
+ */
+export function CepInput({
+  id,
+  name,
+  value,
+  onChange,
+  onAddress,
+  label = 'CEP',
+}: {
+  id: string;
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  onAddress: (address: CepAddress) => void;
+  label?: string;
+}) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'not-found' | 'error'>('idle');
+  const requestIdRef = useRef(0);
+
+  const lookup = async (digits: string) => {
+    if (digits.length !== 8) return;
+    const requestId = ++requestIdRef.current;
+    setStatus('loading');
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`, { signal: AbortSignal.timeout(8000) });
+      if (!response.ok) throw new Error('Falha na consulta do CEP.');
+      const data = (await response.json()) as {
+        erro?: boolean | string;
+        logradouro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+      // Ignora respostas de consultas antigas (o usuário digitou outro CEP).
+      if (requestId !== requestIdRef.current) return;
+      if (data.erro) {
+        setStatus('not-found');
+        return;
+      }
+      onAddress({ address: data.logradouro || '', city: data.localidade || '', state: data.uf || '' });
+      setStatus('idle');
+    } catch {
+      if (requestId === requestIdRef.current) setStatus('error');
+    }
+  };
+
+  const handleChange = (raw: string) => {
+    const masked = formatCepInput(raw);
+    onChange(masked);
+    if (status !== 'idle') setStatus('idle');
+    const digits = masked.replace(/\D/g, '');
+    if (digits.length === 8) void lookup(digits);
+  };
+
+  return (
+    <div className="form-group">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        name={name}
+        value={value}
+        onChange={(event) => handleChange(event.target.value)}
+        onBlur={() => {
+          const digits = value.replace(/\D/g, '');
+          if (digits.length === 8 && status === 'idle') void lookup(digits);
+        }}
+        inputMode="numeric"
+        autoComplete="postal-code"
+        placeholder="00000-000"
+      />
+      <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+        {status === 'loading'
+          ? 'Buscando endereço...'
+          : status === 'not-found'
+          ? 'CEP não encontrado.'
+          : status === 'error'
+          ? 'Não foi possível consultar o CEP agora. Preencha o endereço manualmente.'
+          : 'Preenche endereço, cidade e estado. Informe número e complemento no campo Endereço.'}
+      </small>
     </div>
   );
 }
@@ -1084,16 +1246,13 @@ export function CustomSelect({
   const [search, setSearch] = useState('');
   const wrapperRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const { triggerRef: displayRef, popoverRef: dropdownRef, style: popoverStyle } = usePopoverPosition(isOpen, {
+    minWidth: 220,
+    matchTriggerWidth: true,
+    capHeight: 420,
+  });
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  useCloseOnOutsideClick(isOpen, [wrapperRef, dropdownRef], () => setIsOpen(false));
 
   useEffect(() => {
     if (isOpen && searchRef.current) {
@@ -1116,14 +1275,14 @@ export function CustomSelect({
       <label htmlFor={id}>{label}</label>
       <div className="custom-select" ref={wrapperRef}>
         <input type="hidden" id={id} name={name} value={value} />
-        <button type="button" className="select-display" onClick={() => setIsOpen(!isOpen)}>
+        <button type="button" ref={displayRef} className="select-display" onClick={() => setIsOpen(!isOpen)}>
           <span>{displayText}</span>
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="m6 9 6 6 6-6" />
           </svg>
         </button>
         {isOpen && (
-          <div className="select-dropdown">
+          <Popover innerRef={dropdownRef} className="select-dropdown" style={popoverStyle}>
             <input
               ref={searchRef}
               type="text"
@@ -1136,16 +1295,6 @@ export function CustomSelect({
               }}
             />
             <div className="select-options">
-              <button
-                type="button"
-                className={`select-option ${!value ? 'selected' : ''}`}
-                onClick={() => {
-                  onChange('');
-                  setIsOpen(false);
-                }}
-              >
-                Selecione...
-              </button>
               {filteredOptions.map((opt, i) => {
                 const isSelected = opt.props.value === value;
                 return (
@@ -1168,7 +1317,7 @@ export function CustomSelect({
                 </div>
               )}
             </div>
-          </div>
+          </Popover>
         )}
       </div>
     </div>

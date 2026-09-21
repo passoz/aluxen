@@ -98,9 +98,10 @@ O Aluxen foi projetado para ser um sistema de gestão imobiliária de alta perfo
 - **Migrações**: Gerenciadas via pasta `drizzle/` com execução automática no boot da aplicação através de `src/db/migrate.ts`.
 
 ### 3.4. Frontend: React 19 SSR Híbrido
-- **Server Side Rendering (SSR)**: Em `src/index.tsx`, as páginas (`LoginPage`, `DashboardPage`, `SettingsPage`, `VerificationPage`) são renderizadas com `renderToString()`. Os dados iniciais são injetados em uma tag `<script id="__DATA__">` em formato JSON.
+- **Server Side Rendering (SSR)**: Em `src/index.tsx`, as páginas (`LoginPage`, `DashboardPage`, `SettingsPage`, `VerificationPage` e as da Área do Cliente — `ClientLoginPage`, `ClientPortalPage`, `ClientPasswordPage`) são renderizadas com `renderToString()`. Os dados iniciais são injetados em uma tag `<script id="__DATA__">` em formato JSON.
 - **Client Side Hydration**: O script `src/client/index.tsx` recupera `window.__INITIAL_DATA__` e invoca `hydrateRoot(rootElement, <Component {...props} />)`. Isso ativa todos os listeners de evento, animações e estados sem recarregar a tela.
 - **Estilização**: CSS puro sem dependência de frameworks pesados (`public/styles/globals.css`), implementando design glassmorphism moderno, suporte nativo a temas Claro/Escuro (persistido via `data-theme`) e total responsividade para dispositivos móveis.
+- **Popovers em portal** (`src/components/ui.tsx`): seletores com busca, seletores compactos de filtro e calendários são renderizados em `document.body` com posicionamento fixo calculado a partir do gatilho (`usePopoverPosition`). A escolha da direção — abaixo, acima ou ao lado — considera o espaço real da janela, e a altura é limitada ao espaço disponível. Isso evita tanto o estouro da página quanto o recorte por contêineres com rolagem, como os modais.
 
 ---
 

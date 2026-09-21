@@ -41,6 +41,7 @@ import { DEFAULT_AUDIT_QUERY } from './utils/audit-meta';
 import type { AppEnv } from './types/http';
 import type { SystemInfo } from './types/system';
 import { getBuildInfo } from './utils/build-info';
+import { isValidEmail } from './utils/validation';
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
@@ -750,6 +751,7 @@ app.post('/dashboard', async (c) => {
         const phone = String(formData['phone'] || '').trim();
         const cpf = String(formData['cpf'] || '').trim();
         if (!name || !email) throw new Error('Nome e email são obrigatórios.');
+        if (!isValidEmail(email)) throw new Error('Informe um e-mail válido.');
         await db.insert(tenants).values({ id, name, email, phone: phone || null, cpf: cpf || null });
         await recordAudit(audit, {
           action: 'tenant.create',
@@ -768,6 +770,7 @@ app.post('/dashboard', async (c) => {
         const phone = String(formData['phone'] || '').trim();
         const cpf = String(formData['cpf'] || '').trim();
         if (!id || !name || !email) throw new Error('Nome e email são obrigatórios.');
+        if (!isValidEmail(email)) throw new Error('Informe um e-mail válido.');
         const before = await getTenantSnapshot(id);
         await db.update(tenants).set({ name, email, phone: phone || null, cpf: cpf || null, updatedAt: sql`(datetime('now'))` }).where(eq(tenants.id, id));
         const after = await getTenantSnapshot(id);
@@ -1269,6 +1272,7 @@ app.post('/settings', async (c) => {
       const cpf = String(formData['cpf'] || '').trim();
       const email = String(formData['email'] || '').trim();
       if (!name) throw new Error('Nome do locador é obrigatório.');
+      if (email && !isValidEmail(email)) throw new Error('Informe um e-mail válido.');
       await setSetting('landlord_name', name);
       await setSetting('landlord_cpf', cpf);
       await setSetting('landlord_email', email);

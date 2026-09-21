@@ -132,19 +132,19 @@ export function HistoryView({ initial }: { initial?: AuditPage }) {
       </div>
 
       <FilterBar value={search} onChange={setSearch} placeholder="Buscar por resumo, registro ou usuário">
-        <SmallSelect value={query.entity || ''} onChange={(value) => updateQuery({ entity: value || undefined, action: undefined })}>
+        <SmallSelect label="Área" value={query.entity || ''} onChange={(value) => updateQuery({ entity: value || undefined, action: undefined })}>
           <option value="">Todas as áreas</option>
           {Object.entries(ENTITY_LABELS).map(([entity, label]) => (
             <option key={entity} value={entity}>{label}</option>
           ))}
         </SmallSelect>
-        <SmallSelect value={query.action || ''} onChange={(value) => updateQuery({ action: value || undefined })}>
+        <SmallSelect label="Ação" value={query.action || ''} onChange={(value) => updateQuery({ action: value || undefined })}>
           <option value="">Todas as ações</option>
           {actionOptions.map((action) => (
             <option key={action} value={action}>{actionLabel(action)}</option>
           ))}
         </SmallSelect>
-        <SmallSelect value={query.actor || ''} onChange={(value) => updateQuery({ actor: value || undefined })}>
+        <SmallSelect label="Usuário" value={query.actor || ''} onChange={(value) => updateQuery({ actor: value || undefined })}>
           <option value="">Todos os usuários</option>
           {(data?.actors ?? []).map((actor) => (
             <option key={actor} value={actor}>{actor}</option>

@@ -1315,6 +1315,29 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(csv).not.toContain('lease.create');
   });
 
+  it('POST /dashboard recusa e-mail em formato inválido no cadastro de inquilino', async () => {
+    const invalidForm = new FormData();
+    invalidForm.set('intent', 'tenant.create');
+    invalidForm.set('name', 'Email Inválido');
+    invalidForm.set('email', 'sem-arroba.teste');
+    const invalidRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', {
+        method: 'POST',
+        headers: { Cookie: sessionCookie },
+        body: invalidForm,
+      })
+    );
+    expect(invalidRes.status).toBe(400);
+    const invalidJson = (await invalidRes.json()) as { error?: string };
+    expect(invalidJson.error).toContain('e-mail válido');
+
+    const listRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: sessionCookie } })
+    );
+    const listData = (await listRes.json()) as { tenants: Array<{ name: string }> };
+    expect(listData.tenants.find((t) => t.name === 'Email Inválido')).toBeUndefined();
+  });
+
   it('GET /api/info exige sessão e devolve identificação do build e estado do sistema', async () => {
     const anonymous = await server.fetch(new Request('http://localhost:3000/api/info'));
     expect(anonymous.status).toBe(401);

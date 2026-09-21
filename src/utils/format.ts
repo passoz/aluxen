@@ -74,6 +74,14 @@ export function formatPhoneInput(value: string) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
+/** Máscara de CEP: `00000-000`. */
+export function formatCepInput(value: string) {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (!digits) return '';
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+}
+
 export function formatCpfInput(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 11);
   if (!digits) return '';

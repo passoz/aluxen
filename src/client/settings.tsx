@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { WhatsAppConnectModal, ConfirmModal } from '../components/ui';
+import { EMAIL_PATTERN_SOURCE } from '../utils/validation';
 import type { WhatsAppStatus } from '../whatsapp/types';
 
 export interface SettingsProps {
@@ -95,7 +96,14 @@ export function SettingsPage(props: SettingsProps) {
             </div>
             <div className="form-group">
               <label htmlFor="landlord-email">Email</label>
-              <input id="landlord-email" name="email" type="email" defaultValue={props.landlordEmail} />
+              <input
+                id="landlord-email"
+                name="email"
+                type="email"
+                pattern={EMAIL_PATTERN_SOURCE}
+                title="Informe um e-mail válido (ex.: nome@dominio.com.br)"
+                defaultValue={props.landlordEmail}
+              />
             </div>
             <button type="submit" className="btn btn-primary" disabled={busy}>
               Salvar dados
