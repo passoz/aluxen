@@ -113,13 +113,23 @@
       ],
       "files": [
         "internal/infrastructure/ai/",
-        "internal/infrastructure/ai/**"
+        "internal/infrastructure/ai/**",
+        "internal/infrastructure/ai/chat.go",
+        "internal/infrastructure/ai/client.go",
+        "internal/infrastructure/ai/compare.go",
+        "internal/infrastructure/ai/chat_test.go",
+        "internal/infrastructure/ai/client_test.go",
+        "internal/infrastructure/ai/compare_test.go"
       ],
       "implementation_files": [
-        "internal/infrastructure/ai/**"
+        "internal/infrastructure/ai/chat.go",
+        "internal/infrastructure/ai/client.go",
+        "internal/infrastructure/ai/compare.go"
       ],
       "test_files": [
-        "internal/infrastructure/ai/"
+        "internal/infrastructure/ai/chat_test.go",
+        "internal/infrastructure/ai/client_test.go",
+        "internal/infrastructure/ai/compare_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -157,13 +167,23 @@
       "files": [
         "internal/application/payment_proof.go",
         "internal/application/**",
-        "internal/application/"
+        "internal/application/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -206,15 +226,23 @@
         "internal/application/**",
         "internal/infrastructure/**",
         "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**",
-        "internal/infrastructure/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -257,15 +285,23 @@
         "internal/application/**",
         "internal/infrastructure/**",
         "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**",
-        "internal/infrastructure/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -305,14 +341,23 @@
         "cmd/app/main.go",
         "internal/application/**",
         "cmd/**",
-        "internal/application/"
+        "internal/application/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**",
-        "cmd/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",

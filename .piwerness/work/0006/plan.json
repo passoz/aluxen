@@ -31,29 +31,18 @@
         "ops"
       ],
       "files": [
-        "src/**",
-        "package.json",
-        "bun.lock",
-        "tsconfig.json",
-        "drizzle/**",
-        "drizzle.config.ts",
-        "test/*.ts",
-        "test/*.tsx",
-        "public/**",
-        "Dockerfile.dev",
-        "Dockerfile.test",
-        "test/**",
-        "internal/**",
-        "test/e2e/**"
+        "Dockerfile",
+        ".github/workflows/ci.yml",
+        "README.md",
+        "test/e2e/flow_test.go"
       ],
       "implementation_files": [
-        "src/**",
-        "drizzle/**",
-        "public/**"
+        "Dockerfile",
+        ".github/workflows/ci.yml",
+        "README.md"
       ],
       "test_files": [
-        "internal/**",
-        "test/e2e/**"
+        "test/e2e/flow_test.go"
       ],
       "red": {
         "command": "go build ./...",

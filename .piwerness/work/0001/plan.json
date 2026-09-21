@@ -769,7 +769,7 @@
         "Dockerfile"
       ],
       "test_files": [
-        "internal/**"
+        ".editorconfig"
       ],
       "red": {
         "command": "go test ./...",

@@ -42,14 +42,20 @@
         "internal/infrastructure/easypanel/",
         "cmd/provision/main.go",
         "internal/infrastructure/easypanel/**",
-        "cmd/provision/**"
+        "cmd/provision/**",
+        "internal/infrastructure/easypanel/client.go",
+        "internal/infrastructure/easypanel/notes.go",
+        "internal/infrastructure/easypanel/client_test.go",
+        "internal/infrastructure/easypanel/coverage_test.go"
       ],
       "implementation_files": [
-        "internal/infrastructure/easypanel/**",
-        "cmd/provision/**"
+        "internal/infrastructure/easypanel/client.go",
+        "internal/infrastructure/easypanel/notes.go",
+        "cmd/provision/main.go"
       ],
       "test_files": [
-        "internal/infrastructure/easypanel/"
+        "internal/infrastructure/easypanel/client_test.go",
+        "internal/infrastructure/easypanel/coverage_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -87,14 +93,19 @@
         "cmd/provision/main.go",
         "internal/infrastructure/easypanel/",
         "cmd/**",
-        "internal/infrastructure/easypanel/**"
+        "internal/infrastructure/easypanel/**",
+        "internal/infrastructure/easypanel/client.go",
+        "internal/infrastructure/easypanel/notes.go",
+        "internal/infrastructure/easypanel/client_test.go",
+        "internal/infrastructure/easypanel/coverage_test.go"
       ],
       "implementation_files": [
-        "cmd/**",
-        "internal/infrastructure/easypanel/**"
+        "internal/infrastructure/easypanel/client.go",
+        "internal/infrastructure/easypanel/notes.go"
       ],
       "test_files": [
-        "internal/infrastructure/easypanel/"
+        "internal/infrastructure/easypanel/client_test.go",
+        "internal/infrastructure/easypanel/coverage_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -134,15 +145,22 @@
         "cmd/migrate/**",
         "internal/application/**",
         "cmd/migrate/",
-        "internal/application/"
+        "internal/application/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "cmd/migrate/coverage_test.go",
+        "cmd/migrate/main_test.go",
+        "internal/application/adjustment_test.go"
       ],
       "implementation_files": [
-        "cmd/migrate/**",
-        "internal/application/**"
+        "cmd/migrate/main.go",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go"
       ],
       "test_files": [
-        "cmd/migrate/",
-        "internal/application/"
+        "cmd/migrate/coverage_test.go",
+        "cmd/migrate/main_test.go",
+        "internal/application/adjustment_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -180,15 +198,22 @@
         "internal/infrastructure/web/",
         "internal/application/**",
         "internal/infrastructure/web/**",
-        "internal/application/"
+        "internal/application/",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**",
-        "internal/infrastructure/web/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -226,13 +251,23 @@
         "internal/application/report.go",
         "internal/application/ask.go",
         "internal/application/**",
-        "internal/application/"
+        "internal/application/",
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
-        "internal/application/**"
+        "internal/application/adjustment.go",
+        "internal/application/agent.go",
+        "internal/application/agent_tools.go"
       ],
       "test_files": [
-        "internal/application/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -274,14 +309,14 @@
         "docs/",
         "README.md",
         "docs/**",
-        "internal/"
+        "internal/",
+        "cmd/provision/main_test.go"
       ],
       "implementation_files": [
-        "docs/**",
         "README.md"
       ],
       "test_files": [
-        "internal/"
+        "cmd/provision/main_test.go"
       ],
       "red": {
         "command": "go test ./...",

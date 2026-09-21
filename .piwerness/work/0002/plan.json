@@ -60,7 +60,10 @@
         "migrations/**",
         "queries/**",
         "internal/domain/**",
-        "internal/infrastructure/db/**"
+        "internal/infrastructure/db/**",
+        "internal/domain/audit_fields_test.go",
+        "internal/domain/cov_domain_test.go",
+        "internal/domain/money_words_test.go"
       ],
       "implementation_files": [
         "schema/sqlite.sql",
@@ -68,8 +71,9 @@
         "internal/domain/season.go"
       ],
       "test_files": [
-        "internal/domain/",
-        "internal/infrastructure/db/"
+        "internal/domain/audit_fields_test.go",
+        "internal/domain/cov_domain_test.go",
+        "internal/domain/money_words_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -118,7 +122,10 @@
         "internal/application/**",
         "internal/infrastructure/**",
         "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
         "internal/application/season_deposit.go",
@@ -126,9 +133,9 @@
         "internal/infrastructure/web/handlers_season.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/pdf/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -173,7 +180,10 @@
         "internal/infrastructure/**",
         "internal/application/",
         "internal/infrastructure/pdf/",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
         "internal/application/season_inspection.go",
@@ -181,9 +191,9 @@
         "internal/infrastructure/web/handlers_season.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/pdf/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -226,7 +236,10 @@
         "internal/application/**",
         "internal/infrastructure/web/**",
         "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "implementation_files": [
         "internal/application/season_calendar.go",
@@ -234,8 +247,9 @@
         "internal/infrastructure/web/handlers_dashboard.go"
       ],
       "test_files": [
-        "internal/application/",
-        "internal/infrastructure/web/"
+        "internal/application/adjustment_test.go",
+        "internal/application/agent_test.go",
+        "internal/application/ask_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -274,15 +288,19 @@
         "internal/infrastructure/web/templates/tab_receipts.html",
         "internal/domain/**",
         "internal/infrastructure/web/**",
-        "internal/infrastructure/web/"
+        "internal/infrastructure/web/",
+        "internal/domain/audit_fields_test.go",
+        "internal/domain/cov_domain_test.go",
+        "internal/domain/money_words_test.go"
       ],
       "implementation_files": [
         "internal/domain/enums.go",
         "internal/infrastructure/web/templates/tab_receipts.html"
       ],
       "test_files": [
-        "internal/domain/",
-        "internal/infrastructure/web/"
+        "internal/domain/audit_fields_test.go",
+        "internal/domain/cov_domain_test.go",
+        "internal/domain/money_words_test.go"
       ],
       "red": {
         "command": "go test ./...",
@@ -333,7 +351,6 @@
         "README.md"
       ],
       "test_files": [
-        "internal/",
         "test/e2e/flow_test.go"
       ],
       "red": {
