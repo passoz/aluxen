@@ -595,6 +595,14 @@ input[data-mask="money"] {
   display: none;
 }
 
+/* O painel Go tem mais seções que o original: sem isto, em telas baixas o
+   rodapé (Exportar…Sair) sai da área visível. A lista rola e o rodapé fica
+   sempre alcançável; com poucos itens o resultado é o do original. */
+.sidebar ul {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* Estado do menu aplicado antes da primeira pintura (`head.html` marca o
    <html> a partir da preferência salva): sem isso o menu pisca expandido para
    quem o deixou recolhido. Espelha as regras do estado recolhido acima. */
@@ -649,6 +657,12 @@ select.small-select-display {
   background-repeat: no-repeat;
   background-position: right 0.6rem center;
   background-size: 14px 14px;
+}
+
+/* A barra de filtros do design system fixa o padding do display (0.75rem dos
+   dois lados) e cobriria o chevron: o espaço à direita volta a ser reservado. */
+.filter-bar select.small-select-display {
+  padding-right: 1.9rem;
 }
 
 [data-theme="dark"] select.small-select-display {

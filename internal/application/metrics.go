@@ -120,6 +120,11 @@ func ComputeMetrics(ctx context.Context, deps Deps) (*MetricsPayload, error) {
 		}
 	}
 
+	leaseTenant := make(map[string]string, len(leases))
+	for _, lease := range leases {
+		leaseTenant[lease.ID] = lease.TenantID
+	}
+
 	type monthAccumulator struct {
 		received float64
 		expected float64
@@ -175,14 +180,19 @@ func ComputeMetrics(ctx context.Context, deps Deps) (*MetricsPayload, error) {
 		categoryEntry.Count++
 		categoryEntry.Total += receipt.Amount
 
-		if (status == domain.ReceiptStatusPaid || status == domain.ReceiptStatusPartial) && receipt.TenantID != nil {
-			tenantEntry, ok := tenantPaid[*receipt.TenantID]
-			if !ok {
-				tenantEntry = &MetricsTenant{ID: *receipt.TenantID}
-				tenantPaid[*receipt.TenantID] = tenantEntry
+		// O titular efetivo vem do recibo OU do contrato: lançamentos de aluguel
+		// guardam só o contrato (o app antigo resolvia isso em SQL, com
+		// `coalesce(receipts.tenant_id, leases.tenant_id)`).
+		if status == domain.ReceiptStatusPaid || status == domain.ReceiptStatusPartial {
+			if tenantID := effectiveTenantID(receipt, leaseTenant); tenantID != "" {
+				tenantEntry, ok := tenantPaid[tenantID]
+				if !ok {
+					tenantEntry = &MetricsTenant{ID: tenantID}
+					tenantPaid[tenantID] = tenantEntry
+				}
+				tenantEntry.PaidTotal += paidAmount
+				tenantEntry.Receipts++
 			}
-			tenantEntry.PaidTotal += paidAmount
-			tenantEntry.Receipts++
 		}
 	}
 
@@ -253,6 +263,18 @@ func ComputeMetrics(ctx context.Context, deps Deps) (*MetricsPayload, error) {
 	}
 
 	return payload, nil
+}
+
+// effectiveTenantID devolve o titular do lançamento: o próprio, quando houver, ou
+// o do contrato associado.
+func effectiveTenantID(receipt domain.Receipt, leaseTenant map[string]string) string {
+	if receipt.TenantID != nil && *receipt.TenantID != "" {
+		return *receipt.TenantID
+	}
+	if receipt.LeaseID == nil {
+		return ""
+	}
+	return leaseTenant[*receipt.LeaseID]
 }
 
 func paidAmountOf(receipt domain.Receipt) float64 {

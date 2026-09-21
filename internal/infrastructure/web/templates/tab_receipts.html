@@ -134,9 +134,9 @@
             <td data-label="Status" data-sort-value="{{$status}}">
               <span class="status-badge {{$status}}">{{receiptStatus .}}</span>
             </td>
-            <td data-label="Vencimento" data-sort-value="{{.DueDate}}">{{date .DueDate}}</td>
-            <td data-label="Pagamento" data-sort-value="{{deref .PaidAt}}">{{datetime (deref .PaidAt)}}</td>
-            <td data-label="Valor" data-sort-value="{{printf "%.2f" .Amount}}">
+            <td data-label="Vencimento" class="cell-nowrap" data-sort-value="{{.DueDate}}">{{date .DueDate}}</td>
+            <td data-label="Pagamento" class="cell-nowrap" data-sort-value="{{deref .PaidAt}}">{{datetime (deref .PaidAt)}}</td>
+            <td data-label="Valor" class="cell-nowrap" data-sort-value="{{printf "%.2f" .Amount}}">
               <div>{{money .Amount}}</div>
               {{if eq $status "partial"}}
                 <div style="font-size: 0.75rem; color: #3b82f6; margin-top: 0.15rem;">

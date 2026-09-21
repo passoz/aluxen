@@ -35,6 +35,27 @@ jobs:
   test:
     name: Testes + cobertura
     runs-on: ubuntu-latest
+    # O produto promete SQLite E Postgres: os adapters do segundo dialeto só são
+    # exercitados com um banco de verdade, então o job sobe um Postgres e aponta
+    # TEST_DATABASE_URL para ele. `-coverpkg=./...` mede a cobertura entre
+    # pacotes — os adapters e o código gerado pelo sqlc são exercitados pelos
+    # testes da camada de banco, não por testes próprios.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aluxen
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/aluxen?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -42,7 +63,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: go test
-        run: go test ./... -race -coverprofile=coverage.out
+        run: go test ./... -race -coverpkg=./... -coverprofile=coverage.out
       - name: Gate de cobertura >= 90%
         run: go tool cover -func=coverage.out | awk '/^total:/{if ($3+0 < 90.0) exit 1}'
 

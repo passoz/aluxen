@@ -53,8 +53,8 @@
                 {{.Lease.PropertyName}}
                 {{if .IsSeason}}<span class="status-badge partial">Temporada</span>{{end}}
               </td>
-              <td data-sort-value="{{.Lease.StartDate}}">{{date .Lease.StartDate}} – {{date .Lease.EndDate}}</td>
-              <td data-sort-value="{{moneyValue .Deposit.Amount}}">{{money .Deposit.Amount}}</td>
+              <td class="cell-nowrap" data-sort-value="{{.Lease.StartDate}}">{{date .Lease.StartDate}} – {{date .Lease.EndDate}}</td>
+              <td class="cell-nowrap" data-sort-value="{{moneyValue .Deposit.Amount}}">{{money .Deposit.Amount}}</td>
               <td data-sort-value="{{.Deposit.Status}}">
                 <span class="status-badge {{if eq .Deposit.Status "held"}}due{{else if eq .Deposit.Status "none"}}paid{{else}}partial{{end}}">
                   {{depositStatus .Deposit.Status}}

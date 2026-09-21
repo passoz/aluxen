@@ -54,8 +54,8 @@
             <td data-label="Status">
               <span class="status-badge {{.Tone}}">{{leaseStatus (printf "%s" .Status)}}</span>
             </td>
-            <td data-label="Início" data-sort-value="{{.StartDate}}">{{.StartDate}} a {{.EndDate}}</td>
-            <td data-label="Vencimento" data-sort-value="{{.DueDay}}">Dia {{.DueDay}}</td>
+            <td data-label="Início" class="cell-nowrap" data-sort-value="{{.StartDate}}">{{.StartDate}} a {{.EndDate}}</td>
+            <td data-label="Vencimento" class="cell-nowrap" data-sort-value="{{.DueDay}}">Dia {{.DueDay}}</td>
             <td data-label="Aluguel" data-sort-value="{{printf "%.2f" .RentAmount}}">{{money .RentAmount}}</td>
             <td data-label="PDF">
               <div class="row-actions">
