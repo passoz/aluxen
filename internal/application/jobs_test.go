@@ -558,3 +558,63 @@ func jobsDecodePayload(t *testing.T, job *domain.Job) jobsPayload {
 	require.NoError(t, json.Unmarshal([]byte(*job.Payload), &payload))
 	return payload
 }
+
+// TestJobsWorkerRunsJobsInParallel prova a concorrência do pool: quatro
+// trabalhos com uma barreira que só abre quando todos começaram. Se o worker
+// fosse serial, a barreira nunca abriria e o teste estouraria o tempo — é o que
+// distingue "roda em paralelo" de "roda em fila".
+func TestJobsWorkerRunsJobsInParallel(t *testing.T) {
+	f := newJobsFixture(t)
+
+	const total = 4
+	started := make(chan struct{}, total)
+	release := make(chan struct{})
+
+	worker := f.worker(application.WorkerOptions{
+		Interval:  time.Millisecond,
+		BatchSize: total,
+		Workers:   total,
+	})
+	worker.Register(domain.JobKindPaymentProof, func(ctx context.Context, _ application.Deps, _ domain.Job) error {
+		started <- struct{}{}
+		select {
+		case <-release:
+			return nil
+		case <-time.After(5 * time.Second):
+			return fmt.Errorf("barreira não abriu: os trabalhos não rodaram em paralelo")
+		}
+	})
+
+	for range total {
+		f.enqueue(t, domain.JobKindPaymentProof, jobsPayload{ReceiptID: "rec-1"}, 0)
+	}
+
+	done := make(chan int, 1)
+	go func() {
+		handled, err := worker.RunOnce(context.Background())
+		if err != nil {
+			t.Errorf("varredura falhou: %v", err)
+		}
+		done <- handled
+	}()
+
+	for range total {
+		select {
+		case <-started:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("apenas %d de %d trabalhos começaram juntos", len(started), total)
+		}
+	}
+	close(release)
+
+	select {
+	case handled := <-done:
+		assert.Equal(t, total, handled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("varredura não terminou depois de liberar a barreira")
+	}
+
+	queued, err := f.repo.ListByStatus(context.Background(), domain.JobStatusQueued, total)
+	require.NoError(t, err)
+	assert.Empty(t, queued, "todos os trabalhos deveriam ter saído da fila")
+}

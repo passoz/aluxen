@@ -227,7 +227,7 @@ func HandleIncomingMessage(ctx context.Context, deps Deps, actx AuditContext, ms
 			reply.Reply = text
 			reply.Tools = usedTools
 			reply.Rounds = round
-			if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionWhatsAppSend,
+			if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionAgentAnswered,
 				fmt.Sprintf("Resposta do atendimento automático para %s", tenant.Name),
 				map[string]any{"phone": maskedPhone(msg.Phone), "kind": agentKindAnswer}); err != nil {
 				return nil, err
@@ -309,7 +309,7 @@ func EscalateConversation(ctx context.Context, deps Deps, actx AuditContext, ten
 		reason = "escalonamento manual do locador"
 	}
 	return Record(ctx, deps, actx, AuditEntry{
-		Action:      domain.ActionWhatsAppSend,
+		Action:      domain.ActionAgentEscalated,
 		Entity:      domain.EntityWhatsApp,
 		EntityID:    tenant.ID,
 		EntityLabel: tenant.Name,
@@ -377,7 +377,7 @@ func escalateToHuman(ctx context.Context, deps Deps, actx AuditContext, msg doma
 		label = fmt.Sprintf("Conversa de %s encaminhada ao locador", tenant.Name)
 	}
 
-	if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionWhatsAppSend, label,
+	if err := recordAgentEvent(ctx, deps, actx, msg, tenant, domain.ActionAgentEscalated, label,
 		map[string]any{
 			"phone":  maskedPhone(msg.Phone),
 			"kind":   agentKindEscalation,

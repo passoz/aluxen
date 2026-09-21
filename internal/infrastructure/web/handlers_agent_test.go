@@ -392,7 +392,9 @@ func TestConversationEscalateRegistersTheEvent(t *testing.T) {
 	}), http.StatusOK)
 	assert.Equal(t, true, body["ok"])
 
-	entries := panel.auditFor(t, domain.ActionWhatsAppSend)
+	// O escalonamento manual tem ação própria na trilha (não é envio nem resposta
+	// automática), e não manda mensagem nenhuma.
+	entries := panel.auditFor(t, domain.ActionAgentEscalated)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "Maria Souza", domain.Str(entries[0].EntityLabel))
 	assert.Equal(t, "passoz", domain.Str(entries[0].ActorName))
@@ -418,7 +420,7 @@ func TestConversationMutationRequiresAdmin(t *testing.T) {
 	requireAgentJSON(t, panel.do(request), http.StatusUnauthorized)
 
 	assert.Empty(t, panel.waha.sentMessages())
-	assert.Empty(t, panel.auditFor(t, domain.ActionWhatsAppSend))
+	assert.Empty(t, panel.auditFor(t, domain.ActionAgentAnswered))
 }
 
 func TestConversationMutationRejectsUnknownIntent(t *testing.T) {

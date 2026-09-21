@@ -520,7 +520,7 @@ func TestCagtOpenMaintenanceRequestRecordsTheTrail(t *testing.T) {
 
 	require.Len(t, env.audit.entries, 1)
 	entry := env.audit.entries[0]
-	assert.Equal(t, domain.ActionWhatsAppMessageReceived, entry.Action)
+	assert.Equal(t, domain.ActionMaintenanceOpened, entry.Action)
 	assert.Equal(t, domain.EntityWhatsApp, entry.Entity)
 	assert.Equal(t, tenant.ID, domain.Str(entry.EntityID))
 	assert.Equal(t, tenant.Name, domain.Str(entry.EntityLabel))

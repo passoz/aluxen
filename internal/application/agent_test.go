@@ -431,7 +431,7 @@ func TestAgentAnswersWithReceiptDataFromTool(t *testing.T) {
 
 	// A resposta fica registrada na trilha, com o tipo do evento e o telefone
 	// mascarado.
-	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindAnswer)
+	entry := fixture.auditKind(t, domain.ActionAgentAnswered, agentKindAnswer)
 	assert.Equal(t, "Maria Souza", domain.Str(entry.EntityLabel))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindAnswer, metadata["kind"])
@@ -523,7 +523,7 @@ func TestAgentEscalatesQuestionWithoutApplicableTool(t *testing.T) {
 	assert.NotContains(t, reply.Reply, "2.000") // resposta sem lastro não é publicada
 	assert.Contains(t, reply.Reply, "locador")
 
-	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindEscalation)
+	entry := fixture.auditKind(t, domain.ActionAgentEscalated, agentKindEscalation)
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindEscalation, metadata["kind"])
 	assert.Equal(t, agentReasonUngrounded, metadata["reason"])
@@ -541,7 +541,7 @@ func TestAgentEscalatesLegalQuestionWithoutCallingProvider(t *testing.T) {
 	assert.Equal(t, agentReasonLegal, reply.Reason)
 	assert.Contains(t, reply.Reply, "locador")
 	assert.Empty(t, fixture.chat.calls(), "pergunta jurídica não vai ao provedor")
-	fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindEscalation)
+	fixture.auditKind(t, domain.ActionAgentEscalated, agentKindEscalation)
 }
 
 func TestAgentEscalatesMessageWithoutTenant(t *testing.T) {
@@ -624,7 +624,7 @@ func TestAgentRegistersMaintenanceRequest(t *testing.T) {
 	assert.False(t, reply.Escalated)
 	assert.Equal(t, []string{agentToolMaintenance}, reply.Tools)
 
-	entry := fixture.auditKind(t, domain.ActionWhatsAppMessageReceived, agentKindMaintenance)
+	entry := fixture.auditKind(t, domain.ActionMaintenanceOpened, agentKindMaintenance)
 	assert.Equal(t, "Maria Souza", domain.Str(entry.EntityLabel))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindMaintenance, metadata["kind"])
@@ -726,7 +726,8 @@ func TestConversationReplySendsToTenantPhone(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, jobID)
 
-	// A resposta sai pelo mesmo envio avulso do canal e vai para a trilha.
+	// A resposta manual do locador sai pelo mesmo envio avulso do canal (ação de
+	// envio do WhatsApp), diferente da resposta automática do atendimento.
 	job := waitJob(t, channel, jobID)
 	assert.Equal(t, JobDone, job.Status)
 	assert.Contains(t, fixture.auditActions(), domain.ActionWhatsAppSend)
@@ -762,7 +763,7 @@ func TestEscalateConversationRegistersManualEscalation(t *testing.T) {
 
 	require.NoError(t, EscalateConversation(context.Background(), fixture.deps, actor, agTenantID, ""))
 
-	entry := fixture.auditKind(t, domain.ActionWhatsAppSend, agentKindManualEscalation)
+	entry := fixture.auditKind(t, domain.ActionAgentEscalated, agentKindManualEscalation)
 	assert.Equal(t, "passoz", domain.Str(entry.ActorName))
 	metadata := agMetadata(t, entry)
 	assert.Equal(t, agentKindManualEscalation, metadata["kind"])

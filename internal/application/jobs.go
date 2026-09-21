@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/passoz/aluxen/internal/domain"
@@ -30,8 +31,10 @@ const (
 	DefaultJobMaxAttempts = 3
 	// DefaultWorkerInterval é o intervalo de varredura da fila.
 	DefaultWorkerInterval = 30 * time.Second
-	// DefaultWorkerBatchSize é quantos trabalhos o worker busca por varredura.
+	// DefaultWorkerWorkers é quantos trabalhos o worker busca por varredura.
 	DefaultWorkerBatchSize = 20
+	// DefaultWorkerWorkers é quantos trabalhos rodam em paralelo por varredura.
+	DefaultWorkerWorkers = 4
 	// workerOrphanLimit limita quantos trabalhos órfãos o boot recupera por vez.
 	workerOrphanLimit = 500
 
@@ -153,6 +156,11 @@ type WorkerOptions struct {
 	Interval time.Duration
 	// BatchSize é quantos trabalhos cada varredura busca na fila.
 	BatchSize int
+	// Workers é quantos trabalhos rodam ao mesmo tempo dentro de uma varredura.
+	// Trabalhos da fila são independentes e dominados por I/O (provedor de IA,
+	// WhatsApp), então rodar em paralelo multiplica a vazão. Com SQLite o banco
+	// atende uma conexão por vez: ali o ganho vem do I/O externo, não da query.
+	Workers int
 }
 
 // Worker consome a fila persistida. Handlers são registrados por tipo de
@@ -161,6 +169,7 @@ type Worker struct {
 	deps     Deps
 	interval time.Duration
 	batch    int
+	workers  int
 
 	mu       sync.RWMutex
 	handlers map[domain.JobKind]JobHandler
@@ -182,10 +191,18 @@ func NewWorker(deps Deps, opts WorkerOptions) *Worker {
 	if batch <= 0 {
 		batch = DefaultWorkerBatchSize
 	}
+	workers := opts.Workers
+	if workers <= 0 {
+		workers = DefaultWorkerWorkers
+	}
+	if workers > batch {
+		workers = batch
+	}
 	worker := &Worker{
 		deps:     deps,
 		interval: interval,
 		batch:    batch,
+		workers:  workers,
 		handlers: make(map[domain.JobKind]JobHandler),
 		busy:     make(chan struct{}, 1),
 	}
@@ -254,15 +271,47 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	handled := 0
-	for _, job := range due {
-		if ctx.Err() != nil {
-			break
-		}
-		w.runJob(context.WithoutCancel(ctx), job)
-		handled++
+	return w.dispatch(ctx, due), nil
+}
+
+// dispatch roda os trabalhos da varredura num pool de goroutines alimentado por
+// canal: os trabalhos são independentes entre si e o gargalo é I/O externo.
+//
+// O contexto entregue ao handler é desligado do cancelamento
+// (`context.WithoutCancel`): o encerramento para de pegar trabalho novo, mas o
+// que já começou termina — é o que torna o desligamento gracioso.
+func (w *Worker) dispatch(ctx context.Context, jobs []domain.Job) int {
+	if len(jobs) == 0 {
+		return 0
 	}
-	return handled, nil
+
+	workers := w.workers
+	if workers > len(jobs) {
+		workers = len(jobs)
+	}
+
+	queue := make(chan domain.Job)
+	var handled atomic.Int64
+	var group sync.WaitGroup
+
+	for range workers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			for job := range queue {
+				w.runJob(context.WithoutCancel(ctx), job)
+				handled.Add(1)
+			}
+		}()
+	}
+
+	for _, job := range jobs {
+		queue <- job
+	}
+	close(queue)
+	group.Wait()
+
+	return int(handled.Load())
 }
 
 // RecoverOrphans devolve para `queued` os trabalhos que ficaram `running` por
