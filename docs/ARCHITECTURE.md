@@ -241,7 +241,7 @@ Regras de projeto:
 A geração de documentos é processada em memória com a biblioteca `pdf-lib`:
 - **`src/utils/pdf.ts`**: Cria o Recibo de Pagamento de Aluguel formatado em folha A4 com identidade visual do Aluxen, incluindo:
   - Cabeçalho institucional.
-  - Dados do locatário e do imóvel.
+  - Dados do locatário (nome e CPF) e do imóvel.
   - Quadro resumo financeiro (valor, vencimento, data de liquidação).
   - Declaração de quitação com valores monetários por extenso em português.
   - Assinatura digital ou campo em branco.

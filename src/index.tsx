@@ -1442,6 +1442,7 @@ app.get('/pdf', async (c) => {
     category: receipts.category,
     description: receipts.description,
     tenant_name: sql<string>`coalesce(${pdfTAlias.name}, ${pdfRtAlias.name}, '')`,
+    tenant_cpf: sql<string>`coalesce(${pdfTAlias.cpf}, ${pdfRtAlias.cpf}, '')`,
     property_name: sql<string>`coalesce(${pdfPAlias.name}, ${pdfRpAlias.name}, '')`,
     property_address: sql<string>`coalesce(${pdfPAlias.address}, ${pdfRpAlias.address}, '')`,
     property_city: sql<string>`coalesce(${pdfPAlias.city}, ${pdfRpAlias.city}, '')`,
@@ -1473,6 +1474,7 @@ app.get('/pdf', async (c) => {
   const pdfBytes = await createReceiptPdfBuffer({
     receiptId: receipt.id,
     tenantName: receipt.tenant_name || 'Locatário',
+    tenantCpf: receipt.tenant_cpf || null,
     propertyName: receipt.property_name || '',
     propertyAddress,
     category: receipt.category,

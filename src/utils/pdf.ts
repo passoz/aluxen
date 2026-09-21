@@ -9,6 +9,7 @@ const PDF_TIME_ZONE = 'America/Sao_Paulo';
 export type ReceiptPdfInput = {
   receiptId: string;
   tenantName: string;
+  tenantCpf?: string | null;
   propertyName: string;
   propertyAddress?: string;
   dueDate: string;
@@ -209,6 +210,11 @@ export async function createReceiptPdfBuffer(input: ReceiptPdfInput): Promise<Ui
     color: ink,
   });
   cursorY -= tenantLines * 24 + 8;
+  const tenantCpf = input.tenantCpf?.trim();
+  if (tenantCpf) {
+    page.drawText(`CPF: ${tenantCpf}`, { x: cardX, y: cursorY, size: 12, font: fontRegular, color: muted });
+    cursorY -= 20;
+  }
   let propertyLineText = '';
   if (input.propertyName) {
     propertyLineText = isExtra ? `Referência/Imóvel: ${input.propertyName}` : `Imóvel: ${input.propertyName}`;

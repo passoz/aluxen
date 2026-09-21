@@ -443,6 +443,8 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     const receiptText = extractPdfText(bytesSigned);
     expect(receiptText).toContain('Casa de Praia 202');
     expect(receiptText).toContain('referente ao aluguel do imóvel Casa de Praia 202 na');
+    // CPF do locatário emitido no documento
+    expect(receiptText).toContain('CPF: 111.222.333-44');
     // Sem assinatura
     const resUnsigned = await server.fetch(
       new Request(`http://localhost:3000/pdf?id=${createdReceiptId}&assinatura=false`, {
@@ -612,6 +614,8 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(validHtml).toContain('DOCUMENTO AUTÊNTICO E VÁLIDO');
     expect(validHtml).toContain('Carlos Drummond');
     expect(validHtml).toContain('Recibo de Pagamento de Aluguel');
+    expect(validHtml).toContain('CPF do Locatário');
+    expect(validHtml).toContain('111.222.333-44');
 
     // Token inválido
     const invalidRes = await server.fetch(new Request(`http://localhost:3000/validar/recibo/${createdReceiptId}?token=token_falso_123`));

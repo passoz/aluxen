@@ -83,6 +83,13 @@ export function VerificationPage(props: VerificationData) {
                 <strong>{props.tenantName}</strong>
               </div>
 
+              {props.tenantCpf ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>CPF do Locatário:</span>
+                  <strong>{props.tenantCpf}</strong>
+                </div>
+              ) : null}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border)' }}>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Locador:</span>
                 <span>{props.landlordName || 'Locador'}</span>
