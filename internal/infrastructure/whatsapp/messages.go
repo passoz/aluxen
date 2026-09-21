@@ -1,0 +1,223 @@
+package whatsapp
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Textos das mensagens do WhatsApp. São os mesmos que o app atual envia: o
+// locatário recebe exatamente o mesmo conteúdo, com os mesmos emojis e a mesma
+// formatação (`*negrito*`).
+//
+// Toda montagem é função pura de strings já formatadas (data em dd/mm/aaaa,
+// valor em Real) — quem formata é internal/domain/format, no caso de uso.
+
+// SanitizePhone devolve o número no formato que o WhatsApp espera: só dígitos,
+// com o código do Brasil à frente quando ele não vier explícito. É o
+// `formatWhatsAppNumber` do app atual.
+func SanitizePhone(raw string) string {
+	clean := digits(raw)
+	if clean == "" {
+		return ""
+	}
+	if strings.HasPrefix(clean, "55") && len(clean) >= 12 {
+		return clean
+	}
+	return "55" + clean
+}
+
+// digits devolve apenas os dígitos de um texto.
+func digits(value string) string {
+	var out strings.Builder
+	for _, char := range value {
+		if char >= '0' && char <= '9' {
+			out.WriteRune(char)
+		}
+	}
+	return out.String()
+}
+
+// DirectURL devolve o link direto da conversa (`https://wa.me/<dígitos>`), ou
+// string vazia quando o telefone não tem dígito nenhum.
+func DirectURL(phone string) string {
+	clean := SanitizePhone(phone)
+	if clean == "" {
+		return ""
+	}
+	return "https://wa.me/" + clean
+}
+
+// DirectURLWithMessage devolve o link direto com a mensagem pré-preenchida — é o
+// `directUrl` que /api/whatsapp/preview devolve. A codificação é a mesma do
+// `encodeURIComponent` do app atual, byte a byte.
+func DirectURLWithMessage(phone, message string) string {
+	base := DirectURL(phone)
+	if base == "" {
+		return ""
+	}
+	return base + "?text=" + encodeURIComponent(message)
+}
+
+// encodeURIComponent codifica um valor como componente de URL com o mesmo
+// conjunto de caracteres preservados pelo `encodeURIComponent` do JavaScript
+// (`A-Z a-z 0-9 - _ . ! ~ * ' ( )`), e não com o `+` do QueryEscape. Os links
+// `wa.me` do app atual saem exatamente assim.
+func encodeURIComponent(value string) string {
+	const preserved = "-_.!~*'()"
+	var out strings.Builder
+	for index := range len(value) {
+		char := value[index]
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z', char >= '0' && char <= '9':
+			out.WriteByte(char)
+		case strings.IndexByte(preserved, char) >= 0:
+			out.WriteByte(char)
+		default:
+			out.WriteString(fmt.Sprintf("%%%02X", char))
+		}
+	}
+	return out.String()
+}
+
+// ChatID devolve o identificador de conversa que o WAHA usa no envio.
+func ChatID(phone string) string {
+	clean := SanitizePhone(phone)
+	if clean == "" {
+		return ""
+	}
+	return clean + "@c.us"
+}
+
+// ReceiptMessageInput reúne o que a mensagem do recibo mostra. Os valores já
+// vêm formatados para exibição (datas em dd/mm/aaaa, dinheiro em Real).
+type ReceiptMessageInput struct {
+	TenantName      string
+	PropertyName    string
+	PropertyAddress string
+	DueDate         string
+	Amount          string
+	PaidAmount      string
+	// PaidAmountRaw alimenta a decisão de pagamento parcial (valor pago menor
+	// que o valor do recibo); nil quando não houve baixa.
+	PaidAmountRaw *float64
+	AmountRaw     float64
+	Category      string
+	Description   string
+	// PaidAt é a data da baixa já formatada (dd/mm/aaaa HH:mm); vazio quando não
+	// houve pagamento.
+	PaidAt        string
+	PDFURL        string
+	ValidationURL string
+	LandlordName  string
+}
+
+// ReceiptMessage monta a mensagem do recibo — o `buildReceiptWhatsAppMessage`
+// do app atual, linha por linha.
+func ReceiptMessage(in ReceiptMessageInput) string {
+	isExtra := in.Category == "extra" || in.Description != ""
+	isPartial := in.PaidAmountRaw != nil && *in.PaidAmountRaw > 0 && *in.PaidAmountRaw < in.AmountRaw
+	isPaid := in.PaidAt != "" && !isPartial
+
+	statusLine := "⏳ *Status*: Aguardando pagamento"
+	switch {
+	case isPartial:
+		statusLine = fmt.Sprintf("🟡 *Status*: Pagamento parcial (%s de %s)", in.PaidAmount, in.Amount)
+		if in.PaidAt != "" {
+			statusLine += " registrado em " + in.PaidAt
+		}
+	case isPaid:
+		statusLine = "✅ *Status*: Quitado em " + in.PaidAt
+	}
+
+	docTitle := "Recibo de Aluguel"
+	subjectIntro := fmt.Sprintf("Segue o comprovante do seu aluguel referente ao imóvel *%s*:", in.PropertyName)
+	if isExtra {
+		docTitle = "Recibo de Pagamento"
+		if in.Description != "" {
+			docTitle = "Recibo - " + in.Description
+		}
+		subject := "*cobrança avulsa*"
+		if in.Description != "" {
+			subject = "*" + in.Description + "*"
+		}
+		if in.PropertyName != "" {
+			subject += fmt.Sprintf(" (Imóvel: *%s*)", in.PropertyName)
+		}
+		subjectIntro = "Segue o comprovante referente a " + subject + ":"
+	}
+
+	partialLine := ""
+	if isPartial {
+		partialLine = "\n💵 *Valor Pago*: " + in.PaidAmount
+	}
+
+	landlordName := in.LandlordName
+	if landlordName == "" {
+		landlordName = "Locador"
+	}
+
+	return fmt.Sprintf(`Olá, *%s*! Tudo bem?
+
+%s
+
+📄 *%s*
+💰 *Valor*: %s%s
+📅 *Vencimento*: %s
+%s
+
+🔗 *Visualizar / Baixar Recibo (PDF)*:
+%s
+
+🔒 *Verificação de Autenticidade Digital*:
+%s
+
+Qualquer dúvida, estou à disposição!
+Atenciosamente,
+*%s*`,
+		in.TenantName, subjectIntro, docTitle, in.Amount, partialLine, in.DueDate, statusLine,
+		in.PDFURL, in.ValidationURL, landlordName)
+}
+
+// ContractMessageInput reúne o que a mensagem do contrato mostra.
+type ContractMessageInput struct {
+	TenantName      string
+	PropertyName    string
+	PropertyAddress string
+	StartDate       string
+	EndDate         string
+	DueDay          int
+	RentAmount      string
+	PDFURL          string
+	ValidationURL   string
+	LandlordName    string
+}
+
+// ContractMessage monta a mensagem do contrato — o
+// `buildContractWhatsAppMessage` do app atual, linha por linha.
+func ContractMessage(in ContractMessageInput) string {
+	landlordName := in.LandlordName
+	if landlordName == "" {
+		landlordName = "Locador"
+	}
+
+	return fmt.Sprintf(`Olá, *%s*! Tudo bem?
+
+Segue o seu contrato de locação residencial referente ao imóvel *%s*:
+
+📄 *Contrato de Locação Residencial*
+💰 *Valor do Aluguel*: %s
+📅 *Vencimento Mensal*: Todo dia %d
+🗓️ *Vigência*: %s a %s
+
+🔗 *Visualizar / Baixar Contrato (PDF)*:
+%s
+
+🔒 *Verificação de Autenticidade Digital*:
+%s
+
+Qualquer dúvida, estou à disposição!
+Atenciosamente,
+*%s*`,
+		in.TenantName, in.PropertyName, in.RentAmount, in.DueDay, in.StartDate, in.EndDate,
+		in.PDFURL, in.ValidationURL, landlordName)
+}

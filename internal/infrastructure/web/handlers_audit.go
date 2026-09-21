@@ -2,17 +2,12 @@ package web
 
 import "net/http"
 
-// Métricas, histórico de auditoria e backup.
+// Histórico de auditoria e backup. (As métricas ficam em handlers_dashboard.go.)
 //
-//	GET  /metrics      — JSON de métricas do painel
 //	GET  /audit        — JSON paginado com filtros
 //	GET  /audit/export — CSV (delimitador ';', BOM, 13 colunas, limite 5000)
 //	GET  /export       — backup JSON {exportedAt,tenants,properties,leases,receipts}
 //	POST /import       — multipart, campo `file`; 302 /dashboard?tab=dashboard&toast=importado
-
-func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
-	h.notImplemented(w, r, "metrics")
-}
 
 func (h *Handlers) AuditList(w http.ResponseWriter, r *http.Request) {
 	h.notImplemented(w, r, "audit.list")

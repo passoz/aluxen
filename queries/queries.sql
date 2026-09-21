@@ -64,8 +64,6 @@ DELETE FROM tenants WHERE id = sqlc.arg(id);
 -- name: CountTenants :one
 SELECT COUNT(*) AS total FROM tenants;
 
--- name: DeleteAllTenants :exec
-DELETE FROM tenants;
 
 -- -- properties -------------------------------------
 
@@ -92,8 +90,6 @@ DELETE FROM properties WHERE id = sqlc.arg(id);
 -- name: CountProperties :one
 SELECT COUNT(*) AS total FROM properties;
 
--- name: DeleteAllProperties :exec
-DELETE FROM properties;
 
 -- -- leases ---------------------------------------
 
@@ -173,8 +169,6 @@ SELECT COUNT(*) AS total FROM leases;
 -- name: CountLeasesByStatus :one
 SELECT COUNT(*) AS total FROM leases WHERE status = sqlc.arg(status);
 
--- name: DeleteAllLeases :exec
-DELETE FROM leases;
 
 -- -- receipts -------------------------------------
 
@@ -254,8 +248,6 @@ DELETE FROM receipts WHERE id = sqlc.arg(id);
 -- name: CountReceipts :one
 SELECT COUNT(*) AS total FROM receipts;
 
--- name: DeleteAllReceipts :exec
-DELETE FROM receipts;
 
 -- -- settings -------------------------------------
 
@@ -331,3 +323,19 @@ WHERE (entity = sqlc.arg(entity) OR sqlc.arg(entity) = '')
 SELECT DISTINCT actor_name FROM audit_logs
 WHERE actor_name IS NOT NULL AND actor_name <> ''
 ORDER BY actor_name ASC;
+
+-- -- whatsapp -------------------------------------
+
+-- name: InsertWhatsAppMessage :execrows
+INSERT INTO whatsapp_messages (id, created_at, direction, chat_id, phone, tenant_id, body, status,
+                               external_id, metadata)
+VALUES (sqlc.arg(id), sqlc.arg(created_at), sqlc.arg(direction), sqlc.arg(chat_id), sqlc.arg(phone),
+        sqlc.arg(tenant_id), sqlc.arg(body), sqlc.arg(status), sqlc.arg(external_id),
+        sqlc.arg(metadata))
+ON CONFLICT (external_id) DO NOTHING;
+
+-- name: ListWhatsAppMessagesByTenant :many
+SELECT * FROM whatsapp_messages
+WHERE tenant_id = sqlc.arg(tenant_id)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(page_limit);

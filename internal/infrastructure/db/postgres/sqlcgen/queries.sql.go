@@ -104,42 +104,6 @@ func (q *Queries) CountTenants(ctx context.Context) (int64, error) {
 	return total, err
 }
 
-const deleteAllLeases = `-- name: DeleteAllLeases :exec
-DELETE FROM leases
-`
-
-func (q *Queries) DeleteAllLeases(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllLeases)
-	return err
-}
-
-const deleteAllProperties = `-- name: DeleteAllProperties :exec
-DELETE FROM properties
-`
-
-func (q *Queries) DeleteAllProperties(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllProperties)
-	return err
-}
-
-const deleteAllReceipts = `-- name: DeleteAllReceipts :exec
-DELETE FROM receipts
-`
-
-func (q *Queries) DeleteAllReceipts(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllReceipts)
-	return err
-}
-
-const deleteAllTenants = `-- name: DeleteAllTenants :exec
-DELETE FROM tenants
-`
-
-func (q *Queries) DeleteAllTenants(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteAllTenants)
-	return err
-}
-
 const deleteLease = `-- name: DeleteLease :exec
 DELETE FROM leases WHERE id = $1
 `
@@ -675,6 +639,49 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 		arg.CreatedAt,
 	)
 	return err
+}
+
+const insertWhatsAppMessage = `-- name: InsertWhatsAppMessage :execrows
+
+INSERT INTO whatsapp_messages (id, created_at, direction, chat_id, phone, tenant_id, body, status,
+                               external_id, metadata)
+VALUES ($1, $2, $3, $4, $5,
+        $6, $7, $8, $9,
+        $10)
+ON CONFLICT (external_id) DO NOTHING
+`
+
+type InsertWhatsAppMessageParams struct {
+	ID         string         `json:"id"`
+	CreatedAt  string         `json:"created_at"`
+	Direction  string         `json:"direction"`
+	ChatID     string         `json:"chat_id"`
+	Phone      string         `json:"phone"`
+	TenantID   sql.NullString `json:"tenant_id"`
+	Body       string         `json:"body"`
+	Status     string         `json:"status"`
+	ExternalID sql.NullString `json:"external_id"`
+	Metadata   sql.NullString `json:"metadata"`
+}
+
+// -- whatsapp -------------------------------------
+func (q *Queries) InsertWhatsAppMessage(ctx context.Context, arg InsertWhatsAppMessageParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertWhatsAppMessage,
+		arg.ID,
+		arg.CreatedAt,
+		arg.Direction,
+		arg.ChatID,
+		arg.Phone,
+		arg.TenantID,
+		arg.Body,
+		arg.Status,
+		arg.ExternalID,
+		arg.Metadata,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const listAuditActors = `-- name: ListAuditActors :many
@@ -1503,6 +1510,52 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 			&i.PasswordChangedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWhatsAppMessagesByTenant = `-- name: ListWhatsAppMessagesByTenant :many
+SELECT id, created_at, direction, chat_id, phone, tenant_id, body, status, external_id, metadata FROM whatsapp_messages
+WHERE tenant_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+`
+
+type ListWhatsAppMessagesByTenantParams struct {
+	TenantID  sql.NullString `json:"tenant_id"`
+	PageLimit int32          `json:"page_limit"`
+}
+
+func (q *Queries) ListWhatsAppMessagesByTenant(ctx context.Context, arg ListWhatsAppMessagesByTenantParams) ([]WhatsappMessage, error) {
+	rows, err := q.db.QueryContext(ctx, listWhatsAppMessagesByTenant, arg.TenantID, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WhatsappMessage{}
+	for rows.Next() {
+		var i WhatsappMessage
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Direction,
+			&i.ChatID,
+			&i.Phone,
+			&i.TenantID,
+			&i.Body,
+			&i.Status,
+			&i.ExternalID,
+			&i.Metadata,
 		); err != nil {
 			return nil, err
 		}

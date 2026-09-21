@@ -76,6 +76,12 @@ var (
 		{Key: "paidAmount", Label: "Valor pago", Format: AuditFormatCurrency},
 	}
 
+	LandlordAuditFields = []AuditFieldSpec{
+		{Key: "name", Label: "Nome", Format: AuditFormatText},
+		{Key: "cpf", Label: "CPF", Format: AuditFormatText},
+		{Key: "email", Label: "E-mail", Format: AuditFormatText},
+	}
+
 	AppURLAuditFields = []AuditFieldSpec{
 		{Key: "url", Label: "URL pública", Format: AuditFormatText},
 	}

@@ -104,6 +104,17 @@ type AuditRepository interface {
 	Actors(ctx context.Context) ([]string, error)
 }
 
+// WhatsAppMessageRepository lê e escreve as mensagens trocadas pelo WhatsApp
+// (tabela `whatsapp_messages`).
+type WhatsAppMessageRepository interface {
+	// InsertIfAbsent grava a mensagem e devolve quantas linhas entraram: zero
+	// quando o `external_id` já existe, o que torna idempotente a reentrega do
+	// webhook pelo WAHA.
+	InsertIfAbsent(ctx context.Context, message *WhatsAppMessage) (int64, error)
+	// ByTenant devolve as mensagens do locatário, da mais recente para a mais antiga.
+	ByTenant(ctx context.Context, tenantID string, limit int) ([]WhatsAppMessage, error)
+}
+
 // ── Portas de serviço ──────────────────────────────────────────────
 
 // Clock permite injetar o tempo em testes.

@@ -1,35 +1,26 @@
-FROM oven/bun:1.4-slim
+# Imagem do Aluxen (Go): binário estático em distroless — sem Chromium, sem
+# runtime de linguagem, sem shell. A persistência vive no volume montado em /data.
+FROM golang:1.27 AS build
+WORKDIR /src
 
-WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Install Chromium and dependencies for WhatsApp Web automation
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    chromium-sandbox \
-    fonts-freefont-ttf \
-    fonts-liberation \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/aluxen ./cmd/app
 
-ENV CHROMIUM_PATH=/usr/bin/chromium
+FROM gcr.io/distroless/static-debian12
 
-# Install production dependencies
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile --production
+COPY --from=build /out/aluxen /aluxen
 
-# Copy only application runtime files and build client bundle
-COPY tsconfig.json ./
-COPY drizzle/ ./drizzle/
-COPY public/ ./public/
-COPY src/ ./src/
-RUN bun run build
+ENV APP_ENV=production \
+    HOST=0.0.0.0 \
+    PORT=3000 \
+    DB_DIR=/data \
+    LOG_FORMAT=json \
+    TZ=America/Sao_Paulo
+
 EXPOSE 3000
-
-ENV NODE_ENV=production
-ENV HOST=0.0.0.0
-ENV PORT=3000
-# Fuso do processo: a trilha de auditoria e os horários do sistema seguem o horário local.
-ENV TZ=America/Sao_Paulo
 
 # Identificação do build (injetada pelo workflow de publicação): o painel exibe
 # estes valores no modal de Informações para identificar a imagem em execução.
@@ -48,5 +39,4 @@ ENV ALUXEN_BUILD_COMMIT=$ALUXEN_BUILD_COMMIT \
     ALUXEN_BUILD_RUN_URL=$ALUXEN_BUILD_RUN_URL \
     ALUXEN_BUILD_NUMBER=$ALUXEN_BUILD_NUMBER
 
-CMD ["bun", "src/index.tsx"]
-
+ENTRYPOINT ["/aluxen"]

@@ -39,8 +39,11 @@ type AuditEntry struct {
 }
 
 // Record grava o evento na trilha. Devolve erro apenas para falha de gravação.
+//
+// Evento com lista de alterações explícita e vazia não é gravado — é o caso do
+// "salvei sem mudar nada". Eventos sem diff (acessos, emissões) são gravados.
 func Record(ctx context.Context, deps Deps, actx AuditContext, entry AuditEntry) error {
-	if len(entry.Changes) == 0 && entry.Metadata == nil {
+	if entry.Changes != nil && len(entry.Changes) == 0 {
 		return nil
 	}
 

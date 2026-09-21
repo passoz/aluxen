@@ -1,0 +1,110 @@
+{{define "tab_metrics"}}
+{{$metrics := .Snapshot.Metrics}}
+<div class="stack-lg">
+  <div class="metrics-grid">
+    <div class="card metric-card">
+      <div class="metric-label">Inquilinos</div>
+      <div class="metric-value">{{$metrics.Totals.Tenants}}</div>
+      <div class="metric-sub">{{$metrics.Totals.Properties}} imóveis cadastrados</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Contratos ativos</div>
+      <div class="metric-value">{{$metrics.Totals.ActiveLeases}}</div>
+      <div class="metric-sub">{{$metrics.Totals.TerminatedLeases}} encerrados</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Receita mensal esperada</div>
+      <div class="metric-value">{{money $metrics.Totals.ExpectedMonthly}}</div>
+      <div class="metric-sub">soma dos contratos ativos</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Recebido</div>
+      <div class="metric-value">{{money $metrics.Totals.PaidAmount}}</div>
+      <div class="metric-sub">{{$metrics.Totals.PaidReceipts}} pagos · {{$metrics.Totals.PartialReceipts}} parciais</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">A receber</div>
+      <div class="metric-value">{{money $metrics.Totals.OpenAmount}}</div>
+      <div class="metric-sub">{{$metrics.Totals.DueReceipts}} lançamentos a vencer</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Inadimplência</div>
+      <div class="metric-value">{{money $metrics.Totals.OverdueAmount}}</div>
+      <div class="metric-sub">{{$metrics.Totals.OverdueReceipts}} lançamentos vencidos</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Lançamentos</div>
+      <div class="metric-value">{{$metrics.Totals.Receipts}}</div>
+      <div class="metric-sub">{{money $metrics.Totals.TotalAmount}} lançados</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Ocupação</div>
+      <div class="metric-value">{{$metrics.Totals.ActiveLeases}} / {{$metrics.Totals.Properties}}</div>
+      <div class="metric-sub">contratos ativos por imóvel</div>
+    </div>
+  </div>
+
+  <section class="card" style="padding: 1.25rem;">
+    <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Recebimentos mensais (últimos 6 meses)</h2>
+    {{range $metrics.Monthly}}
+      <div class="bar-row">
+        <div class="cell-nowrap">{{.Label}}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width: {{if gt .Expected 0.0}}{{percent .Received .Expected}}{{else}}0{{end}}%"></div>
+        </div>
+        <div class="bar-value">{{money .Received}}</div>
+      </div>
+    {{end}}
+    <p class="metric-sub" style="margin-top: 0.75rem;">A barra compara o recebido com o esperado no mês.</p>
+  </section>
+
+  <div class="metrics-grid">
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Distribuição por status</h2>
+      <ul class="status-list">
+        {{range $metrics.Status}}
+          <li>
+            <span class="status-dot" style="background: {{statusColor .Status}};"></span>
+            <span style="flex: 1;">{{.Label}}</span>
+            <strong>{{.Count}}</strong>
+          </li>
+        {{end}}
+      </ul>
+    </section>
+
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Por categoria</h2>
+      {{if not $metrics.Categories}}<div class="cell-muted">Sem lançamentos.</div>{{end}}
+      {{range $metrics.Categories}}
+        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.5rem;">
+          <div>{{.Label}} <span class="cell-muted">({{.Count}})</span></div>
+          <div class="bar-value">{{money .Total}}</div>
+        </div>
+      {{end}}
+    </section>
+  </div>
+
+  <div class="metrics-grid">
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Ocupação por imóvel</h2>
+      {{range $metrics.Properties}}
+        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.4rem;">
+          <div>{{.Name}}</div>
+          <div class="bar-value">{{.ActiveLeases}} ativo(s)</div>
+        </div>
+      {{end}}
+    </section>
+
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Maiores pagadores</h2>
+      {{if not $metrics.TopTenants}}<div class="cell-muted">Sem pagamentos registrados.</div>{{end}}
+      {{range $metrics.TopTenants}}
+        <div class="bar-row" style="grid-template-columns: 1fr auto; margin-bottom: 0.4rem;">
+          <div>{{.Name}}</div>
+          <div class="bar-value">{{money .PaidTotal}} <span class="cell-muted">({{.Receipts}})</span></div>
+        </div>
+      {{end}}
+    </section>
+  </div>
+</div>
+{{end}}

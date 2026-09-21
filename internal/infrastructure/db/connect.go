@@ -32,14 +32,6 @@ const (
 // defaultDBFile é o nome do arquivo usado quando não há DATABASE_URL.
 const defaultDBFile = "aluxen.db"
 
-// Label devolve o rótulo do dialeto usado em /api/health e /api/info.
-func (d Dialect) Label() string {
-	if d == DialectPostgres {
-		return "postgres (pgx)"
-	}
-	return "sqlite (modernc)"
-}
-
 // Store é a conexão aberta com todos os repositórios do sistema. Os campos de
 // repositório são as portas de domínio; quem consome o banco depende apenas
 // delas (o composition root monta application.Repositories a partir daqui).
@@ -53,6 +45,7 @@ type Store struct {
 	Receipts   domain.ReceiptRepository
 	Settings   domain.SettingRepository
 	Audit      domain.AuditRepository
+	WhatsApp   domain.WhatsAppMessageRepository
 
 	db   *sql.DB
 	path string
@@ -127,6 +120,7 @@ func newStore(dialect Dialect, sqlDB *sql.DB, target string) *Store {
 		store.Receipts = postgres.NewReceipts(sqlDB)
 		store.Settings = postgres.NewSettings(sqlDB)
 		store.Audit = postgres.NewAudit(sqlDB)
+		store.WhatsApp = postgres.NewWhatsAppMessages(sqlDB)
 		return store
 	}
 
@@ -138,6 +132,7 @@ func newStore(dialect Dialect, sqlDB *sql.DB, target string) *Store {
 	store.Receipts = sqlite.NewReceipts(sqlDB)
 	store.Settings = sqlite.NewSettings(sqlDB)
 	store.Audit = sqlite.NewAudit(sqlDB)
+	store.WhatsApp = sqlite.NewWhatsAppMessages(sqlDB)
 	return store
 }
 

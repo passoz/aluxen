@@ -1,0 +1,183 @@
+{{define "settings.html"}}{{template "head" .}}
+<div class="app-shell">
+  {{template "sidebar" .}}
+  <main class="page">
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1 class="page-title">Configurações</h1>
+        <p class="subtitle">Dados do locador, endereço público, WhatsApp e senha de acesso.</p>
+      </div>
+    </div>
+
+    <div id="toast-host" class="toast-host"></div>
+
+    {{with .Data}}
+    {{if .Forced}}
+      <div class="card" style="max-width: 560px; margin: 0 auto 1rem; padding: 1rem 1.25rem; border-left: 4px solid var(--warning);">
+        <strong>Troca de senha obrigatória.</strong>
+        <p class="subtitle" style="margin: 0.35rem 0 0;">
+          Esta instância ainda usa a senha padrão. Defina uma senha própria para liberar o painel.
+        </p>
+      </div>
+    {{end}}
+
+    <div class="card stack-lg" style="max-width: 560px; margin: 0 auto 2rem;">
+      {{if .Message}}<div class="success">{{.Message}}</div>{{end}}
+
+      <section class="stack">
+        <h2 style="font-size: 1.05rem; margin: 0;">Dados do locador</h2>
+        <p class="subtitle" style="margin: 0;">Aparecem no cabeçalho dos recibos e nas cláusulas do contrato.</p>
+        <form method="post" action="/settings" class="stack" data-native>
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="intent" value="save-landlord">
+          <div class="form-group">
+            <label for="name">Nome</label>
+            <input id="name" name="name" type="text" value="{{.View.LandlordName}}" required>
+          </div>
+          <div class="form-group">
+            <label for="cpf">CPF</label>
+            <input id="cpf" name="cpf" type="text" value="{{.View.LandlordCPF}}" inputmode="numeric" data-mask="cpf">
+          </div>
+          <div class="form-group">
+            <label for="email">E-mail</label>
+            <input id="email" name="email" type="email" value="{{.View.LandlordEmail}}">
+          </div>
+          <button type="submit" class="btn btn-primary">Salvar dados</button>
+        </form>
+      </section>
+
+      <section class="stack">
+        <h2 style="font-size: 1.05rem; margin: 0;">URL pública do sistema</h2>
+        <p class="subtitle" style="margin: 0;">
+          Base dos QR codes e dos links de validação impressos nos documentos.
+          Em uso agora: <strong>{{.View.ResolvedURL}}</strong>
+        </p>
+        <form method="post" action="/settings" class="stack" data-native>
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="intent" value="save-app-url">
+          <div class="form-group">
+            <label for="app_url">Endereço</label>
+            <input id="app_url" name="app_url" type="url" placeholder="https://aluxen.exemplo.com" value="{{.View.AppURL}}">
+          </div>
+          <button type="submit" class="btn btn-primary">Salvar URL</button>
+        </form>
+      </section>
+
+      <section class="stack">
+        <h2 style="font-size: 1.05rem; margin: 0;">WhatsApp</h2>
+        <p class="subtitle" style="margin: 0;">
+          Canal de envio de recibos e contratos. O envio por link direto (wa.me) funciona sempre.
+        </p>
+        <div id="whatsapp-status" class="stack" style="gap: 0.5rem;">
+          <div class="cell-muted">Consultando estado…</div>
+        </div>
+        <div class="row-actions" style="justify-content: flex-start;">
+          <button type="button" class="btn btn-sm btn-outline" data-whatsapp="start">Conectar</button>
+          <button type="button" class="btn btn-sm btn-outline" data-whatsapp="cancel">Cancelar pareamento</button>
+          <button type="button" class="btn btn-sm btn-outline" data-whatsapp="logout">Desconectar</button>
+        </div>
+        <div id="whatsapp-qr"></div>
+      </section>
+
+      <section class="stack">
+        <h2 style="font-size: 1.05rem; margin: 0;">Alterar senha</h2>
+        <form method="post" action="/settings" class="stack" data-native>
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <input type="hidden" name="intent" value="change-password">
+          <div class="form-group">
+            <label for="current_password">Senha atual</label>
+            <input id="current_password" name="current_password" type="password" required autocomplete="current-password">
+          </div>
+          <div class="form-group">
+            <label for="new_password">Nova senha</label>
+            <input id="new_password" name="new_password" type="password" required minlength="6" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label for="confirm_password">Confirmar nova senha</label>
+            <input id="confirm_password" name="confirm_password" type="password" required minlength="6" autocomplete="new-password">
+          </div>
+          <button type="submit" class="btn btn-primary">Alterar senha</button>
+        </form>
+      </section>
+
+      <section class="stack">
+        <h2 style="font-size: 1.05rem; margin: 0;">Dados e backup</h2>
+        <p class="subtitle" style="margin: 0;">Exporte um retrato completo dos cadastros ou restaure de um arquivo.</p>
+        <div class="row-actions" style="justify-content: flex-start; gap: 0.5rem; flex-wrap: wrap;">
+          <a class="btn btn-sm btn-secondary" href="/export">Exportar backup</a>
+          <a class="btn btn-sm btn-outline" href="/dashboard?tab=history">Ver histórico</a>
+        </div>
+        <form method="post" action="/import" enctype="multipart/form-data" class="stack" data-native>
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+          <div class="form-group">
+            <label for="file">Importar backup (JSON)</label>
+            <input id="file" name="file" type="file" accept="application/json" required>
+          </div>
+          <button type="submit" class="btn btn-sm btn-secondary">Importar</button>
+        </form>
+      </section>
+    </div>
+    {{end}}
+  </main>
+</div>
+<script>
+  // Estado do WhatsApp: consulta o status, mostra o QR do pareamento e dispara
+  // as ações. O token CSRF vai no corpo das requisições mutantes.
+  (function () {
+    var token = "{{.CSRFToken}}";
+    var statusHost = document.getElementById('whatsapp-status');
+    var qrHost = document.getElementById('whatsapp-qr');
+    if (!statusHost) return;
+
+    function render(state) {
+      var logged = state && state.isLoggedIn;
+      statusHost.innerHTML = '';
+      var line = document.createElement('div');
+      line.textContent = logged ? 'Conectado.' : (state && state.chromiumAvailable ? 'Desconectado.' : 'Canal não configurado nesta instância.');
+      statusHost.appendChild(line);
+      if (state && state.hasQRCode && state.qrCode) {
+        qrHost.innerHTML = '<img alt="QR de pareamento" style="max-width:220px" src="data:image/png;base64,' + state.qrCode + '">';
+      } else {
+        qrHost.innerHTML = '';
+      }
+    }
+
+    function refresh() {
+      fetch('/api/whatsapp/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (response) { return response.json(); })
+        .then(function (state) {
+          render(state);
+          if (state && state.hasQRCode) {
+            fetch('/api/whatsapp/login/status', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+              .then(function (response) { return response.json(); })
+              .then(function (payload) {
+                if (payload && payload.state) {
+                  render({ isLoggedIn: false, hasQRCode: !!payload.state.qrCode, qrCode: payload.state.qrCode, chromiumAvailable: true });
+                }
+              })
+              .catch(function () {});
+          }
+        })
+        .catch(function () { statusHost.textContent = 'Não foi possível consultar o canal.'; });
+    }
+
+    document.querySelectorAll('[data-whatsapp]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var action = button.getAttribute('data-whatsapp');
+        var path = action === 'start' ? '/api/whatsapp/login/start'
+          : action === 'cancel' ? '/api/whatsapp/login/cancel'
+          : '/api/whatsapp/logout';
+        fetch(path, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', Accept: 'application/json' },
+          body: 'csrf_token=' + encodeURIComponent(token)
+        }).then(function () { window.setTimeout(refresh, 600); });
+      });
+    });
+
+    refresh();
+    window.setInterval(refresh, 5000);
+  })();
+</script>
+{{template "foot" .}}{{end}}

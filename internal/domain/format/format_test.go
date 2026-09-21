@@ -4,10 +4,10 @@ import "testing"
 
 func TestFormatDateBRAcceptsBothTimestampShapes(t *testing.T) {
 	cases := map[string]string{
-		"2026-09-10":            "10/09/2026",
-		"2026-09-10T14:30":      "10/09/2026",
-		"2026-09-10 14:30:00":   "10/09/2026",
-		"":                      "-",
+		"2026-09-10":          "10/09/2026",
+		"2026-09-10T14:30":    "10/09/2026",
+		"2026-09-10 14:30:00": "10/09/2026",
+		"":                    "-",
 	}
 
 	for value, want := range cases {
@@ -19,11 +19,11 @@ func TestFormatDateBRAcceptsBothTimestampShapes(t *testing.T) {
 
 func TestFormatDateTimeBR(t *testing.T) {
 	cases := map[string]string{
-		"2026-09-10T14:30":          "10/09/2026 14:30",
-		"2026-09-10 14:30:00":       "10/09/2026 14:30",
-		"2026-09-10":                "10/09/2026",
-		"2026-09-10T09:05:12.123":   "10/09/2026 09:05",
-		"":                          "-",
+		"2026-09-10T14:30":        "10/09/2026 14:30",
+		"2026-09-10 14:30:00":     "10/09/2026 14:30",
+		"2026-09-10":              "10/09/2026",
+		"2026-09-10T09:05:12.123": "10/09/2026 09:05",
+		"":                        "-",
 	}
 
 	for value, want := range cases {
@@ -35,10 +35,10 @@ func TestFormatDateTimeBR(t *testing.T) {
 
 func TestFormatCurrency(t *testing.T) {
 	cases := map[float64]string{
-		0:       "R$ 0,00",
-		0.5:     "R$ 0,50",
-		2500:    "R$ 2.500,00",
-		2500.5:  "R$ 2.500,50",
+		0:          "R$ 0,00",
+		0.5:        "R$ 0,50",
+		2500:       "R$ 2.500,00",
+		2500.5:     "R$ 2.500,50",
 		1234567.89: "R$ 1.234.567,89",
 	}
 

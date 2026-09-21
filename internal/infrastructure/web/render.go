@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"html/template"
 	"io/fs"
+	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/passoz/aluxen/internal/domain"
 	"github.com/passoz/aluxen/internal/domain/format"
@@ -36,6 +38,10 @@ type PageData struct {
 	AppURL    string
 	Theme     string
 
+	// Content é o HTML já renderizado do conteúdo principal (as abas do painel
+	// são renderizadas separadamente e injetadas aqui).
+	Content template.HTML
+
 	// Data é o contexto específico da página (tipado por template).
 	Data any
 }
@@ -50,9 +56,12 @@ func NewRenderer() (*Renderer, error) {
 		"leaseStatus":  func(status string) string { return domain.LeaseStatusLabel(domain.LeaseStatus(status)) },
 		"category":     func(category string) string { return domain.ReceiptCategoryLabel(domain.ReceiptCategory(category)) },
 		"receiptState": func(status string) string { return domain.ReceiptStatusLabel(domain.ReceiptStatus(status)) },
-		"entityLabel":  domain.EntityLabel,
-		"actionLabel":  func(action string) string { return domain.AuditActionMetaFor(action).Label },
-		"originLabel":  func(origin string) string { return domain.AuditOriginLabel(domain.AuditOrigin(origin)) },
+		"receiptStatus": func(receipt domain.Receipt) string {
+			return domain.ReceiptStatusLabel(domain.ReceiptStatusOf(receipt, time.Now()))
+		},
+		"entityLabel": domain.EntityLabel,
+		"actionLabel": func(action string) string { return domain.AuditActionMetaFor(action).Label },
+		"originLabel": func(origin string) string { return domain.AuditOriginLabel(domain.AuditOrigin(origin)) },
 		"metadataLabel": func(key string) string {
 			return domain.MetadataLabel(key)
 		},
@@ -71,6 +80,33 @@ func NewRenderer() (*Renderer, error) {
 				return template.JS("null")
 			}
 			return template.JS(encoded)
+		},
+		"percent": func(value, total float64) int {
+			if total <= 0 {
+				return 0
+			}
+			percentage := int(math.Round(value / total * 100))
+			if percentage < 0 {
+				return 0
+			}
+			if percentage > 100 {
+				return 100
+			}
+			return percentage
+		},
+		"statusColor": func(status string) string {
+			switch status {
+			case string(domain.ReceiptStatusPaid):
+				return "#10b981"
+			case string(domain.ReceiptStatusPartial):
+				return "#3b82f6"
+			case string(domain.ReceiptStatusDue):
+				return "#f59e0b"
+			case string(domain.ReceiptStatusOverdue):
+				return "#ef4444"
+			default:
+				return "#999999"
+			}
 		},
 		"hasPrefix": strings.HasPrefix,
 		"upper":     strings.ToUpper,
@@ -103,6 +139,21 @@ func (r *Renderer) Render(w http.ResponseWriter, status int, page string, data *
 		return fmt.Errorf("escrever resposta de %s: %w", page, err)
 	}
 	return nil
+}
+
+// Has informa se o template existe. Permite que áreas independentes publiquem
+// suas abas sem quebrar a renderização das demais.
+func (r *Renderer) Has(name string) bool {
+	return r.templates.Lookup(name) != nil
+}
+
+// Execute renderiza um template (aba, modal, linha de tabela) e devolve o HTML.
+func (r *Renderer) Execute(name string, data any) (template.HTML, error) {
+	var buffer bytes.Buffer
+	if err := r.templates.ExecuteTemplate(&buffer, name, data); err != nil {
+		return "", fmt.Errorf("renderizar %s: %w", name, err)
+	}
+	return template.HTML(buffer.String()), nil
 }
 
 // StaticHandler serve os arquivos embutidos de static/.

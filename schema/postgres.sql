@@ -106,3 +106,25 @@ CREATE TABLE audit_logs (
 CREATE INDEX audit_logs_created_at_idx ON audit_logs (created_at);
 CREATE INDEX audit_logs_entity_idx ON audit_logs (entity, entity_id);
 CREATE INDEX audit_logs_action_idx ON audit_logs (action);
+
+-- Canal bidirecional do WhatsApp (WAHA): cada mensagem recebida pelo webhook
+-- entra vinculada ao locatário pelo telefone (`tenant_id` nulo enquanto não
+-- houver titular com aquele número). `external_id` é o id da mensagem no
+-- WhatsApp e é único, o que torna a reentrega do webhook idempotente.
+CREATE TABLE whatsapp_messages (
+  id text PRIMARY KEY NOT NULL,
+  created_at text NOT NULL,
+  direction text NOT NULL,
+  chat_id text NOT NULL,
+  phone text NOT NULL,
+  tenant_id text,
+  body text NOT NULL,
+  status text NOT NULL,
+  external_id text,
+  metadata text,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON UPDATE NO ACTION ON DELETE SET NULL
+);
+
+CREATE UNIQUE INDEX whatsapp_messages_external_id_idx ON whatsapp_messages (external_id);
+CREATE INDEX whatsapp_messages_tenant_idx ON whatsapp_messages (tenant_id, created_at);
+CREATE INDEX whatsapp_messages_created_at_idx ON whatsapp_messages (created_at);

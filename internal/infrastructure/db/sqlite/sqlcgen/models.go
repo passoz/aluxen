@@ -93,3 +93,16 @@ type User struct {
 	PasswordChangedAt sql.NullString `json:"password_changed_at"`
 	CreatedAt         string         `json:"created_at"`
 }
+
+type WhatsappMessage struct {
+	ID         string         `json:"id"`
+	CreatedAt  string         `json:"created_at"`
+	Direction  string         `json:"direction"`
+	ChatID     string         `json:"chat_id"`
+	Phone      string         `json:"phone"`
+	TenantID   sql.NullString `json:"tenant_id"`
+	Body       string         `json:"body"`
+	Status     string         `json:"status"`
+	ExternalID sql.NullString `json:"external_id"`
+	Metadata   sql.NullString `json:"metadata"`
+}

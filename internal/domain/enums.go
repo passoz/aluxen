@@ -99,6 +99,34 @@ const (
 	AuditOriginJob    AuditOrigin = "job"
 )
 
+// WhatsAppDirection é o sentido da mensagem (`whatsapp_messages.direction`).
+type WhatsAppDirection string
+
+const (
+	// WhatsAppDirectionIn é a mensagem que o locatário mandou para nós.
+	WhatsAppDirectionIn WhatsAppDirection = "in"
+	// WhatsAppDirectionOut é a mensagem que nós mandamos (eco do nosso envio).
+	WhatsAppDirectionOut WhatsAppDirection = "out"
+)
+
+// Situações gravadas em `whatsapp_messages.status`.
+const (
+	WhatsAppStatusReceived = "received"
+	WhatsAppStatusSent     = "sent"
+)
+
+// WhatsAppDirectionLabel devolve o rótulo em português do sentido da mensagem.
+func WhatsAppDirectionLabel(direction WhatsAppDirection) string {
+	switch direction {
+	case WhatsAppDirectionIn:
+		return "Recebida"
+	case WhatsAppDirectionOut:
+		return "Enviada"
+	default:
+		return string(direction)
+	}
+}
+
 // AuditOriginLabel devolve o rótulo em português da origem.
 func AuditOriginLabel(origin AuditOrigin) string {
 	switch origin {

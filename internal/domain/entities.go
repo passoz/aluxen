@@ -123,6 +123,23 @@ type AuditLog struct {
 	RequestID   *string
 }
 
+// WhatsAppMessage é uma mensagem trocada pelo WhatsApp (tabela
+// `whatsapp_messages`): recebida pelo webhook do WAHA ou enviada por nós.
+// TenantID fica nulo enquanto o telefone não casa com nenhum locatário, e
+// ExternalID é o id da mensagem no WhatsApp (chave de idempotência do webhook).
+type WhatsAppMessage struct {
+	ID         string
+	CreatedAt  string
+	Direction  WhatsAppDirection
+	ChatID     string
+	Phone      string
+	TenantID   *string
+	Body       string
+	Status     string
+	ExternalID *string
+	Metadata   *string
+}
+
 // StrPtr devolve um ponteiro para s (auxiliar de montagem de entidades).
 func StrPtr(s string) *string { return &s }
 

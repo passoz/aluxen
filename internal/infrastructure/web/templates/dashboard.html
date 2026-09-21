@@ -1,0 +1,34 @@
+{{define "dashboard.html"}}{{template "head" .}}
+<div class="app-shell">
+  {{template "sidebar" .}}
+  <main class="page">
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1 class="page-title">Aluxen</h1>
+        <p class="subtitle">Gestão de locação, recibos e prova de autenticidade.</p>
+      </div>
+      <div class="auth-actions">
+        <span class="cell-muted">{{with .Data}}{{with .User}}{{.Username}}{{end}}{{end}}</span>
+      </div>
+    </div>
+
+    <div id="sync-banner" class="sync-banner" hidden></div>
+
+    <nav class="tabs" aria-label="Seções do painel">
+      <a class="tab-link{{if eq .Page "dashboard"}} active{{end}}" href="/dashboard?tab=dashboard">Visão geral</a>
+      <a class="tab-link{{if eq .Page "tenants"}} active{{end}}" href="/dashboard?tab=tenants">Inquilinos</a>
+      <a class="tab-link{{if eq .Page "properties"}} active{{end}}" href="/dashboard?tab=properties">Imóveis</a>
+      <a class="tab-link{{if eq .Page "leases"}} active{{end}}" href="/dashboard?tab=leases">Contratos</a>
+      <a class="tab-link{{if eq .Page "receipts"}} active{{end}}" href="/dashboard?tab=receipts">Recibos</a>
+      <a class="tab-link{{if eq .Page "history"}} active{{end}}" href="/dashboard?tab=history">Histórico</a>
+      <a class="tab-link{{if eq .Page "metrics"}} active{{end}}" href="/dashboard?tab=metrics">Indicadores</a>
+    </nav>
+
+    <div id="toast-host" class="toast-host"></div>
+
+    {{with .Data}}{{if .Toast}}<div class="success">{{.Toast}}</div>{{end}}{{end}}
+
+    {{.Content}}
+  </main>
+</div>
+{{template "foot" .}}{{end}}
