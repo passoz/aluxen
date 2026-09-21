@@ -453,13 +453,13 @@ func askOcupacao(ctx context.Context, deps Deps, arguments map[string]any) (any,
 	summary := fmt.Sprintf("%d contrato(s) ativo(s) hoje, %d de %d imóvel(is) vago(s); receita mensal esperada %s.",
 		active, vacant, len(properties), format.FormatCurrency(expected))
 	return map[string]any{
-		"activeLeases":      active,
-		"vacantProperties":  vacant,
-		"properties":        len(properties),
-		"expectedMonthly":   expected,
-		"expectedLabel":     format.FormatCurrency(expected),
-		"occupancy":         rows,
-		"referenceDay":      today,
+		"activeLeases":     active,
+		"vacantProperties": vacant,
+		"properties":       len(properties),
+		"expectedMonthly":  expected,
+		"expectedLabel":    format.FormatCurrency(expected),
+		"occupancy":        rows,
+		"referenceDay":     today,
 	}, summary, nil
 }
 

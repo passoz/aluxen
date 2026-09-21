@@ -4,7 +4,7 @@
 .gitignore
 .gitattributes
 
-# Environment files and secrets (CRITICAL: prevents leaking local credentials)
+# Ambiente e segredos (crítico: não vazar credencial local para a imagem)
 .env
 .env.*
 !.env.example
@@ -17,25 +17,25 @@
 id_rsa*
 id_ed25519*
 
-# Docker and Compose configurations
+# Docker e Compose
 docker-compose*.yml
 Dockerfile*
 .dockerignore
 
-# Documentation and project notes
+# Documentação e notas de projeto
 README.md
 *.md
 docs/
 .assets/
+.piwerness/
+.todo/
 
-# Tests and fixtures (contains test credentials and personal mock data)
+# Testes (o binário não precisa deles)
 test/
 tests/
-__tests__/
-*.test.*
-*.spec.*
+**/*_test.go
 
-# Local SQLite databases, journals, dumps, and backups
+# Bancos SQLite locais, journals, dumps e backups
 *.db
 *.db-journal
 *.db-shm
@@ -45,12 +45,11 @@ __tests__/
 *.db3
 *.bak
 *.backup
-/*.sql
 *.dump
 data/
 aluxen-backup*.json
 
-# WhatsApp profiles, browser sessions and tokens
+# Perfis e sessões de navegador (legado do robô headless)
 .whatsapp-profile
 .whatsapp-profile/
 .profile
@@ -59,23 +58,21 @@ whatsapp-session/
 **/.whatsapp*
 **/.profile*
 
-# Dependencies and caches
-node_modules
+# Caches e artefatos de build
 .cache
 tmp
 logs
 *.log
-*.tsbuildinfo
 coverage
+coverage.out
+coverage.html
 out
+/bin/
 
-# OS and IDE configuration
+# Sistema e IDE
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# Tooling configs
-drizzle.config.ts

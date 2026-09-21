@@ -53,10 +53,10 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":         true,
 			"user":       map[string]any{"id": user.ID, "username": user.Username},
-			"tenants":    snapshot.Tenants,
-			"properties": snapshot.Properties,
-			"leases":     snapshot.Leases,
-			"receipts":   snapshot.Receipts,
+			"tenants":    tenantsJSON(snapshot.Tenants),
+			"properties": propertiesJSON(snapshot.Properties),
+			"leases":     leasesJSON(snapshot.Leases),
+			"receipts":   receiptsJSON(snapshot.Receipts),
 			"metrics":    snapshot.Metrics,
 		})
 		return

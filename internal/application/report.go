@@ -164,8 +164,8 @@ func MonthlyReport(ctx context.Context, deps Deps, year, month int) (*ReportPayl
 		}
 	}
 
-	for _, count := range payload.Counts {
-		count.AmountLabel = format.FormatCurrency(count.Amount)
+	for index := range payload.Counts {
+		payload.Counts[index].AmountLabel = format.FormatCurrency(payload.Counts[index].Amount)
 	}
 	payload.ByProperty = reportGroupsSorted(properties)
 	payload.ByTenant = reportGroupsSorted(tenants)

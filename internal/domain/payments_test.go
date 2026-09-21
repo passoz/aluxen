@@ -70,10 +70,10 @@ func TestEvaluatePaymentMatchAcceptsLandlordCPFAndPartialName(t *testing.T) {
 	receipt := &Receipt{ID: "r", DueDate: "2026-09-10", Amount: 1500}
 
 	cases := map[string]string{
-		"CPF formatado":    "111.222.333-44",
-		"CPF em dígitos":   "11122233344",
-		"nome completo":    "Locador Teste",
-		"nome em maiúscula": "LOCADOR TESTE",
+		"CPF formatado":          "111.222.333-44",
+		"CPF em dígitos":         "11122233344",
+		"nome completo":          "Locador Teste",
+		"nome em maiúscula":      "LOCADOR TESTE",
 		"primeiro e último nome": "Locador da Silva Teste",
 	}
 
@@ -97,12 +97,12 @@ func TestEvaluatePaymentMatchAcceptsLandlordCPFAndPartialName(t *testing.T) {
 func TestEvaluatePaymentMatchIgnoresConfidenceWhenLimitIsZero(t *testing.T) {
 	today := time.Date(2026, 9, 21, 12, 0, 0, 0, time.Local)
 	result := EvaluatePaymentMatch(PaymentMatchInput{
-		Extracted:    PaymentExtraction{Amount: 1000, Date: "2026-09-10", Payee: "Locador", Confidence: 0.1},
-		Receipt:      &Receipt{ID: "r", DueDate: "2026-09-10", Amount: 1000},
-		LandlordName: "Locador",
-		Today:        today,
+		Extracted:     PaymentExtraction{Amount: 1000, Date: "2026-09-10", Payee: "Locador", Confidence: 0.1},
+		Receipt:       &Receipt{ID: "r", DueDate: "2026-09-10", Amount: 1000},
+		LandlordName:  "Locador",
+		Today:         today,
 		MinConfidence: 0,
-		WindowDays:   10,
+		WindowDays:    10,
 	})
 	if !result.Approved {
 		t.Fatalf("sem limite de confiança a decisão é pelas demais regras: %s", result.Reason)

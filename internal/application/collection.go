@@ -47,6 +47,7 @@ type CollectionCandidate struct {
 	ReceiptID      string                 `json:"receiptId"`
 	TenantID       string                 `json:"tenantId"`
 	TenantName     string                 `json:"tenantName"`
+	PropertyName   string                 `json:"propertyName"`
 	Phone          string                 `json:"phone"`
 	DueDate        string                 `json:"dueDate"`
 	Amount         float64                `json:"amount"`
@@ -242,6 +243,7 @@ func collectionCandidate(ctx context.Context, deps Deps, receipt *domain.Receipt
 		ReceiptID:    receipt.ID,
 		TenantID:     domain.Str(receipt.TenantID),
 		TenantName:   receipt.TenantName,
+		PropertyName: receipt.PropertyName,
 		DueDate:      receipt.DueDate,
 		Amount:       receipt.Amount,
 		DaysLate:     lateDays(receipt.DueDate, today),

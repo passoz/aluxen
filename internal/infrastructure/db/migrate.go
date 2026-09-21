@@ -31,13 +31,13 @@ var gooseMu sync.Mutex
 //     perde;
 //  2. o schema atual é comparado com o que cada migração embutida deve produzir:
 //     as migrações que já estão refletidas na base são apenas registradas como
-//     aplicadas (o SQLite não tem `ADD COLUMN IF NOT EXISTS`, e reaplicar um
-//     `ADD COLUMN` derruba o boot);
+//     aplicadas, porque reaplicar um `ADD COLUMN` derruba o boot — nenhum dos
+//     dois dialetos tem `ADD COLUMN IF NOT EXISTS`;
 //  3. o goose aplica o que falta.
 //
-// O passo 2 existe porque o produto roda por instância: restaurar um dump numa
-// base vazia deixa o schema final presente e a tabela de controle do goose
-// ausente.
+// O passo 2 vale para os dois dialetos e existe porque o produto roda por
+// instância: restaurar um dump numa base vazia (ou copiar o volume) deixa o
+// schema final presente e a tabela de controle do goose ausente.
 func runMigrations(ctx context.Context, sqlDB *sql.DB, dialect Dialect) error {
 	reference, err := migrationSnapshots(dialect)
 	if err != nil {
@@ -78,13 +78,9 @@ func applyGoose(ctx context.Context, sqlDB *sql.DB, dialect Dialect) error {
 // prepareGoose aponta o goose para o SQL embutido do dialeto. Chamar com gooseMu
 // travado.
 func prepareGoose(dialect Dialect) error {
-	dir, name := "sqlite", "sqlite"
-	if dialect == DialectPostgres {
-		dir, name = "postgres", "postgres"
-	}
-	embedded, err := fs.Sub(migrations.FS, dir)
+	embedded, name, err := migrationSource(dialect)
 	if err != nil {
-		return fmt.Errorf("abrir migrações embutidas de %s: %w", dir, err)
+		return err
 	}
 	goose.SetBaseFS(embedded)
 	if err := goose.SetDialect(name); err != nil {

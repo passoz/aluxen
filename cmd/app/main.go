@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/passoz/aluxen/internal/application"
+	"github.com/passoz/aluxen/internal/domain"
+	"github.com/passoz/aluxen/internal/infrastructure/ai"
 	"github.com/passoz/aluxen/internal/infrastructure/authz"
 	"github.com/passoz/aluxen/internal/infrastructure/buildinfo"
 	"github.com/passoz/aluxen/internal/infrastructure/config"
@@ -132,6 +134,25 @@ func run() error {
 	}
 	deps.Attachments = attachments
 
+	// Leitura assistida por IA: uma instância sem provedor configurado continua
+	// subindo; o que depende de IA cai na revisão humana com motivo.
+	if cfg.AIAPIURL != "" && cfg.AIAPIKey != "" {
+		reader := ai.NewClient(ai.Config{
+			BaseURL: cfg.AIAPIURL,
+			APIKey:  cfg.AIAPIKey,
+			Model:   cfg.AIModel,
+		})
+		deps.Proofs = reader
+		deps.Intakes = reader
+		deps.Chat = reader
+		deps.Opts.AIEnabled = true
+	}
+	deps.Opts.AIConfidenceThreshold = cfg.AIConfidenceThreshold
+
+	worker := application.NewWorker(deps, application.WorkerOptions{})
+	worker.Register(domain.JobKindPaymentProof, application.ProcessPaymentProofJob)
+	worker.Register(domain.JobKindDocumentIntake, application.ProcessDocumentIntakeJob)
+
 	whatsappRuntime := whatsapp.NewRuntime(
 		whatsapp.ClientConfig{BaseURL: cfg.WahaAPIURL, APIKey: cfg.WahaAPIKey, Session: cfg.WahaSession},
 		deps.Clock, deps.IDs, logger, whatsapp.LoginConfig{},
@@ -166,6 +187,17 @@ func run() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	if recovered, err := worker.RecoverOrphans(ctx); err != nil {
+		logger.Warn("não foi possível recuperar jobs órfãos", "err", err)
+	} else if recovered > 0 {
+		logger.Info("jobs órfãos devolvidos para a fila", "count", recovered)
+	}
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		worker.Run(ctx)
+	}()
+
 	logger.Info("servidor iniciado",
 		"addr", server.Addr, "dialect", store.Dialect, "database", store.Path(),
 		"version", build.Version, "env", cfg.AppEnv)
@@ -185,6 +217,13 @@ func run() error {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		logger.Error("encerramento não completou", "err", err)
 		_ = server.Close()
+	}
+	// O worker drena o job em execução antes de sair (o cancelamento do contexto
+	// já aconteceu em stop()).
+	select {
+	case <-workerDone:
+	case <-time.After(20 * time.Second):
+		logger.Warn("worker não encerrou no tempo esperado")
 	}
 	logger.Info("servidor encerrado")
 	return nil

@@ -579,6 +579,9 @@
     if (!display) return;
     var withTime = field.hasAttribute('data-datetime');
     var parsed = parseDateValue(field.value, withTime);
+    // O servidor grava/lê ISO (`YYYY-MM-DD` ou `YYYY-MM-DDTHH:mm`); o template
+    // pode entregar a data em pt-BR (func `date`) — normaliza antes de exibir.
+    if (parsed) field.value = formatIsoDate(parsed, withTime);
     var text = display.firstChild;
     if (text) text.textContent = parsed ? formatDisplayDate(parsed, withTime) : 'Selecione...';
     display.classList.toggle('filled', Boolean(parsed));
@@ -1925,7 +1928,7 @@
     var dateTrigger = target.closest('.date-picker-display');
     if (dateTrigger) {
       event.preventDefault();
-      var dateField = dateTrigger.parentNode.querySelector('input[data-datepicker]');
+      var dateField = dateTrigger.parentNode.querySelector('input[data-datepicker], input[data-datetime]');
       if (dateField) openPicker(dateField);
       return;
     }

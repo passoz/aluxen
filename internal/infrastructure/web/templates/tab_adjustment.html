@@ -1,0 +1,664 @@
+{{define "tab_adjustment"}}
+{{$adjust := .Adjustments}}
+<section class="stack-lg" id="adjustment-section">
+  <input type="hidden" id="adjustment-csrf" value="{{$.CSRFToken}}">
+
+  <div class="section-header">
+    <h2>Reajuste assistido</h2>
+    <div class="auth-actions">
+      <span class="cell-muted">Índices aceitos: IGP-M e IPCA</span>
+    </div>
+  </div>
+
+  <p class="cell-muted">
+    O cálculo é do sistema: novo valor = valor atual × (1 + índice/100), arredondado a duas casas.
+    A leitura dos números e a redação da notificação podem contar com a IA, mas ela nunca calcula o
+    valor nem escolhe a vigência — o percentual, o valor e a data abaixo são os que vão para o contrato.
+  </p>
+
+  <div class="error" id="adjustment-error" hidden></div>
+  <div class="success" id="adjustment-success" hidden></div>
+
+  <section class="card" style="padding: 1.25rem;">
+    <div class="section-header">
+      <h2 style="font-size: 1.05rem; margin: 0;">Contratos</h2>
+      <span class="cell-muted">Valor atual e histórico de reajustes</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Inquilino / imóvel</th>
+            <th>Valor atual</th>
+            <th>Vigência do contrato</th>
+            <th>Situação</th>
+            <th>Último reajuste</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $lease := $adjust.Leases}}
+            <tr id="adjustment-lease-{{$lease.ID}}" data-adjustment-row="{{$lease.ID}}">
+              <td>
+                {{if $lease.TenantName}}{{$lease.TenantName}}{{else}}<span class="cell-muted">Sem titular</span>{{end}}
+                <span class="cell-muted">{{$lease.PropertyName}}</span>
+              </td>
+              <td data-adjustment-current="{{$lease.ID}}">{{$lease.RentAmountLabel}}</td>
+              <td class="cell-nowrap">{{date $lease.StartDate}} – {{date $lease.EndDate}}</td>
+              <td>{{$lease.StatusLabel}}</td>
+              <td>
+                {{if $lease.History}}
+                  {{with index $lease.History 0}}
+                    <span class="cell-nowrap">{{.AppliedAtLabel}}</span>
+                    <span class="cell-muted">{{.PreviousAmountLabel}} → {{.NewAmountLabel}}</span>
+                  {{end}}
+                {{else}}
+                  <span class="cell-muted">Nunca reajustado</span>
+                {{end}}
+              </td>
+              <td class="row-actions">
+                {{if $lease.Adjustable}}
+                  <button type="button" class="btn btn-sm btn-primary"
+                          data-adjustment-select="{{$lease.ID}}"
+                          data-adjustment-label='{{json (printf "%s · %s" (or $lease.TenantName "Sem titular") $lease.PropertyName)}}'
+                          data-adjustment-rent="{{$lease.RentAmount}}"
+                          data-adjustment-phone="{{$lease.TenantPhone}}">Simular</button>
+                {{else}}
+                  <span class="cell-muted">Não reajustável</span>
+                {{end}}
+                {{if $lease.History}}
+                  <button type="button" class="btn btn-sm btn-outline"
+                          data-adjustment-history='{{json $lease.History}}'
+                          data-adjustment-history-label='{{json (printf "%s · %s" (or $lease.TenantName "Sem titular") $lease.PropertyName)}}'>Histórico</button>
+                {{end}}
+              </td>
+            </tr>
+          {{else}}
+            <tr>
+              <td colspan="6"><span class="cell-muted">Nenhum contrato cadastrado.</span></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="metrics-grid">
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Simulação</h2>
+      <form id="adjustment-form" method="post" action="/api/adjustment/preview" class="stack">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="lease_id" id="adjustment-lease-id">
+        <div class="form-group">
+          <label for="adjustment-contract">Contrato</label>
+          <input id="adjustment-contract" type="text" readonly placeholder="Escolha um contrato na lista">
+        </div>
+        <div class="form-group">
+          <label for="adjustment-index">Índice</label>
+          <select id="adjustment-index" name="index">
+            {{range $adjust.Indices}}<option value="{{.Value}}">{{.Label}}</option>{{end}}
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="adjustment-rate">Percentual (%)</label>
+          <input id="adjustment-rate" name="rate" type="text" inputmode="decimal" placeholder="Ex.: 4,5" required>
+        </div>
+        <div class="form-group">
+          <label for="adjustment-effective">Vigência</label>
+          <input id="adjustment-effective" name="effective_date" type="date" value="{{$adjust.Today}}" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Calcular prévia</button>
+      </form>
+    </section>
+
+    <section class="card" style="padding: 1.25rem;">
+      <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Prévia e notificação</h2>
+
+      <dl class="history-meta" id="adjustment-preview">
+        <div>
+          <dt>Valor atual</dt>
+          <dd id="adjustment-preview-previous">—</dd>
+        </div>
+        <div>
+          <dt>Percentual</dt>
+          <dd id="adjustment-preview-rate">—</dd>
+        </div>
+        <div>
+          <dt>Valor novo</dt>
+          <dd id="adjustment-preview-new">—</dd>
+        </div>
+        <div>
+          <dt>Vigência</dt>
+          <dd id="adjustment-preview-effective">—</dd>
+        </div>
+      </dl>
+
+      <button type="button" class="btn btn-danger" id="adjustment-apply" disabled>Aplicar reajuste</button>
+
+      <div class="stack" id="adjustment-notice-box" hidden style="margin-top: 1rem;">
+        <div class="form-group">
+          <label for="adjustment-notice">Notificação para enviar ao inquilino</label>
+          <textarea id="adjustment-notice" rows="12" readonly></textarea>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-sm btn-secondary" id="adjustment-copy">Copiar texto</button>
+          <button type="button" class="btn btn-sm btn-outline" id="adjustment-send" hidden>Enviar por WhatsApp</button>
+          <span class="cell-muted" id="adjustment-send-feedback"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" style="padding: 1.25rem;">
+    <div class="section-header">
+      <h2 style="font-size: 1.05rem; margin: 0;">Relatório do mês</h2>
+      <div class="filter-bar">
+        <div class="filter-field">
+          <label class="filter-label" for="adjustment-report-month">Competência</label>
+          <input id="adjustment-report-month" type="month" value="{{$adjust.MonthKey}}">
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary" id="adjustment-report-load">Atualizar</button>
+      </div>
+    </div>
+
+    <div class="metrics-grid" id="adjustment-report-totals">
+      <div class="card metric-card">
+        <div class="metric-label">Esperado no mês</div>
+        <div class="metric-value" id="adjustment-report-expected">—</div>
+        <div class="metric-sub" id="adjustment-report-receipts">—</div>
+      </div>
+      <div class="card metric-card">
+        <div class="metric-label">Recebido</div>
+        <div class="metric-value" id="adjustment-report-received">—</div>
+        <div class="metric-sub" id="adjustment-report-paid">—</div>
+      </div>
+      <div class="card metric-card">
+        <div class="metric-label">Em aberto</div>
+        <div class="metric-value" id="adjustment-report-open">—</div>
+        <div class="metric-sub">a vencer na competência</div>
+      </div>
+      <div class="card metric-card">
+        <div class="metric-label">Vencido</div>
+        <div class="metric-value" id="adjustment-report-overdue">—</div>
+        <div class="metric-sub">sem baixa registrada</div>
+      </div>
+    </div>
+
+    <div class="metrics-grid">
+      <section>
+        <h3 style="font-size: 1rem; margin: 1rem 0 0.5rem;">Por situação</h3>
+        <ul class="status-list" id="adjustment-report-status"></ul>
+      </section>
+      <section>
+        <h3 style="font-size: 1rem; margin: 1rem 0 0.5rem;">Por imóvel</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Imóvel</th><th>Lançamentos</th><th>Esperado</th><th>Recebido</th><th>Em aberto</th><th>Vencido</th></tr>
+            </thead>
+            <tbody id="adjustment-report-properties"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <h3 style="font-size: 1rem; margin: 1rem 0 0.5rem;">Por inquilino</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Inquilino</th><th>Lançamentos</th><th>Esperado</th><th>Recebido</th><th>Em aberto</th><th>Vencido</th></tr>
+        </thead>
+        <tbody id="adjustment-report-tenants"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" style="padding: 1.25rem;">
+    <h2 style="font-size: 1.05rem; margin: 0 0 1rem;">Pergunta em linguagem natural</h2>
+    <form id="adjustment-ask-form" method="post" action="/api/report/ask" class="stack">
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <div class="form-group">
+        <label for="adjustment-ask">Pergunta</label>
+        <input id="adjustment-ask" name="question" type="text" placeholder="Ex.: quanto recebi em setembro e quem está em atraso?" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Perguntar</button>
+    </form>
+    <p class="cell-muted" style="margin-top: 0.75rem;">
+      A resposta é montada por consultas do sistema (resumo do mês, recebidos, em aberto, inadimplentes e ocupação).
+      Pergunta fora dessas consultas é recusada — o assistente não inventa números.
+    </p>
+    <div id="adjustment-ask-answer" hidden></div>
+  </section>
+
+  <div class="modal-backdrop" id="adjustment-history-modal" hidden>
+    <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-label="Histórico de reajustes">
+      <div class="modal-header">
+        <h3 id="adjustment-history-title">Histórico de reajustes</h3>
+        <button type="button" class="btn btn-sm btn-secondary" data-adjustment-history-close>Fechar</button>
+      </div>
+      <div class="table-wrap">
+        <table class="history-changes">
+          <thead>
+            <tr><th>Quando</th><th>Índice</th><th>Percentual</th><th>De</th><th>Para</th><th>Vigência</th></tr>
+          </thead>
+          <tbody id="adjustment-history-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var root = document.getElementById('adjustment-section');
+      if (!root) return;
+
+      var csrfHost = document.getElementById('adjustment-csrf');
+      var CSRF = csrfHost ? csrfHost.value : '';
+
+      var els = {
+        error: document.getElementById('adjustment-error'),
+        success: document.getElementById('adjustment-success'),
+        form: document.getElementById('adjustment-form'),
+        leaseID: document.getElementById('adjustment-lease-id'),
+        contract: document.getElementById('adjustment-contract'),
+        index: document.getElementById('adjustment-index'),
+        rate: document.getElementById('adjustment-rate'),
+        effective: document.getElementById('adjustment-effective'),
+        previous: document.getElementById('adjustment-preview-previous'),
+        previewRate: document.getElementById('adjustment-preview-rate'),
+        newValue: document.getElementById('adjustment-preview-new'),
+        previewEffective: document.getElementById('adjustment-preview-effective'),
+        apply: document.getElementById('adjustment-apply'),
+        noticeBox: document.getElementById('adjustment-notice-box'),
+        notice: document.getElementById('adjustment-notice'),
+        copy: document.getElementById('adjustment-copy'),
+        send: document.getElementById('adjustment-send'),
+        sendFeedback: document.getElementById('adjustment-send-feedback'),
+        reportMonth: document.getElementById('adjustment-report-month'),
+        reportLoad: document.getElementById('adjustment-report-load'),
+        reportExpected: document.getElementById('adjustment-report-expected'),
+        reportReceipts: document.getElementById('adjustment-report-receipts'),
+        reportReceived: document.getElementById('adjustment-report-received'),
+        reportPaid: document.getElementById('adjustment-report-paid'),
+        reportOpen: document.getElementById('adjustment-report-open'),
+        reportOverdue: document.getElementById('adjustment-report-overdue'),
+        reportStatus: document.getElementById('adjustment-report-status'),
+        reportProperties: document.getElementById('adjustment-report-properties'),
+        reportTenants: document.getElementById('adjustment-report-tenants'),
+        askForm: document.getElementById('adjustment-ask-form'),
+        ask: document.getElementById('adjustment-ask'),
+        askAnswer: document.getElementById('adjustment-ask-answer'),
+        historyModal: document.getElementById('adjustment-history-modal'),
+        historyTitle: document.getElementById('adjustment-history-title'),
+        historyRows: document.getElementById('adjustment-history-rows')
+      };
+
+      // selected é o contrato da simulação em curso.
+      var selected = null;
+      var preview = null;
+      var sendPoll = null;
+
+      function money(value) {
+        return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      }
+
+      function showError(message) {
+        els.error.hidden = !message;
+        els.error.textContent = message || '';
+      }
+
+      function showSuccess(message) {
+        els.success.hidden = !message;
+        els.success.textContent = message || '';
+      }
+
+      function clearMessages() {
+        showError('');
+        showSuccess('');
+      }
+
+      function postForm(url, fields) {
+        var payload = new URLSearchParams(fields);
+        payload.set('csrf_token', CSRF);
+        return fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            Accept: 'application/json'
+          },
+          body: payload.toString(),
+          credentials: 'same-origin'
+        }).then(function (response) {
+          return response.json().catch(function () {
+            return {};
+          }).then(function (body) {
+            if (!response.ok || !body || body.ok !== true) {
+              throw new Error((body && body.error) || 'Não foi possível concluir a operação.');
+            }
+            return body;
+          });
+        });
+      }
+
+      function cell(text) {
+        var td = document.createElement('td');
+        td.textContent = text;
+        return td;
+      }
+
+      function fillRows(target, rows, emptyMessage) {
+        target.textContent = '';
+        if (!rows.length) {
+          var empty = document.createElement('tr');
+          var emptyCell = cell(emptyMessage);
+          emptyCell.colSpan = 6;
+          emptyCell.className = 'cell-muted';
+          empty.appendChild(emptyCell);
+          target.appendChild(empty);
+          return;
+        }
+        rows.forEach(function (row) {
+          var tr = document.createElement('tr');
+          tr.appendChild(cell(row.name));
+          tr.appendChild(cell(String(row.receipts)));
+          tr.appendChild(cell(money(row.expected)));
+          tr.appendChild(cell(money(row.received)));
+          tr.appendChild(cell(money(row.open)));
+          tr.appendChild(cell(money(row.overdue)));
+          target.appendChild(tr);
+        });
+      }
+
+      /* ── Seleção do contrato ─────────────────────────────────────────── */
+
+      function selectLease(button) {
+        selected = {
+          id: button.getAttribute('data-adjustment-select'),
+          label: JSON.parse(button.getAttribute('data-adjustment-label') || '""'),
+          rent: Number(button.getAttribute('data-adjustment-rent') || 0),
+          phone: button.getAttribute('data-adjustment-phone') || ''
+        };
+        els.leaseID.value = selected.id;
+        els.contract.value = selected.label;
+        resetPreview();
+        clearMessages();
+        els.rate.focus();
+      }
+
+      function resetPreview() {
+        preview = null;
+        els.previous.textContent = '—';
+        els.previewRate.textContent = '—';
+        els.newValue.textContent = '—';
+        els.previewEffective.textContent = '—';
+        els.apply.disabled = true;
+        els.noticeBox.hidden = true;
+        els.notice.value = '';
+        els.send.hidden = true;
+        els.sendFeedback.textContent = '';
+      }
+
+      /* ── Prévia ──────────────────────────────────────────────────────── */
+
+      els.form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!selected) {
+          showError('Escolha um contrato na lista para simular o reajuste.');
+          return;
+        }
+        clearMessages();
+        postForm('/api/adjustment/preview', {
+          lease_id: selected.id,
+          index: els.index.value,
+          rate: els.rate.value,
+          effective_date: els.effective.value
+        }).then(function (body) {
+          preview = body.preview;
+          els.previous.textContent = preview.previousAmountLabel;
+          els.previewRate.textContent = preview.indexLabel + ' · ' + preview.rateLabel;
+          els.newValue.textContent = preview.newAmountLabel;
+          els.previewEffective.textContent = preview.effectiveDateLabel;
+          els.apply.disabled = false;
+        }).catch(function (error) {
+          resetPreview();
+          showError(error.message);
+        });
+      });
+
+      /* ── Aplicação ───────────────────────────────────────────────────── */
+
+      els.apply.addEventListener('click', function () {
+        if (!selected || !preview) {
+          showError('Calcule a prévia antes de aplicar o reajuste.');
+          return;
+        }
+        var confirmation = 'Aplicar o reajuste de ' + preview.previousAmountLabel + ' para ' +
+          preview.newAmountLabel + ' a partir de ' + preview.effectiveDateLabel + '?';
+        if (!window.confirm(confirmation)) return;
+
+        clearMessages();
+        els.apply.disabled = true;
+        postForm('/api/adjustment/apply', {
+          lease_id: selected.id,
+          index: els.index.value,
+          rate: els.rate.value,
+          effective_date: els.effective.value,
+          confirm: '1'
+        }).then(function (body) {
+          var result = body.result;
+          preview = result.preview;
+          els.notice.value = result.notice;
+          els.noticeBox.hidden = false;
+          els.send.hidden = !selected.phone;
+          els.sendFeedback.textContent = '';
+          els.previous.textContent = preview.previousAmountLabel;
+          els.newValue.textContent = preview.newAmountLabel;
+          showSuccess('Reajuste aplicado. O histórico da aba é atualizado ao recarregar a página.');
+          var current = root.querySelector('[data-adjustment-current="' + selected.id + '"]');
+          if (current) current.textContent = preview.newAmountLabel;
+        }).catch(function (error) {
+          els.apply.disabled = false;
+          showError(error.message);
+        });
+      });
+
+      /* ── Notificação: copiar e enviar ────────────────────────────────── */
+
+      els.copy.addEventListener('click', function () {
+        var text = els.notice.value;
+        if (!text) return;
+        if (window.navigator.clipboard && window.navigator.clipboard.writeText) {
+          window.navigator.clipboard.writeText(text).then(function () {
+            showSuccess('Notificação copiada.');
+          }).catch(function () {
+            els.notice.select();
+            showError('Não foi possível copiar automaticamente. O texto está selecionado para copiar.');
+          });
+          return;
+        }
+        els.notice.select();
+        showSuccess('Texto selecionado: use Ctrl+C para copiar.');
+      });
+
+      els.send.addEventListener('click', function () {
+        if (!selected || !selected.phone || !els.notice.value) return;
+        els.sendFeedback.textContent = 'Enviando...';
+        els.send.disabled = true;
+        postForm('/api/whatsapp/send', { to: selected.phone, message: els.notice.value })
+          .then(function (body) {
+            if (!body.jobId) {
+              throw new Error('Não foi possível iniciar o envio.');
+            }
+            pollSend(body.jobId);
+          })
+          .catch(function (error) {
+            els.send.disabled = false;
+            els.sendFeedback.textContent = error.message;
+          });
+      });
+
+      function pollSend(jobID) {
+        var deadline = Date.now() + 60000;
+        if (sendPoll) window.clearTimeout(sendPoll);
+        function step() {
+          if (Date.now() > deadline) {
+            els.send.disabled = false;
+            els.sendFeedback.textContent = 'O envio está demorando mais que o esperado. Confira a conversa no WhatsApp.';
+            return;
+          }
+          sendPoll = window.setTimeout(function () {
+            fetch('/api/whatsapp/send/status?jobId=' + encodeURIComponent(jobID), {
+              credentials: 'same-origin',
+              headers: { Accept: 'application/json' }
+            }).then(function (response) {
+              return response.json();
+            }).then(function (data) {
+              var job = data && data.job;
+              if (!job || job.status === 'running') {
+                step();
+                return;
+              }
+              els.send.disabled = false;
+              if (job.status === 'done') {
+                els.sendFeedback.textContent = 'Notificação enviada pelo WhatsApp.';
+                return;
+              }
+              els.sendFeedback.textContent = job.error || 'Não foi possível enviar a notificação.';
+            }).catch(function () {
+              els.send.disabled = false;
+              els.sendFeedback.textContent = 'Erro de comunicação com o servidor.';
+            });
+          }, 1200);
+        }
+        step();
+      }
+
+      /* ── Relatório do mês ────────────────────────────────────────────── */
+
+      function loadReport() {
+        var query = new URLSearchParams();
+        var parts = (els.reportMonth.value || '').split('-');
+        if (parts.length === 2) {
+          query.set('year', parts[0]);
+          query.set('month', String(Number(parts[1])));
+        }
+        fetch('/api/report/monthly?' + query.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' }
+        }).then(function (response) {
+          if (!response.ok) throw new Error('Não foi possível carregar o relatório do mês.');
+          return response.json();
+        }).then(function (body) {
+          if (!body || body.ok !== true) throw new Error('Não foi possível carregar o relatório do mês.');
+          renderReport(body.report);
+        }).catch(function (error) {
+          showError(error.message);
+        });
+      }
+
+      function renderReport(report) {
+        els.reportExpected.textContent = money(report.expected);
+        els.reportReceipts.textContent = report.receipts + ' lançamento(s) · ' + report.label;
+        els.reportReceived.textContent = money(report.received);
+        els.reportPaid.textContent = report.paidCount + ' com baixa';
+        els.reportOpen.textContent = money(report.open);
+        els.reportOverdue.textContent = money(report.overdue);
+
+        els.reportStatus.textContent = '';
+        (report.counts || []).forEach(function (count) {
+          var item = document.createElement('li');
+          var dot = document.createElement('span');
+          dot.className = 'status-dot';
+          dot.style.background = count.status === 'paid' ? '#10b981'
+            : count.status === 'partial' ? '#3b82f6'
+              : count.status === 'due' ? '#f59e0b' : '#ef4444';
+          var label = document.createElement('span');
+          label.style.flex = '1';
+          label.textContent = count.label;
+          var total = document.createElement('strong');
+          total.textContent = count.count + ' · ' + count.amountLabel;
+          item.appendChild(dot);
+          item.appendChild(label);
+          item.appendChild(total);
+          els.reportStatus.appendChild(item);
+        });
+
+        fillRows(els.reportProperties, report.byProperty || [], 'Sem lançamentos na competência.');
+        fillRows(els.reportTenants, report.byTenant || [], 'Sem lançamentos na competência.');
+      }
+
+      els.reportLoad.addEventListener('click', loadReport);
+
+      /* ── Pergunta em linguagem natural ───────────────────────────────── */
+
+      els.askForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var question = els.ask.value.trim();
+        if (!question) return;
+        clearMessages();
+        els.askAnswer.hidden = false;
+        els.askAnswer.textContent = 'Consultando...';
+        postForm('/api/report/ask', { question: question }).then(function (body) {
+          var answer = body.answer || {};
+          els.askAnswer.textContent = '';
+          var paragraph = document.createElement('p');
+          paragraph.textContent = answer.answer || '';
+          if (answer.refused) paragraph.className = 'cell-muted';
+          els.askAnswer.appendChild(paragraph);
+          if (answer.tools && answer.tools.length) {
+            var tools = document.createElement('p');
+            tools.className = 'cell-muted';
+            tools.textContent = 'Consultas usadas: ' + answer.tools.join(', ');
+            els.askAnswer.appendChild(tools);
+          }
+        }).catch(function (error) {
+          els.askAnswer.hidden = true;
+          showError(error.message);
+        });
+      });
+
+      /* ── Histórico ───────────────────────────────────────────────────── */
+
+      root.addEventListener('click', function (event) {
+        var select = event.target.closest('[data-adjustment-select]');
+        if (select) {
+          selectLease(select);
+          return;
+        }
+        var history = event.target.closest('[data-adjustment-history]');
+        if (history) {
+          openHistory(history);
+          return;
+        }
+        if (event.target.closest('[data-adjustment-history-close]')) {
+          els.historyModal.hidden = true;
+        }
+      });
+
+      function openHistory(button) {
+        var entries = JSON.parse(button.getAttribute('data-adjustment-history') || '[]');
+        var label = JSON.parse(button.getAttribute('data-adjustment-history-label') || '""');
+        els.historyTitle.textContent = 'Histórico de reajustes · ' + label;
+        els.historyRows.textContent = '';
+        entries.forEach(function (entry) {
+          var row = document.createElement('tr');
+          row.appendChild(cell(entry.appliedAtLabel));
+          row.appendChild(cell(entry.indexLabel));
+          row.appendChild(cell(entry.rateLabel));
+          row.appendChild(cell(entry.previousAmountLabel));
+          row.appendChild(cell(entry.newAmountLabel));
+          row.appendChild(cell(entry.effectiveDateLabel));
+          els.historyRows.appendChild(row);
+        });
+        els.historyModal.hidden = false;
+      }
+
+      loadReport();
+    })();
+  </script>
+</section>
+{{end}}

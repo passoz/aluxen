@@ -52,6 +52,9 @@ const (
 const (
 	agentKindAnswer     = "agent-answer"
 	agentKindEscalation = "agent-escalation"
+	// agentKindManualEscalation é o escalonamento feito pelo próprio locador no
+	// painel, não pelo atendimento automático.
+	agentKindManualEscalation = "manual-escalation"
 )
 
 // ConversationRow é uma conversa do painel: o titular, o que ele falou por
@@ -250,6 +253,82 @@ func HandleIncomingMessage(ctx context.Context, deps Deps, actx AuditContext, ms
 	deps.Log.Warn("atendimento atingiu o limite de rodadas",
 		"scope", "agent", "tenant", tenant.ID, "rounds", agentMaxRounds)
 	return escalateToHuman(ctx, deps, actx, msg, tenant, agentReasonRounds)
+}
+
+// ── Atendimento manual do locador ──────────────────────────────────
+
+// ManualReplyInput é a resposta que o locador escreve no painel.
+type ManualReplyInput struct {
+	// UserID é o administrador dono do envio (a fila do canal é por usuário).
+	UserID string
+	// TenantID é o titular da conversa: o telefone sai do cadastro dele.
+	TenantID string
+	Message  string
+	Actor    AuditContext
+}
+
+// ConversationReply entrega a resposta manual do locador ao titular da
+// conversa. É o mesmo envio avulso do canal (job + trilha); o que o painel não
+// escolhe é o destinatário — ele vem do titular.
+func ConversationReply(ctx context.Context, deps Deps, channel WhatsAppChannel, input ManualReplyInput) (string, error) {
+	tenant, err := conversationTenantByID(ctx, deps, input.TenantID)
+	if err != nil {
+		return "", err
+	}
+	phone := strings.TrimSpace(domain.Str(tenant.Phone))
+	if phone == "" {
+		return "", domain.Invalid("O inquilino %s não tem telefone cadastrado.", tenant.Name)
+	}
+
+	return WhatsAppSendJob(ctx, deps, channel, WhatsAppSendRequest{
+		UserID:  input.UserID,
+		To:      phone,
+		Message: input.Message,
+		Actor:   input.Actor,
+	})
+}
+
+// EscalateConversation registra que o locador assumiu a conversa — o mesmo
+// evento do encaminhamento automático, agora com o locador como autor.
+func EscalateConversation(ctx context.Context, deps Deps, actx AuditContext, tenantID, reason string) error {
+	tenant, err := conversationTenantByID(ctx, deps, tenantID)
+	if err != nil {
+		return err
+	}
+
+	reason = truncate(strings.TrimSpace(reason), agentEscalationReasonLimit)
+	if reason == "" {
+		reason = "escalonamento manual do locador"
+	}
+	return Record(ctx, deps, actx, AuditEntry{
+		Action:      domain.ActionAgentEscalated,
+		Entity:      domain.EntityWhatsApp,
+		EntityID:    tenant.ID,
+		EntityLabel: tenant.Name,
+		Summary:     fmt.Sprintf("Conversa de %s assumida pelo locador", tenant.Name),
+		Metadata: map[string]any{
+			"phone":  maskedPhone(domain.Str(tenant.Phone)),
+			"kind":   agentKindManualEscalation,
+			"reason": reason,
+		},
+	})
+}
+
+// conversationTenantByID resolve o titular da conversa pelo id informado no
+// painel. Titular inexistente é `ErrNotFound` (o mapa de erro vira 404).
+func conversationTenantByID(ctx context.Context, deps Deps, tenantID string) (*domain.Tenant, error) {
+	trimmed := strings.TrimSpace(tenantID)
+	if trimmed == "" {
+		return nil, domain.ErrNotFound
+	}
+	tenant, err := tenantByID(ctx, deps, trimmed)
+	if err != nil {
+		return nil, err
+	}
+	if tenant == nil {
+		return nil, domain.ErrNotFound
+	}
+	return tenant, nil
 }
 
 // ── Auxiliares do atendimento ──────────────────────────────────────

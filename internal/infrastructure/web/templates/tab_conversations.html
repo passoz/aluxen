@@ -1,0 +1,181 @@
+{{define "tab_conversations"}}
+{{$view := .Conversations}}
+<section class="stack-lg">
+
+  <section class="card stack-lg" data-table-group>
+    <div class="section-header">
+      <h2>Régua de cobrança</h2>
+      <div class="auth-actions">
+        {{range $stage := $view.Stages}}
+          <span class="status-badge due">{{$stage.Label}} · a partir de {{$stage.FromDays}} dia(s)</span>
+        {{end}}
+      </div>
+    </div>
+
+    <p class="cell-muted">
+      O estágio sai do atraso do lançamento e do que já foi cobrado; valor e vencimento vêm sempre do
+      recibo. Recibo pago sai da régua na hora, e a simulação não envia nem registra nada.
+    </p>
+
+    <div class="filter-bar">
+      <form method="post" action="/api/collection/run">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <input type="hidden" name="dry_run" value="1">
+        <button type="submit" class="btn btn-secondary">Simular a régua (dry run)</button>
+      </form>
+      <form method="post" action="/api/collection/run" data-confirm="Enviar as cobranças dos lançamentos vencidos?">
+        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+        <button type="submit" class="btn btn-primary">Rodar a régua agora</button>
+      </form>
+      <div class="filter-field filter-field-grow">
+        <label class="filter-label" for="collection-filter">Buscar</label>
+        <input
+          id="collection-filter"
+          type="search"
+          data-filter="cobrancas"
+          placeholder="Buscar por titular, imóvel, vencimento ou estágio"
+          aria-label="Buscar por titular, imóvel, vencimento ou estágio"
+        >
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table data-table data-page-size="25">
+        <thead>
+          <tr>
+            <th data-sort="tenant">Titular</th>
+            <th data-sort="due">Vencimento</th>
+            <th data-sort="amount">Valor</th>
+            <th data-sort="late">Atraso</th>
+            <th data-sort="stage">Estágio</th>
+            <th>Mensagem que sai</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $candidate := $view.Candidates}}
+            <tr data-search="{{$candidate.TenantName}} {{$candidate.PropertyName}} {{$candidate.DueDate}} {{$candidate.StageLabel}}">
+              <td data-label="Titular">
+                {{if $candidate.TenantName}}{{$candidate.TenantName}}{{else}}<span class="cell-muted">Sem titular</span>{{end}}
+              </td>
+              <td data-label="Vencimento" class="cell-nowrap">{{date $candidate.DueDate}}</td>
+              <td data-label="Valor">{{money $candidate.Amount}}</td>
+              <td data-label="Atraso">{{$candidate.DaysLate}} dia(s)</td>
+              <td data-label="Estágio">
+                {{$candidate.StageLabel}}
+                {{if $candidate.LastStageLabel}}<span class="cell-muted">Já enviado: {{$candidate.LastStageLabel}}</span>{{end}}
+              </td>
+              <td data-label="Mensagem"><span class="cell-muted">{{$candidate.Message}}</span></td>
+            </tr>
+          {{else}}
+            <tr>
+              <td colspan="6"><span class="cell-muted">Nenhuma cobrança a enviar hoje.</span></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <div data-pagination></div>
+  </section>
+
+  <section class="card stack-lg" data-table-group>
+    <div class="section-header">
+      <h2>Conversas do WhatsApp</h2>
+      <span class="cell-muted">Última mensagem, pendência de resposta e lançamento em atraso</span>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-field filter-field-grow">
+        <label class="filter-label" for="conversations-filter">Buscar</label>
+        <input
+          id="conversations-filter"
+          type="search"
+          data-filter="conversas"
+          placeholder="Buscar por titular, telefone ou mensagem"
+          aria-label="Buscar por titular, telefone ou mensagem"
+        >
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table data-table data-page-size="25">
+        <thead>
+          <tr>
+            <th data-sort="tenant">Titular</th>
+            <th>Telefone</th>
+            <th>Última mensagem</th>
+            <th data-sort="when">Quando</th>
+            <th>Lançamento em atraso</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range $row := $view.Conversations}}
+            <tr data-search="{{$row.TenantName}} {{$row.Phone}} {{$row.LastMessage}}">
+              <td data-label="Titular">
+                {{$row.TenantName}}
+                {{if $row.AwaitingReply}}<span class="status-badge due">Aguardando resposta</span>{{end}}
+              </td>
+              <td data-label="Telefone" class="cell-nowrap">{{if $row.Phone}}{{$row.Phone}}{{else}}-{{end}}</td>
+              <td data-label="Última mensagem">
+                <span class="cell-muted">{{$row.LastDirectionLabel}}:</span> {{$row.LastMessage}}
+                <span class="cell-muted">{{$row.MessageCount}} mensagem(ns) no histórico</span>
+              </td>
+              <td data-label="Quando" class="cell-nowrap">{{datetime $row.LastAt}}</td>
+              <td data-label="Em atraso">
+                {{with $row.Overdue}}
+                  <span class="status-badge overdue">{{money .Amount}} · venceu {{date .DueDate}}</span>
+                  <span class="cell-muted">{{.DaysLate}} dia(s) · estágio {{.StageLabel}}{{if .StageSentLabel}} · último envio: {{.StageSentLabel}}{{end}}</span>
+                  {{if .StagePending}}<span class="cell-muted">Falta cobrar este estágio.</span>{{end}}
+                {{else}}
+                  <span class="cell-muted">Sem atraso.</span>
+                {{end}}
+              </td>
+              <td class="row-actions">
+                <button type="button" class="btn btn-sm btn-primary" data-modal-open="conversation-reply-modal" data-modal-fill='{{json (dict "tenant_id" $row.TenantID "to" $row.Phone "name" $row.TenantName)}}'>Responder</button>
+                <form method="post" action="/dashboard/conversation" data-offline data-confirm="Assumir a conversa de {{$row.TenantName}}?">
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="intent" value="conversation.escalate">
+                  <input type="hidden" name="tenant_id" value="{{$row.TenantID}}">
+                  <input type="hidden" name="reason" value="Assumida pelo painel">
+                  <button type="submit" class="btn btn-sm btn-outline">Escalonar</button>
+                </form>
+              </td>
+            </tr>
+          {{else}}
+            <tr>
+              <td colspan="6"><span class="cell-muted">Nenhuma conversa recebida pelo WhatsApp.</span></td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <div data-pagination></div>
+  </section>
+</section>
+
+<div class="modal-backdrop" id="conversation-reply-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Responder no WhatsApp">
+    <div class="modal-header">
+      <h3>Responder no WhatsApp</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Fechar</button>
+    </div>
+    <form method="post" action="/dashboard/conversation" class="stack" data-offline>
+      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+      <input type="hidden" name="intent" value="conversation.reply">
+      <input type="hidden" name="tenant_id" value="">
+      <div class="form-group">
+        <label for="conversation-reply-to">Destinatário</label>
+        <input id="conversation-reply-to" type="text" readonly data-field="to" placeholder="Escolha uma conversa na lista">
+      </div>
+      <div class="form-group">
+        <label for="conversation-reply-message">Mensagem</label>
+        <textarea id="conversation-reply-message" name="message" rows="5" required placeholder="Escreva a resposta que o locatário vai receber"></textarea>
+      </div>
+      <button type="submit" class="btn btn-primary">Enviar pelo WhatsApp</button>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Descartar</button>
+    </form>
+  </div>
+</div>
+{{end}}

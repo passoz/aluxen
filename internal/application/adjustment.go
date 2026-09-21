@@ -77,11 +77,11 @@ func AdjustmentIndexOptions() []AdjustmentIndexOption {
 // O nome difere do caso de uso (`AdjustmentPreview`) porque Go não permite tipo
 // e função com o mesmo nome no pacote.
 type AdjustmentPreviewPayload struct {
-	LeaseID      string `json:"leaseId"`
-	TenantName   string `json:"tenantName"`
-	PropertyName string `json:"propertyName"`
-	Index        string `json:"index"`
-	IndexLabel   string `json:"indexLabel"`
+	LeaseID      string  `json:"leaseId"`
+	TenantName   string  `json:"tenantName"`
+	PropertyName string  `json:"propertyName"`
+	Index        string  `json:"index"`
+	IndexLabel   string  `json:"indexLabel"`
 	Rate         float64 `json:"rate"`
 	// RateLabel é o percentual já formatado para leitura (4,5%).
 	RateLabel           string  `json:"rateLabel"`
@@ -405,10 +405,10 @@ type AdjustmentLeaseRow struct {
 
 // AdjustmentView é o contexto da aba de reajuste.
 type AdjustmentView struct {
-	Today   string                  `json:"today"`
-	MonthKey string                 `json:"monthKey"`
-	Indices []AdjustmentIndexOption `json:"indices"`
-	Leases  []AdjustmentLeaseRow    `json:"leases"`
+	Today    string                  `json:"today"`
+	MonthKey string                  `json:"monthKey"`
+	Indices  []AdjustmentIndexOption `json:"indices"`
+	Leases   []AdjustmentLeaseRow    `json:"leases"`
 }
 
 // BuildAdjustmentView monta a aba de reajuste: os contratos com o valor atual,

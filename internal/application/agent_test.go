@@ -217,7 +217,10 @@ func newAgentFixture(t *testing.T) *agFixture {
 		Clock: waClock{now: agToday()},
 		IDs:   &waIDs{},
 		Chat:  chat,
-		Log:   slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})),
+		// A superfície de texto do canal entra pela resposta manual do locador,
+		// que reaproveita o envio avulso (`WhatsAppSendJob`).
+		Messages: waMessages{},
+		Log:      slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})),
 	}
 	return &agFixture{deps: deps, audit: audit, messages: messages, receipts: receipts, leases: leases, tenants: tenants, chat: chat}
 }
@@ -681,4 +684,66 @@ func TestListConversationsWithoutMessageRepository(t *testing.T) {
 	rows, err := ListConversations(context.Background(), fixture.deps, 0)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
+}
+
+// ── Atendimento manual do locador ─────────────────────────────────
+
+func TestConversationReplySendsToTenantPhone(t *testing.T) {
+	fixture := newAgentFixture(t)
+	fixture.addTenant(agTenant(agTenantID, "Maria Souza", agPhone))
+	channel := newWAChannel()
+
+	jobID, err := ConversationReply(context.Background(), fixture.deps, channel, ManualReplyInput{
+		UserID:   "u1",
+		TenantID: agTenantID,
+		Message:  "Pode pagar no dia 10, sem problema.",
+		Actor:    AuditContext{Origin: domain.AuditOriginWeb},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, jobID)
+
+	// A resposta sai pelo mesmo envio avulso do canal e vai para a trilha.
+	job := waitJob(t, channel, jobID)
+	assert.Equal(t, JobDone, job.Status)
+	assert.Contains(t, fixture.auditActions(), domain.ActionWhatsAppSend)
+}
+
+func TestConversationReplyRequiresKnownTenantWithPhone(t *testing.T) {
+	fixture := newAgentFixture(t)
+	fixture.addTenant(agTenant(agTenantID, "Maria Souza", ""))
+	fixture.addTenant(agTenant(agOtherTenantID, "Pedro Lima", agOtherPhone))
+	channel := newWAChannel()
+
+	_, err := ConversationReply(context.Background(), fixture.deps, channel, ManualReplyInput{
+		UserID: "u1", TenantID: "tenant-9", Message: "Oi",
+	})
+	assert.ErrorIs(t, err, domain.ErrNotFound)
+
+	_, err = ConversationReply(context.Background(), fixture.deps, channel, ManualReplyInput{
+		UserID: "u1", TenantID: agTenantID, Message: "Oi",
+	})
+	assert.True(t, domain.IsValidation(err), "titular sem telefone não recebe resposta: %v", err)
+
+	_, err = ConversationReply(context.Background(), fixture.deps, nil, ManualReplyInput{
+		UserID: "u1", TenantID: agOtherTenantID, Message: "Oi",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "canal")
+}
+
+func TestEscalateConversationRegistersManualEscalation(t *testing.T) {
+	fixture := newAgentFixture(t)
+	fixture.addTenant(agTenant(agTenantID, "Maria Souza", agPhone))
+	actor := AuditContext{ActorName: domain.StrPtr("passoz"), Origin: domain.AuditOriginWeb}
+
+	require.NoError(t, EscalateConversation(context.Background(), fixture.deps, actor, agTenantID, ""))
+
+	entry := fixture.auditOf(t, domain.ActionAgentEscalated)
+	assert.Equal(t, "passoz", domain.Str(entry.ActorName))
+	metadata := agMetadata(t, entry)
+	assert.Equal(t, agentKindManualEscalation, metadata["kind"])
+	assert.Equal(t, "escalonamento manual do locador", metadata["reason"])
+
+	err := EscalateConversation(context.Background(), fixture.deps, actor, "tenant-9", "assumir")
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
