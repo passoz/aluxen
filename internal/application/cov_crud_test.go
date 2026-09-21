@@ -445,18 +445,19 @@ func TestCovLeaseUpdatePropagatesFailures(t *testing.T) {
 func TestCovLeaseSetStatusTransitions(t *testing.T) {
 	cases := map[string]struct {
 		intent string
+		from   domain.LeaseStatus
 		want   domain.LeaseStatus
 		label  string
 	}{
-		"encerrar":  {domain.ActionLeaseTerminate, domain.LeaseStatusTerminated, "encerrado"},
-		"suspender": {domain.ActionLeaseSuspend, domain.LeaseStatusSuspended, "suspenso"},
-		"reativar":  {domain.ActionLeaseReactivate, domain.LeaseStatusActive, "reativado"},
+		"encerrar":  {domain.ActionLeaseTerminate, domain.LeaseStatusActive, domain.LeaseStatusTerminated, "encerrado"},
+		"suspender": {domain.ActionLeaseSuspend, domain.LeaseStatusActive, domain.LeaseStatusSuspended, "suspenso"},
+		"reativar":  {domain.ActionLeaseReactivate, domain.LeaseStatusSuspended, domain.LeaseStatusActive, "reativado"},
 	}
 	for _, scenario := range cases {
 		intent := scenario.intent
 		t.Run(scenario.label, func(t *testing.T) {
 			env := newCovEnv(t)
-			env.leases.items = []domain.Lease{covLeaseOf("l1", "t1", "p1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 1000)}
+			env.leases.items = []domain.Lease{covLeaseOf("l1", "t1", "p1", scenario.from, "2026-01-01", "2026-12-31", 1000)}
 
 			require.NoError(t, LeaseSetStatus(context.Background(), env.deps, covCtx(), intent, "l1"))
 			require.Equal(t, scenario.want, env.leases.items[0].Status)
@@ -465,6 +466,15 @@ func TestCovLeaseSetStatusTransitions(t *testing.T) {
 			require.Contains(t, env.audit.entries[0].Summary, scenario.label)
 		})
 	}
+}
+
+func TestCovLeaseSetStatusWithoutChangeDoesNotAudit(t *testing.T) {
+	env := newCovEnv(t)
+	env.leases.items = []domain.Lease{covLeaseOf("l1", "t1", "p1", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 1000)}
+
+	// Reativar um contrato já ativo não muda nada: nenhuma linha na trilha.
+	require.NoError(t, LeaseSetStatus(context.Background(), env.deps, covCtx(), domain.ActionLeaseReactivate, "l1"))
+	require.Empty(t, env.audit.entries)
 }
 
 func TestCovLeaseSetStatusValidation(t *testing.T) {

@@ -1808,3 +1808,387 @@ func TestCintOpenReceiptForTenant(t *testing.T) {
 		require.Equal(t, "r-cedo", receipt.ID)
 	})
 }
+
+// ── Fila de revisão ───────────────────────────────────────────────
+
+func TestCintPaymentReviewLabels(t *testing.T) {
+	require.Equal(t, "WhatsApp", paymentProofSourceLabel(domain.PaymentProofSourceWhatsApp))
+	require.Equal(t, "Área do cliente", paymentProofSourceLabel(domain.PaymentProofSourcePortal))
+	require.Equal(t, "Painel", paymentProofSourceLabel(domain.PaymentProofSourcePanel))
+	require.Equal(t, "origem-x", paymentProofSourceLabel(domain.PaymentProofSource("origem-x")))
+
+	require.Equal(t, "-", paymentProofConfidenceLabel(0))
+	require.Equal(t, "-", paymentProofConfidenceLabel(-1))
+	require.Equal(t, "90%", paymentProofConfidenceLabel(0.9))
+
+	require.Equal(t, "", paymentProofFileURL(&domain.PaymentProof{ID: "p-1"}))
+	require.Equal(t, "/api/payments/proof/p-1/file", paymentProofFileURL(&domain.PaymentProof{ID: "p-1", FilePath: domain.StrPtr("store/p-1")}))
+
+	require.Equal(t, "comprovante.pdf · Ana", paymentProofDocumentLabel(&domain.PaymentProof{ID: "p-1", FileName: domain.StrPtr("comprovante.pdf")}, "Ana"))
+	require.Equal(t, "comprovante.pdf", paymentProofDocumentLabel(&domain.PaymentProof{ID: "p-1", FileName: domain.StrPtr("comprovante.pdf")}, ""))
+	require.Equal(t, "Comprovante p-1 · Ana", paymentProofDocumentLabel(&domain.PaymentProof{ID: "p-1"}, "Ana"))
+
+	require.Equal(t, "aceito na revisão", paymentProofDecisionReason("", "aceito na revisão"))
+	require.Equal(t, "aceito na revisão", paymentProofDecisionReason("   ", "aceito na revisão"))
+	require.Equal(t, "aceito na revisão: valor confere", paymentProofDecisionReason(" valor confere ", "aceito na revisão"))
+}
+
+func TestCintListPaymentProofReview(t *testing.T) {
+	t.Run("limite padrão ignora comprovante já decidido", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintSeedProof(t, env, domain.PaymentProofStatusAccepted)
+		pending := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		rows, err := ListPaymentProofReview(context.Background(), env.deps, 0)
+
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		require.Equal(t, pending.ID, rows[0].ID)
+	})
+
+	t.Run("limite informado é respeitado", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		rows, err := ListPaymentProofReview(context.Background(), env.deps, 1)
+
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+	})
+
+	t.Run("falha ao listar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		env.proofs.listErr = errors.New("banco fora")
+
+		_, err := ListPaymentProofReview(context.Background(), env.deps, 0)
+
+		require.ErrorContains(t, err, "listar comprovantes em revisão: banco fora")
+	})
+
+	t.Run("falha ao montar a linha", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.Source = domain.PaymentProofSourceWhatsApp
+		env.tenants.byIDErr = errors.New("banco fora")
+
+		_, err := ListPaymentProofReview(context.Background(), env.deps, 0)
+
+		require.ErrorContains(t, err, "buscar titular do comprovante: banco fora")
+	})
+}
+
+func TestCintPaymentProofRow(t *testing.T) {
+	t.Run("linha completa", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		tenant := covTenantOf("t-1", "Ana Souza")
+		require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+		receipt := covReceiptOf("r-1", "t-1", "", "2026-09-20", 900)
+		receipt.TenantName = "Ana Souza"
+		receipt.PropertyName = "Casa"
+		require.NoError(t, env.receipts.Create(context.Background(), &receipt))
+
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ReceiptID = domain.StrPtr("r-1")
+		seeded.Source = domain.PaymentProofSourceWhatsApp
+		seeded.Phone = domain.StrPtr("21999990000")
+		seeded.ExtractedAmount = domain.FloatPtr(900)
+		seeded.ExtractedDate = domain.StrPtr("2026-09-18")
+		seeded.ExtractedPayer = domain.StrPtr("Ana")
+		seeded.ExtractedPayee = domain.StrPtr("Locadora")
+		seeded.ExtractedIdentifier = domain.StrPtr("E2E-1")
+		seeded.Confidence = domain.FloatPtr(0.75)
+		seeded.DecisionReason = domain.StrPtr("confiança baixa")
+
+		row, err := paymentProofRow(context.Background(), env.deps, seeded)
+
+		require.NoError(t, err)
+		require.Equal(t, seeded.ID, row.ID)
+		require.Equal(t, "Ana Souza", row.TenantName)
+		require.Equal(t, "t-1", row.TenantID)
+		require.Equal(t, "WhatsApp", row.SourceLabel)
+		require.Equal(t, "21999990000", row.Phone)
+		require.Equal(t, "r-1", row.ReceiptID)
+		require.Equal(t, 900.0, row.ReceiptAmount)
+		require.Equal(t, "2026-09-20", row.ReceiptDueDate)
+		require.Equal(t, "Ana Souza · Casa · 09/2026", row.ReceiptLabel)
+		require.False(t, row.ReceiptPaid)
+		require.Equal(t, 900.0, row.ExtractedAmount)
+		require.Equal(t, "2026-09-18", row.ExtractedDate)
+		require.Equal(t, "Ana", row.ExtractedPayer)
+		require.Equal(t, "Locadora", row.ExtractedPayee)
+		require.Equal(t, "E2E-1", row.ExtractedIdentifier)
+		require.Equal(t, "75%", row.ConfidenceLabel)
+		require.Equal(t, "confiança baixa", row.Reason)
+		require.Equal(t, "comprovante.pdf · Ana Souza", row.DocumentLabel)
+		require.Equal(t, "/api/payments/proof/"+seeded.ID+"/file", row.FileURL)
+		require.Equal(t, string(domain.PaymentProofStatusReview), row.Status)
+		require.Equal(t, domain.PaymentProofStatusLabel(domain.PaymentProofStatusReview), row.StatusLabel)
+		require.Equal(t, domain.PaymentDecisionLabel(domain.PaymentDecisionPending), row.DecisionLabel)
+	})
+
+	t.Run("lançamento quitado aparece marcado", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		paid := covPaidReceipt(covReceiptOf("r-1", "t-1", "", "2026-09-20", 900), "18/09/2026 10:00", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &paid))
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ReceiptID = domain.StrPtr("r-1")
+
+		row, err := paymentProofRow(context.Background(), env.deps, seeded)
+
+		require.NoError(t, err)
+		require.True(t, row.ReceiptPaid)
+		require.Equal(t, "Comprovante "+seeded.ID, row.DocumentLabel, "sem título cadastrado a linha mostra o protocolo")
+	})
+
+	t.Run("cadastro apagado não derruba a fila", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ReceiptID = domain.StrPtr("r-apagado")
+
+		row, err := paymentProofRow(context.Background(), env.deps, seeded)
+
+		require.NoError(t, err, "titular ou lançamento ausente não é erro")
+		require.Empty(t, row.TenantName)
+		require.Empty(t, row.ReceiptLabel)
+		require.Zero(t, row.ReceiptAmount)
+	})
+
+	t.Run("falha ao buscar o lançamento", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ReceiptID = domain.StrPtr("r-1")
+		env.receipts.byIDErr = errors.New("banco fora")
+
+		_, err := paymentProofRow(context.Background(), env.deps, seeded)
+
+		require.ErrorContains(t, err, "buscar lançamento do comprovante: banco fora")
+	})
+}
+
+func TestCintDecidePaymentProof(t *testing.T) {
+	t.Run("sem comprovante", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		err := DecidePaymentProof(context.Background(), env.deps, covCtx(), DecideInput{ProofID: "  "})
+
+		cintWantValidation(t, err, "Comprovante não informado.")
+	})
+
+	t.Run("comprovante inexistente", func(t *testing.T) {
+		env, _ := cintEnv(t)
+
+		err := DecidePaymentProof(context.Background(), env.deps, covCtx(), DecideInput{ProofID: "nao-existe", Approve: true})
+
+		require.ErrorContains(t, err, "buscar comprovante")
+	})
+
+	t.Run("decisão repetida", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusRejected)
+
+		err := DecidePaymentProof(context.Background(), env.deps, covCtx(), DecideInput{ProofID: seeded.ID, Approve: true})
+
+		cintWantValidation(t, err, "Este comprovante já foi decidido.")
+	})
+
+	t.Run("recusa é encaminhada", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		err := DecidePaymentProof(context.Background(), env.deps, covCtx(), DecideInput{ProofID: seeded.ID, Reason: "valor divergente"})
+
+		require.NoError(t, err)
+		require.Equal(t, domain.PaymentProofStatusRejected, cintRepoProof(t, env, seeded.ID).Status)
+	})
+
+	t.Run("aceite é encaminhado", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintProofWorld(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		err := DecidePaymentProof(context.Background(), env.deps, covCtx(), DecideInput{ProofID: seeded.ID, Approve: true, ReceiptID: "r-1"})
+
+		require.NoError(t, err)
+		require.Equal(t, domain.PaymentProofStatusAccepted, cintRepoProof(t, env, seeded.ID).Status)
+		require.Equal(t, format.FormatLocalDateTime(covToday()), domain.Str(env.receipts.items[0].PaidAt))
+	})
+}
+
+func TestCintApprovePaymentProof(t *testing.T) {
+	cintOpenReceipts := func(t *testing.T, env *covEnv) {
+		t.Helper()
+		tenant := covTenantOf("t-1", "Ana Souza")
+		require.NoError(t, env.tenants.Create(context.Background(), &tenant))
+		first := covReceiptOf("r-1", "t-1", "", "2026-09-20", 900)
+		second := covReceiptOf("r-2", "t-1", "", "2026-10-20", 900)
+		require.NoError(t, env.receipts.Create(context.Background(), &first))
+		require.NoError(t, env.receipts.Create(context.Background(), &second))
+	}
+
+	t.Run("lançamento escolhido na revisão", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ExtractedDate = domain.StrPtr("2026-09-15")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{
+			Approve: true, ReceiptID: "r-2", Reason: " valor confere ", DecidedBy: " user-9 ",
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, "15/09/2026 00:00", domain.Str(env.receipts.items[1].PaidAt), "a data do comprovante vira data da baixa")
+		require.Nil(t, env.receipts.items[0].PaidAt, "o outro lançamento fica em aberto")
+
+		stored := cintRepoProof(t, env, seeded.ID)
+		require.Equal(t, domain.PaymentProofStatusAccepted, stored.Status)
+		require.Equal(t, domain.PaymentDecisionManual, stored.Decision)
+		require.Equal(t, "r-2", domain.Str(stored.ReceiptID))
+		require.Equal(t, "aceito na revisão: valor confere", domain.Str(stored.DecisionReason))
+		require.Equal(t, "user-9", domain.Str(stored.DecidedBy))
+		require.Equal(t, format.FormatUTCStamp(covToday()), domain.Str(stored.DecidedAt))
+
+		last := env.audit.entries[len(env.audit.entries)-1]
+		require.Equal(t, domain.ActionPaymentProofAccepted, last.Action)
+		require.Equal(t, "Comprovante aceito na revisão em Competência 10/2026", last.Summary)
+		metadata := cintAuditMeta(t, last)
+		require.Equal(t, "r-2", metadata["receiptId"])
+		require.Equal(t, "manual", metadata["decision"])
+		require.Equal(t, "user-9", metadata["decidedBy"])
+	})
+
+	t.Run("lançamento conferido na leitura", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.ReceiptID = domain.StrPtr("r-2")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true})
+		require.NoError(t, err)
+
+		require.Equal(t, "r-2", domain.Str(cintRepoProof(t, env, seeded.ID).ReceiptID))
+		require.NotNil(t, env.receipts.items[1].PaidAt)
+		require.Equal(t, "aceito na revisão", domain.Str(cintRepoProof(t, env, seeded.ID).DecisionReason))
+	})
+
+	t.Run("sem escolha vale o lançamento em aberto do titular", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true})
+		require.NoError(t, err)
+
+		require.Equal(t, "r-1", domain.Str(cintRepoProof(t, env, seeded.ID).ReceiptID))
+		require.NotNil(t, env.receipts.items[0].PaidAt)
+	})
+
+	t.Run("sem lançamento em aberto", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		seeded.TenantID = nil
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true})
+
+		cintWantValidation(t, err, "Nenhum lançamento em aberto para dar baixa.")
+		require.Equal(t, domain.PaymentProofStatusReview, cintRepoProof(t, env, seeded.ID).Status)
+	})
+
+	t.Run("falha ao buscar o lançamento em aberto", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.receipts.byTenantErr = errors.New("banco fora")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true})
+
+		require.ErrorContains(t, err, "buscar lançamentos do titular: banco fora")
+	})
+
+	t.Run("falha na baixa", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.receipts.payErr = errors.New("baixa recusada")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true, ReceiptID: "r-1"})
+
+		require.ErrorContains(t, err, "dar baixa no lançamento: baixa recusada")
+		require.Equal(t, domain.PaymentProofStatusReview, cintRepoProof(t, env, seeded.ID).Status)
+	})
+
+	t.Run("falha ao gravar o aceite", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.proofs.updateErr = errors.New("banco fora")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true, ReceiptID: "r-1"})
+
+		require.ErrorContains(t, err, "gravar o aceite do comprovante: banco fora")
+	})
+
+	t.Run("falha na trilha do aceite", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		cintOpenReceipts(t, env)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.audit.insertErr = errors.New("trilha fora")
+
+		err := approvePaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Approve: true, ReceiptID: "r-1"})
+
+		require.ErrorContains(t, err, "trilha fora")
+	})
+}
+
+func TestCintRejectPaymentProof(t *testing.T) {
+	t.Run("motivo obrigatório", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		err := rejectPaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Reason: "   "})
+
+		cintWantValidation(t, err, "Informe o motivo da recusa.")
+		require.Equal(t, domain.PaymentProofStatusReview, cintRepoProof(t, env, seeded.ID).Status)
+	})
+
+	t.Run("falha ao gravar", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.proofs.updateErr = errors.New("banco fora")
+
+		err := rejectPaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Reason: "valor divergente"})
+
+		require.ErrorContains(t, err, "gravar a recusa do comprovante: banco fora")
+	})
+
+	t.Run("falha na trilha", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+		env.audit.insertErr = errors.New("trilha fora")
+
+		err := rejectPaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Reason: "valor divergente"})
+
+		require.ErrorContains(t, err, "trilha fora")
+	})
+
+	t.Run("recusa grava motivo e autor", func(t *testing.T) {
+		env, _ := cintEnv(t)
+		seeded := cintSeedProof(t, env, domain.PaymentProofStatusReview)
+
+		err := rejectPaymentProof(context.Background(), env.deps, covCtx(), seeded, DecideInput{Reason: "  valor divergente  ", DecidedBy: "user-9"})
+		require.NoError(t, err)
+
+		stored := cintRepoProof(t, env, seeded.ID)
+		require.Equal(t, domain.PaymentProofStatusRejected, stored.Status)
+		require.Equal(t, domain.PaymentDecisionManual, stored.Decision)
+		require.Equal(t, "valor divergente", domain.Str(stored.DecisionReason))
+		require.Equal(t, "user-9", domain.Str(stored.DecidedBy))
+		require.Equal(t, format.FormatUTCStamp(covToday()), domain.Str(stored.DecidedAt))
+		require.Nil(t, stored.ReceiptID, "recusa não vincula lançamento")
+		require.Empty(t, env.receipts.payments, "recusa não dá baixa")
+
+		last := env.audit.entries[len(env.audit.entries)-1]
+		require.Equal(t, domain.ActionPaymentProofRejected, last.Action)
+		require.Equal(t, "Comprovante recusado na revisão: valor divergente", last.Summary)
+		require.Equal(t, "manual", cintAuditMeta(t, last)["decision"])
+	})
+}

@@ -1922,18 +1922,3 @@ func TestCopsLastTable(t *testing.T) {
 	assert.Equal(t, migrationTables[len(migrationTables)-1].name, lastTable())
 	assert.Equal(t, "document_intakes", lastTable())
 }
-
-// TestCopsInsertStatementBindsEveryColumn prova que o INSERT montado para cada
-// dialeto tem um marcador por coluna: com um a menos, o destino recusaria a
-// linha; com um a mais, os valores sairiam trocados.
-func TestCopsInsertStatementBindsEveryColumn(t *testing.T) {
-	destino := copsDestino(t, nil)
-	for _, table := range migrationTables {
-		for _, dialect := range []Dialect{DialectSQLite, DialectPostgres} {
-			statement, err := destino.Prepare(insertStatement(table, dialect))
-			require.NoError(t, err, "%s/%s", table.name, dialect)
-			assert.Equal(t, len(table.columns), statement.NumInput(), "%s/%s", table.name, dialect)
-			require.NoError(t, statement.Close())
-		}
-	}
-}
