@@ -189,10 +189,12 @@ O esquema está declarado em `src/db/schema.ts`:
 
 ### 5.1. Fluxo de Autenticação
 1. O usuário submete o formulário `/login` com `username` e `password`.
-2. O servidor valida o rate limit de IP (máximo de tentativas por minuto).
-3. `loginUser` busca o usuário no SQLite e verifica a senha com `bcrypt.compare`.
+2. `checkLoginAttempt(ip)` decide a entrada em três camadas: IP bloqueado por falhas repetidas (backoff 5 min → 1 h), limite por IP/minuto (`RATE_LIMIT_MAX`) e teto global/minuto (`RATE_LIMIT_GLOBAL_MAX`). Negado, responde `429` com `Retry-After` e grava na trilha o motivo **e o usuário tentado**.
+3. `loginUser` busca o usuário no SQLite e verifica a senha com `bcrypt.compare`. Falha incrementa o contador do IP (`registerLoginFailure`); sucesso limpa o histórico (`registerLoginSuccess`).
 4. Em caso de sucesso, gera um cookie HTTP-only `__aluxen_session` criptografado contendo o ID do usuário.
-5. Em caso de falha, retorna status HTTP 401 e mensagem amigável no card de login.
+5. O destino do redirecionamento depende da credencial: `/settings?forced=1` enquanto a senha semeada (`SEED_PASSWORD`) não for trocada (`users.password_changed_at` nulo) ou `/dashboard?tab=dashboard` depois disso.
+6. Um middleware de trava de senha padrão intercepta as rotas administrativas: HTML → `302` para a troca obrigatória; APIs → `403`; `/login`, `/logout`, `/settings`, `/api/health`, `/portal/*` e `/validar/*` seguem liberados.
+7. Em caso de falha, retorna status HTTP 401 e mensagem amigável no card de login.
 
 ### 5.1.1. Fluxo de Autenticação do Locatário (Área do Cliente)
 Independente do painel, com credencial e cookie próprios (`__aluxen_client_session`), implementado em `src/utils/tenant-auth.ts`:
@@ -238,6 +240,11 @@ Regras de projeto:
 - A gravação é "melhor esforço": se a auditoria falhar, a operação de negócio já efetivada não é desfeita, mas a falha é registrada em `error` no log.
 - Operações em lote (baixa/exclusão de vários recibos) geram **um evento por recibo**, com `metadata.batch` indicando o tamanho do lote.
 - A origem distingue o canal do evento: `web` (painel do locador), `client` (Área do Cliente do locatário), `public` (links com token de autenticidade) e `job` (rotinas automáticas). Os eventos da Área do Cliente usam a ação `auth.client-*` e o autor é o próprio locatário.
+
+### 5.3.1. Proteção de Login e Fuso Horário
+
+- **Três camadas de proteção** (`src/index.tsx`): limite por IP/minuto, teto global/minuto e bloqueio progressivo do IP. O estado é mantido em memória com poda de entradas vencidas (varredura com muitos IPs não cresce o mapa indefinidamente). Os limites são configuráveis por `RATE_LIMIT_MAX`, `RATE_LIMIT_GLOBAL_MAX` e `LOGIN_LOCK_THRESHOLD`.
+- **Fuso horário**: o container define `TZ=America/Sao_Paulo`, de modo que `auditTimestamp()` e os logs usem o horário local brasileiro. Sem isso o processo roda em UTC e a trilha fica 3 h à frente dos horários exibidos nos PDFs e na interface.
 
 ### 5.4. Observabilidade e Logs
 `src/utils/logger.ts` implementa o logger estruturado usado por todo o runtime (zero dependências):

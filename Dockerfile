@@ -28,6 +28,8 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=3000
+# Fuso do processo: a trilha de auditoria e os horários do sistema seguem o horário local.
+ENV TZ=America/Sao_Paulo
 
 # Identificação do build (injetada pelo workflow de publicação): o painel exibe
 # estes valores no modal de Informações para identificar a imagem em execução.

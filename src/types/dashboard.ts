@@ -4,6 +4,8 @@ export type Tenant = {
   email: string;
   phone: string | null;
   cpf: string | null;
+  /** Data da definição da senha da Área do Cliente; nulo = senha padrão (CPF) ainda vigente. */
+  password_changed_at?: string | null;
 };
 
 export type Property = {

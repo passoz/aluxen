@@ -102,7 +102,8 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
       })
     );
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/dashboard?tab=dashboard');
+    // Senha semeada ainda vigente: o painel exige a troca antes de qualquer acesso.
+    expect(res.headers.get('location')).toBe('/settings?forced=1');
 
     const setCookie = res.headers.get('set-cookie');
     expect(setCookie).toBeTruthy();
@@ -110,6 +111,47 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
 
     // Extrair o cookie de sessão para chamadas subsequentes
     sessionCookie = (setCookie?.split(';')[0] || '') as string;
+  });
+
+  it('painel fica bloqueado até a senha padrão do administrador ser trocada', async () => {
+    // Painel e APIs bloqueados enquanto a senha padrão vale
+    const dashboardRes = await server.fetch(
+      new Request('http://localhost:3000/dashboard', { headers: { Cookie: sessionCookie } })
+    );
+    expect(dashboardRes.status).toBe(302);
+    expect(dashboardRes.headers.get('location')).toBe('/settings?forced=1');
+
+    const apiRes = await server.fetch(
+      new Request('http://localhost:3000/api/info', { headers: { Cookie: sessionCookie } })
+    );
+    expect(apiRes.status).toBe(403);
+
+    // A página de configurações exibe apenas a troca obrigatória
+    const settingsRes = await server.fetch(
+      new Request('http://localhost:3000/settings?forced=1', { headers: { Cookie: sessionCookie } })
+    );
+    expect(settingsRes.status).toBe(200);
+    const settingsHtml = await settingsRes.text();
+    expect(settingsHtml).toContain('O sistema ainda está com a senha padrão');
+    expect(settingsHtml).toContain('name="current_password"');
+    expect(settingsHtml).not.toContain('Dados do Locador');
+
+    // Troca da senha (mantendo o valor semeado, como um operador pode optar) libera o painel
+    const changeForm = new FormData();
+    changeForm.set('intent', 'change-password');
+    changeForm.set('current_password', 'senha-de-teste');
+    changeForm.set('new_password', 'senha-de-teste');
+    changeForm.set('confirm_password', 'senha-de-teste');
+    const changeRes = await server.fetch(
+      new Request('http://localhost:3000/settings', { method: 'POST', headers: { Cookie: sessionCookie }, body: changeForm })
+    );
+    expect(changeRes.status).toBe(302);
+    expect(changeRes.headers.get('location')).toBe('/dashboard?tab=dashboard');
+
+    const unlocked = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: sessionCookie } })
+    );
+    expect(unlocked.status).toBe(200);
   });
 
   it('GET /dashboard renders authenticated dashboard HTML', async () => {
@@ -1310,9 +1352,13 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
 
     const csv = await res.text();
     expect(csv.startsWith('\uFEFF')).toBe(true);
-    expect(csv).toContain('"Data/Hora";"Usuário";"Ação";"Registro";"Resumo"');
+    expect(csv).toContain('"Data/Hora";"Usuário";"Ação";"Área";"Registro";"ID do registro";"Resumo";"Alterações";"Metadados";"Origem";"IP";"User-Agent";"Request"');
     expect(csv).toContain('tenant.create');
     expect(csv).not.toContain('lease.create');
+    // Colunas novas: rótulo da área, origem legível e user-agent da requisição
+    expect(csv).toContain('"Inquilino"');
+    expect(csv).toContain('"Painel"');
+    expect(csv).toContain('"User-Agent"');
   });
 
   it('POST /dashboard recusa e-mail em formato inválido no cadastro de inquilino', async () => {
@@ -1710,6 +1756,20 @@ describe('Área do Cliente (locatário)', () => {
 
     const withDefault = await clientLogin(CPF_A_DIGITS);
     expect(withDefault.status).toBe(401);
+  });
+
+  it('painel indica quais locatários ainda usam a senha padrão da Área do Cliente', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/dashboard?json=true', { headers: { Cookie: adminCookie } })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      tenants: Array<{ id: string; password_changed_at: string | null }>;
+    };
+    // Titular que já trocou a senha no portal aparece com a data preenchida
+    expect(data.tenants.find((t) => t.id === tenantAId)?.password_changed_at).toBeTruthy();
+    // Os demais seguem com a senha padrão (nulo)
+    expect(data.tenants.find((t) => t.id === tenantBId)?.password_changed_at).toBeNull();
   });
 
   it('a trilha registra os acessos e a troca de senha do locatário sem gravar senhas', async () => {

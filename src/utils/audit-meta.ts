@@ -176,6 +176,14 @@ export function formatAuditValue(value: string | number | null | undefined): str
   return String(value);
 }
 
+/** Contexto adicional do evento em texto legível (`Rótulo: valor`), usado no CSV. */
+export function describeAuditMetadata(metadata: Record<string, string | number | boolean | null>): string {
+  return Object.entries(metadata)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([key, value]) => `${AUDIT_METADATA_LABELS[key] || key}: ${value}`)
+    .join(' | ');
+}
+
 /** Ações disponíveis para um filtro de entidade (`''` = todas). */
 export function actionKeysForEntity(entity: string): string[] {
   return Object.entries(ACTION_META)

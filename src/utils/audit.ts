@@ -24,7 +24,7 @@ import {
   RECEIPT_CATEGORY_LABELS,
 } from './format';
 import type { AuditChange, AuditEntry, AuditPage, AuditQuery as SharedAuditQuery } from './audit-meta';
-import { DEFAULT_AUDIT_QUERY, describeAuditChanges } from './audit-meta';
+import { AUDIT_ORIGIN_LABELS, DEFAULT_AUDIT_QUERY, describeAuditChanges, describeAuditMetadata, entityLabel } from './audit-meta';
 
 const log = createLogger('audit');
 
@@ -435,7 +435,21 @@ export async function listAuditForExport(query: AuditQuery): Promise<AuditEntry[
   return rows.map(toAuditEntry);
 }
 
-const CSV_HEADERS = ['Data/Hora', 'Usuário', 'Ação', 'Registro', 'Resumo', 'Alterações', 'Origem', 'IP', 'Request'];
+const CSV_HEADERS = [
+  'Data/Hora',
+  'Usuário',
+  'Ação',
+  'Área',
+  'Registro',
+  'ID do registro',
+  'Resumo',
+  'Alterações',
+  'Metadados',
+  'Origem',
+  'IP',
+  'User-Agent',
+  'Request',
+];
 
 function csvCell(value: string | number | null | undefined): string {
   const text = value === null || value === undefined ? '' : String(value);
@@ -451,11 +465,15 @@ export function buildAuditCsv(entries: AuditEntry[]): string {
         csvCell(formatDateTimeBr(entry.createdAt) || entry.createdAt),
         csvCell(entry.actorName || 'Sistema'),
         csvCell(entry.action),
-        csvCell(entry.entityLabel || entry.entityId || ''),
+        csvCell(entityLabel(entry.entity)),
+        csvCell(entry.entityLabel || ''),
+        csvCell(entry.entityId || ''),
         csvCell(entry.summary),
         csvCell(describeAuditChanges(entry.changes)),
-        csvCell(entry.origin),
+        csvCell(describeAuditMetadata(entry.metadata)),
+        csvCell(AUDIT_ORIGIN_LABELS[entry.origin] || entry.origin),
         csvCell(entry.ip || ''),
+        csvCell(entry.userAgent || ''),
         csvCell(entry.requestId || ''),
       ].join(';')
     );

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Handler } from 'hono';
+import type { Context, Handler } from 'hono';
 import { serveStatic } from 'hono/bun';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
@@ -11,7 +11,7 @@ import { tenants, properties, leases, receipts, users } from './db/schema';
 import { sql, eq, and, desc, asc, isNull, isNotNull, lt, gt, lte, gte, ne, or, inArray, aliasedTable } from 'drizzle-orm';
 import { createId } from './utils/id';
 import { createLogger } from './utils/logger';
-import { loginUser, changePassword } from './utils/auth';
+import { loginUser, changePassword, adminMustChangePassword } from './utils/auth';
 import { getUserId, requireUserId, setUserSession, clearUserSession, getClientId, setClientSession, clearClientSession } from './utils/session';
 import { loginTenant, getClientIdentity, changeTenantPassword } from './utils/tenant-auth';
 import { getDaysInMonth, formatCurrency, formatDateBr, formatDateTimeBr, RECEIPT_CATEGORY_LABELS, LEASE_STATUS_LABELS } from './utils/format';
@@ -183,22 +183,137 @@ app.notFound((c) => {
 // Servir arquivos estáticos (CSS, JS compilado, ícones, imagens)
 app.use('/*', serveStatic({ root: './public' }));
 
-// Rate limit em memória para login
+// Trava de senha padrão: enquanto o administrador não trocar a senha semeada no
+// primeiro boot, o painel inteiro fica bloqueado (mesma regra da Área do Cliente).
+const PASSWORD_GATE_EXEMPT = ['/login', '/logout', '/settings', '/api/health'];
+
+/** Consulta (uma vez por requisição) se a troca de senha do administrador é obrigatória. */
+async function isPasswordChangeForced(c: Context<AppEnv>, userId: string): Promise<boolean> {
+  const cached = c.get('mustChangePassword');
+  if (cached !== undefined) return cached;
+  const forced = await adminMustChangePassword(userId);
+  c.set('mustChangePassword', forced);
+  return forced;
+}
+
+app.use('*', async (c, next) => {
+  const userId = getUserId(c);
+  if (!userId) return next();
+
+  const path = new URL(c.req.url).pathname;
+  const lastSegment = path.slice(path.lastIndexOf('/') + 1);
+  if (
+    PASSWORD_GATE_EXEMPT.includes(path) ||
+    path.startsWith('/portal') ||
+    path.startsWith('/validar') ||
+    lastSegment.includes('.')
+  ) {
+    return next();
+  }
+
+  if (!(await isPasswordChangeForced(c, userId))) return next();
+
+  if (path.startsWith('/api/')) {
+    return c.json({ error: 'Troca de senha obrigatória.' }, 403);
+  }
+  return c.redirect('/settings?forced=1');
+});
+
+// Proteção do login (em memória): limite por IP/minuto, teto global por minuto e
+// bloqueio progressivo por IP após falhas repetidas — cobre varredura com IPs rotativos.
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const loginFailureMap = new Map<string, { failures: number; lockedUntil: number; strikes: number }>();
+const globalLimit = { count: 0, resetAt: 0 };
+
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX) || 5;
 const RATE_LIMIT_WINDOW = 60_000;
+const RATE_LIMIT_GLOBAL_MAX = Number(process.env.RATE_LIMIT_GLOBAL_MAX) || 60;
+const LOGIN_LOCK_THRESHOLD = Number(process.env.LOGIN_LOCK_THRESHOLD) || 10;
+const LOGIN_LOCK_BASE_MS = 5 * 60_000;
+const LOGIN_LOCK_MAX_MS = 60 * 60_000;
 
-function checkRateLimit(ip: string): boolean {
+export type LoginGate = { allowed: true } | { allowed: false; reason: 'locked' | 'ip' | 'global'; retryAfterSeconds: number };
+
+/** Descarta entradas vencidas quando os mapas crescem (varredura com muitos IPs). */
+function pruneLoginMaps(now: number) {
+  if (rateLimitMap.size > 1000) {
+    for (const [key, entry] of rateLimitMap) {
+      if (now > entry.resetAt) rateLimitMap.delete(key);
+    }
+  }
+  if (loginFailureMap.size > 1000) {
+    for (const [key, entry] of loginFailureMap) {
+      if (entry.lockedUntil < now && entry.failures === 0) loginFailureMap.delete(key);
+    }
+  }
+}
+
+/** Decide se a tentativa de login pode prosseguir, considerando bloqueio, IP e teto global. */
+export function checkLoginAttempt(ip: string): LoginGate {
   const now = Date.now();
+  pruneLoginMaps(now);
+
+  const lock = loginFailureMap.get(ip);
+  if (lock && lock.lockedUntil > now) {
+    return { allowed: false, reason: 'locked', retryAfterSeconds: Math.ceil((lock.lockedUntil - now) / 1000) };
+  }
+
+  if (now > globalLimit.resetAt) {
+    globalLimit.count = 0;
+    globalLimit.resetAt = now + RATE_LIMIT_WINDOW;
+  }
+  globalLimit.count++;
+  if (globalLimit.count > RATE_LIMIT_GLOBAL_MAX) {
+    return { allowed: false, reason: 'global', retryAfterSeconds: Math.ceil((globalLimit.resetAt - now) / 1000) };
+  }
+
   const entry = rateLimitMap.get(ip);
   if (!entry || now > entry.resetAt) {
     rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
-    return true;
+    return { allowed: true };
   }
-  if (entry.count >= RATE_LIMIT_MAX) return false;
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return { allowed: false, reason: 'ip', retryAfterSeconds: Math.ceil((entry.resetAt - now) / 1000) };
+  }
   entry.count++;
-  return true;
+  return { allowed: true };
 }
+
+/** Registra falha de credencial: após {@link LOGIN_LOCK_THRESHOLD} falhas o IP fica bloqueado com backoff. */
+export function registerLoginFailure(ip: string): void {
+  const now = Date.now();
+  const entry = loginFailureMap.get(ip) ?? { failures: 0, lockedUntil: 0, strikes: 0 };
+  entry.failures++;
+
+  if (entry.failures >= LOGIN_LOCK_THRESHOLD) {
+    const lockMs = Math.min(LOGIN_LOCK_BASE_MS * 2 ** entry.strikes, LOGIN_LOCK_MAX_MS);
+    entry.lockedUntil = now + lockMs;
+    entry.strikes++;
+    entry.failures = 0;
+    appLog.warn('IP bloqueado por tentativas de login', { ip, lockSeconds: Math.round(lockMs / 1000) });
+  }
+
+  loginFailureMap.set(ip, entry);
+}
+
+/** Limpa o histórico de falhas do IP após um login bem-sucedido. */
+export function registerLoginSuccess(ip: string): void {
+  loginFailureMap.delete(ip);
+}
+
+/** Limpa o estado da proteção de login (usado pelos testes automatizados). */
+export function resetLoginGate(): void {
+  rateLimitMap.clear();
+  loginFailureMap.clear();
+  globalLimit.count = 0;
+  globalLimit.resetAt = 0;
+}
+
+const loginGateReasonLabels: Record<'locked' | 'ip' | 'global', string> = {
+  locked: 'IP bloqueado temporariamente por tentativas repetidas',
+  ip: 'Limite de tentativas por minuto excedido',
+  global: 'Limite global de tentativas por minuto excedido',
+};
 
 // Template HTML idêntico ao root.tsx de main
 function renderHtml(
@@ -311,27 +426,31 @@ app.get('/login', (c) => {
 // Login - POST
 app.post('/login', async (c) => {
   const anonymousAudit = createAuditContext(c, null);
-  if (!checkRateLimit(anonymousAudit.ip)) {
-    await recordAudit(anonymousAudit, {
-      action: 'auth.login-failed',
-      entity: 'user',
-      summary: 'Tentativa de acesso bloqueada pelo limite de tentativas',
-      metadata: { reason: 'Limite de tentativas por minuto excedido' },
-    });
-    const html = renderHtml(
-      'Aluxen | Entrar',
-      'login',
-      { error: 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.' },
-      <LoginPage error="Muitas tentativas. Aguarde 1 minuto para tentar novamente." />
-    );
-    return c.html(html, 429);
-  }
-
   const body = await c.req.parseBody();
   const username = String(body['username'] || '').trim();
   const password = String(body['password'] || '');
 
+  const gate = checkLoginAttempt(anonymousAudit.ip);
+  if (!gate.allowed) {
+    const reason = loginGateReasonLabels[gate.reason];
+    await recordAudit(anonymousAudit, {
+      action: 'auth.login-failed',
+      entity: 'user',
+      entityLabel: username || null,
+      summary: reason,
+      metadata: { reason, username: username || null, retryAfterSeconds: gate.retryAfterSeconds },
+    });
+    const message =
+      gate.reason === 'locked'
+        ? `Muitas tentativas. Novas tentativas bloqueadas por ${Math.max(1, Math.ceil(gate.retryAfterSeconds / 60))} minuto(s).`
+        : 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.';
+    c.header('Retry-After', String(gate.retryAfterSeconds));
+    const html = renderHtml('Aluxen | Entrar', 'login', { error: message }, <LoginPage error={message} />);
+    return c.html(html, 429);
+  }
+
   if (!username || !password) {
+    registerLoginFailure(anonymousAudit.ip);
     await recordAudit(anonymousAudit, {
       action: 'auth.login-failed',
       entity: 'user',
@@ -345,6 +464,7 @@ app.post('/login', async (c) => {
 
   const user = await loginUser(username, password);
   if (!user) {
+    registerLoginFailure(anonymousAudit.ip);
     await recordAudit(anonymousAudit, {
       action: 'auth.login-failed',
       entity: 'user',
@@ -356,6 +476,8 @@ app.post('/login', async (c) => {
     return c.html(html, 401);
   }
 
+  registerLoginSuccess(anonymousAudit.ip);
+
   setUserSession(c, user.id);
   await recordAudit(createAuditContext(c, { id: user.id, name: user.username }), {
     action: 'auth.login',
@@ -364,7 +486,8 @@ app.post('/login', async (c) => {
     entityLabel: user.username,
     summary: `Acesso ao sistema por "${user.username}"`,
   });
-  return c.redirect('/dashboard?tab=dashboard');
+  // Senha padrão (semeada por `SEED_PASSWORD`) ainda vigente: troca obrigatória antes do painel.
+  return c.redirect(user.mustChangePassword ? '/settings?forced=1' : '/dashboard?tab=dashboard');
 });
 
 // Logout
@@ -477,23 +600,32 @@ app.get('/portal/login', (c) => {
 
 // Login da Área do Cliente - POST
 app.post('/portal/login', async (c) => {
-  if (!checkRateLimit(clientIp(c))) {
-    await recordAudit(createAuditContext(c, null, 'client'), {
-      action: 'auth.client-login-failed',
-      entity: 'tenant',
-      summary: 'Acesso à Área do Cliente bloqueado pelo limite de tentativas',
-      metadata: { reason: 'Limite de tentativas por minuto excedido' },
-    });
-    const message = 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.';
-    const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message }, <ClientLoginPage error={message} />);
-    return c.html(html, 429);
-  }
-
+  const ip = clientIp(c);
   const body = await c.req.parseBody();
   const cpf = String(body['cpf'] || '').trim();
   const password = String(body['password'] || '');
 
+  const gate = checkLoginAttempt(ip);
+  if (!gate.allowed) {
+    const reason = loginGateReasonLabels[gate.reason];
+    await recordAudit(createAuditContext(c, null, 'client'), {
+      action: 'auth.client-login-failed',
+      entity: 'tenant',
+      entityLabel: cpf || null,
+      summary: `Área do Cliente: ${reason.toLowerCase()}`,
+      metadata: { reason, cpf: cpf || null, retryAfterSeconds: gate.retryAfterSeconds },
+    });
+    const message =
+      gate.reason === 'locked'
+        ? `Muitas tentativas. Novas tentativas bloqueadas por ${Math.max(1, Math.ceil(gate.retryAfterSeconds / 60))} minuto(s).`
+        : 'Muitas tentativas. Aguarde 1 minuto para tentar novamente.';
+    c.header('Retry-After', String(gate.retryAfterSeconds));
+    const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message, cpf }, <ClientLoginPage error={message} cpf={cpf} />);
+    return c.html(html, 429);
+  }
+
   if (!cpf || !password) {
+    registerLoginFailure(ip);
     const message = 'Informe CPF e senha.';
     const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message, cpf }, <ClientLoginPage error={message} cpf={cpf} />);
     return c.html(html, 400);
@@ -501,6 +633,7 @@ app.post('/portal/login', async (c) => {
 
   const identity = await loginTenant(cpf, password);
   if (!identity) {
+    registerLoginFailure(ip);
     await recordAudit(createAuditContext(c, null, 'client'), {
       action: 'auth.client-login-failed',
       entity: 'tenant',
@@ -512,6 +645,8 @@ app.post('/portal/login', async (c) => {
     const html = renderHtml('Aluxen | Área do Cliente', 'client-login', { error: message, cpf }, <ClientLoginPage error={message} cpf={cpf} />);
     return c.html(html, 401);
   }
+
+  registerLoginSuccess(ip);
 
   setClientSession(c, identity.id);
   await recordAudit(createAuditContext(c, { id: identity.id, name: identity.name }, 'client'), {
@@ -654,6 +789,7 @@ app.get('/dashboard', async (c) => {
       email: tenants.email,
       phone: tenants.phone,
       cpf: tenants.cpf,
+      password_changed_at: tenants.passwordChangedAt,
     }).from(tenants).orderBy(desc(tenants.createdAt), asc(tenants.name)),
     db.select({
       id: properties.id,
@@ -1235,6 +1371,7 @@ app.get('/settings', async (c) => {
   const user = userRows[0];
   const lanIp = getLocalIpAddress();
   const currentPort = process.env.PORT || '3000';
+  const forced = await isPasswordChangeForced(c, userId);
   const settingsProps = {
     landlordName: (await getSetting('landlord_name')) || 'Locador',
     landlordCpf: (await getSetting('landlord_cpf')) || '',
@@ -1242,9 +1379,15 @@ app.get('/settings', async (c) => {
     appUrl: (await getSetting('app_url')) || '',
     detectedLanUrl: lanIp ? `http://${lanIp}:${currentPort}` : 'http://localhost:3000',
     username: user?.username || '',
+    forced,
   };
 
-  const html = renderHtml('Aluxen | Configurações', 'settings', settingsProps, <SettingsPage {...settingsProps} />);
+  const html = renderHtml(
+    forced ? 'Aluxen | Trocar senha' : 'Aluxen | Configurações',
+    'settings',
+    settingsProps,
+    <SettingsPage {...settingsProps} />
+  );
   return c.html(html);
 });
 
@@ -1334,6 +1477,7 @@ app.post('/settings', async (c) => {
       const newPassword = String(formData['new_password'] || '');
       const confirmPassword = String(formData['confirm_password'] || '');
       if (newPassword !== confirmPassword) throw new Error('Nova senha e confirmação não conferem.');
+      const wasForced = await isPasswordChangeForced(c, userId);
       await changePassword(userId, currentPassword, newPassword);
       await recordAudit(audit, {
         action: 'user.password',
@@ -1343,6 +1487,11 @@ app.post('/settings', async (c) => {
         summary: `Senha do usuário "${user?.username || 'administrador'}" alterada`,
         metadata: { username: user?.username ?? null },
       });
+
+      // Troca obrigatória do primeiro acesso: já liberado, segue direto ao painel.
+      if (wasForced) {
+        return c.redirect('/dashboard?tab=dashboard');
+      }
 
       const html = renderHtml(
         'Aluxen | Configurações',
@@ -1356,11 +1505,22 @@ app.post('/settings', async (c) => {
     throw new Error('Ação inválida.');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Erro ao salvar.';
+    const forced = await isPasswordChangeForced(c, userId);
+    const props = {
+      landlordName,
+      landlordCpf,
+      landlordEmail,
+      appUrl,
+      detectedLanUrl,
+      username: user?.username || '',
+      error: errorMsg,
+      forced,
+    };
     const html = renderHtml(
-      'Aluxen | Configurações',
+      forced ? 'Aluxen | Trocar senha' : 'Aluxen | Configurações',
       'settings',
-      { landlordName, landlordCpf, landlordEmail, appUrl, detectedLanUrl, username: user?.username || '', error: errorMsg },
-      <SettingsPage landlordName={landlordName} landlordCpf={landlordCpf} landlordEmail={landlordEmail} appUrl={appUrl} detectedLanUrl={detectedLanUrl} username={user?.username || ''} error={errorMsg} />
+      props,
+      <SettingsPage {...props} />
     );
     return c.html(html, 400);
   }

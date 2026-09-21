@@ -12,6 +12,32 @@ export interface SettingsProps {
   username: string;
   message?: string;
   error?: string;
+  /** Senha padrão ainda vigente: a página mostra apenas a troca de senha obrigatória. */
+  forced?: boolean;
+}
+
+/** Formulário de troca de senha, usado na página completa e na troca obrigatória. */
+function PasswordChangeForm({ busy, onBusy }: { busy: boolean; onBusy: () => void }) {
+  return (
+    <form method="post" action="/settings" className="stack" onSubmit={onBusy}>
+      <input type="hidden" name="intent" value="change-password" />
+      <div className="form-group">
+        <label htmlFor="current-password">Senha atual</label>
+        <input id="current-password" name="current_password" type="password" autoComplete="current-password" required />
+      </div>
+      <div className="form-group">
+        <label htmlFor="new-password">Nova senha</label>
+        <input id="new-password" name="new_password" type="password" autoComplete="new-password" required minLength={6} />
+      </div>
+      <div className="form-group">
+        <label htmlFor="confirm-password">Confirmar nova senha</label>
+        <input id="confirm-password" name="confirm_password" type="password" autoComplete="new-password" required minLength={6} />
+      </div>
+      <button type="submit" className="btn btn-primary" disabled={busy}>
+        Alterar senha
+      </button>
+    </form>
+  );
 }
 
 export function SettingsPage(props: SettingsProps) {
@@ -38,8 +64,9 @@ export function SettingsPage(props: SettingsProps) {
   }, []);
 
   useEffect(() => {
+    if (props.forced) return;
     void fetchStatus();
-  }, [fetchStatus]);
+  }, [fetchStatus, props.forced]);
 
   const handleLogoutWhatsApp = () => {
     setLogoutWhatsappConfirm(true);
@@ -64,6 +91,24 @@ export function SettingsPage(props: SettingsProps) {
       setDisconnecting(false);
     }
   };
+
+  if (props.forced) {
+    return (
+      <div className="settings-page">
+        <div className="card stack" style={{ width: '100%', maxWidth: 440, padding: '2.25rem' }}>
+          <h1 style={{ fontSize: '1.35rem', margin: 0 }}>Trocar senha</h1>
+          <p className="subtitle" style={{ margin: 0 }}>
+            O sistema ainda está com a senha padrão. Defina uma senha pessoal para liberar o acesso ao painel.
+          </p>
+
+          {props.message ? <div className="success">{props.message}</div> : null}
+          {props.error ? <div className="error" style={{ marginTop: 0 }}>{props.error}</div> : null}
+
+          <PasswordChangeForm busy={busy} onBusy={() => setBusy(true)} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-page">
@@ -248,24 +293,7 @@ export function SettingsPage(props: SettingsProps) {
         {/* 4. Alterar Senha */}
         <div className="stack">
           <h2 style={{ fontSize: '1.1rem' }}>Alterar Senha</h2>
-          <form method="post" action="/settings" className="stack" onSubmit={() => setBusy(true)}>
-            <input type="hidden" name="intent" value="change-password" />
-            <div className="form-group">
-              <label htmlFor="current-password">Senha atual</label>
-              <input id="current-password" name="current_password" type="password" required />
-            </div>
-            <div className="form-group">
-              <label htmlFor="new-password">Nova senha</label>
-              <input id="new-password" name="new_password" type="password" required minLength={4} />
-            </div>
-            <div className="form-group">
-              <label htmlFor="confirm-password">Confirmar nova senha</label>
-              <input id="confirm-password" name="confirm_password" type="password" required minLength={4} />
-            </div>
-            <button type="submit" className="btn btn-primary" disabled={busy}>
-              Alterar senha
-            </button>
-          </form>
+          <PasswordChangeForm busy={busy} onBusy={() => setBusy(true)} />
         </div>
 
         <div style={{ textAlign: 'center' }}>

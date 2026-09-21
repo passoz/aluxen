@@ -64,15 +64,17 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 ### 1. Autenticação & Segurança
 - **Sessões HTTP-only Seguras**: Armazenadas em cookie criptografado (`__aluxen_session`), com flags `HttpOnly`, `SameSite=Lax`, e validade de 30 dias.
 - **Duas autenticações independentes**: o painel do locador (`__aluxen_session`) e a **Área do Cliente** do locatário (`__aluxen_client_session`) usam cookies distintos, sem privilégios cruzados — a sessão do locatário não abre nenhuma rota administrativa.
-- **Proteção contra Força Bruta**: Rate limiting em memória por IP (padrão de 5 tentativas por minuto, configurável via `RATE_LIMIT_MAX`).
+- **Proteção contra Força Bruta**: três camadas em memória — limite por IP/minuto (`RATE_LIMIT_MAX`, padrão 5), teto global por minuto (`RATE_LIMIT_GLOBAL_MAX`, padrão 60, que barra varredura com IPs rotativos) e **bloqueio progressivo** do IP após falhas repetidas (`LOGIN_LOCK_THRESHOLD`, padrão 10 falhas → 5 min, dobrando até 1 h). Tentativas bloqueadas respondem `429` com `Retry-After` e ficam registradas na trilha com o usuário tentado.
 - **Hashes Criptográficos**: Senhas protegidas com `bcryptjs` (salt cost 10).
-- **Usuário Administrador Automático**: Semeado no boot caso nenhum usuário exista (`passoz` / `senha-de-teste`, customizável via variáveis de ambiente).
+- **Usuário Administrador Automático**: Semeado no boot caso nenhum usuário exista (`passoz` / `senha-de-teste`, customizável por `SEED_USERNAME`/`SEED_PASSWORD`). Enquanto a senha semeada não for trocada, o painel inteiro fica bloqueado até a definição de uma senha pessoal (mesma regra da Área do Cliente).
+- **Troca obrigatória da senha padrão**: `POST /settings` grava a data da troca (`users.password_changed_at`); enquanto ela for nula, qualquer rota administrativa redireciona para a tela de troca (APIs respondem `403`). A Área do Cliente e os links públicos com token continuam acessíveis.
 
 ### 2. Gestão de Inquilinos
 - Cadastro completo de locatários: Nome, CPF formatado, Email e Telefone/WhatsApp com DDD.
 - Busca em tempo real e ordenação multi-coluna com paginação.
 - Modais rápidos de cadastro e edição.
 - **E-mail validado** no formulário (padrão `usuario@dominio.tld`) e também no servidor, garantindo o endereço usado nos envios de WhatsApp/e-mail.
+- **Coluna "Área do Cliente"**: mostra quem já definiu senha própria (`Senha própria`), quem ainda usa a senha padrão (`Senha padrão`) e quem não tem CPF cadastrado (`Sem CPF`, portanto sem acesso ao portal).
 - **Exclusão Segura**: O sistema impede a exclusão acidental de locatários que possuam contratos ativos.
 
 ### 3. Gestão de Imóveis
@@ -139,6 +141,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Trilha de auditoria completa (`audit_logs`)**: toda operação relevante é registrada com autor, data/hora, IP, protocolo da requisição e o **diff campo a campo** (valor antes → valor depois) já formatado em português.
 - Cobre cadastros e alterações de inquilinos e imóveis, criação/alteração/encerramento de contratos, lançamentos, baixas (individuais e em lote), geração mensal, alteração de valores e de dados do locador, troca de senha, **emissões de PDF** (recibo e contrato), envios pelo WhatsApp, backups e acessos (login, tentativas negadas e saída).
 - **Aba "Histórico" no painel**: filtros por área, ação, usuário e período, busca textual, ordenação cronológica, paginação, detalhe do evento com tabela *antes/depois* e **exportação CSV** (compatível com Excel em português).
+- **Exportação CSV completa**: data/hora, usuário, ação, área, registro, ID, resumo, alterações, metadados, origem, IP, **user-agent** e protocolo da requisição — o suficiente para investigar incidentes fora da aplicação.
 - Senhas, tokens e cookies **nunca** são gravados na trilha.
 
 ### 12. PWA, Responsividade & Sincronização Offline
@@ -173,7 +176,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Seletores e calendários com abertura inteligente**: os popovers abrem abaixo do campo; sem espaço, abrem acima e, quando não há altura suficiente em nenhuma direção, ao lado — sempre limitados pela janela e sem empurrar a página. São renderizados em portal, então não ficam recortados dentro de modais com rolagem.
 - **Calendário destaca o dia corrente** (contorno na cor primária), independente da data selecionada, e traz os atalhos *Hoje*/*Agora* e *Limpar*.
 - **Modais com rolagem interna**: modais altos (como o de Informações) rolam dentro do próprio cartão, limitado à altura da janela — a página atrás não ganha rolagem.
-- **Filtros rotulados em todas as seções**: busca, mês, ano, status, área, ação e usuário aparecem com rótulo acima do controle, alinhados na mesma linha.
+- **Filtros rotulados e alinhados em todas as seções**: busca, mês, ano, status, área, ação e usuário aparecem com rótulo acima do controle; rótulos e controles compartilham a mesma linha de base e a mesma altura (38px), com os campos empilhados na vertical em telas estreitas.
 - **Seleção sem opção duplicada**: os selects com busca exibem uma única opção de placeholder, fornecida pela tela.
 - **Formulários com validação nativa**: e-mail com `pattern` compartilhado entre cliente e servidor; a validação também roda no fluxo offline (`form.reportValidity()`).
 
@@ -216,7 +219,7 @@ bun run start
 ```
 
 ### Credenciais Padrão no Primeiro Acesso
-- **Painel administrativo**: usuário `passoz` / senha `senha-de-teste`.
+- **Painel administrativo**: usuário `passoz` / senha `senha-de-teste` — a troca é exigida no primeiro login (as variáveis `SEED_USERNAME`/`SEED_PASSWORD` valem apenas até essa troca).
 - **Área do Cliente (locatário)** — `/portal/login`: usuário e senha são o **CPF do locatário sem pontuação** (ex.: CPF `529.982.247-25` → login `52998224725` e senha `52998224725`). A troca de senha é exigida no primeiro acesso. Locatários sem CPF cadastrado não conseguem entrar — complete o cadastro em *Inquilinos*.
 
 ---
@@ -237,6 +240,9 @@ O Aluxen funciona perfeitamente com valores padrão pré-configurados, mas você
 | `WHATSAPP_PROFILE_DIR` | `.whatsapp-profile` | Diretório onde os dados da sessão do WhatsApp Web são gravados. |
 | `CHROMIUM_PATH` | *(auto-detectado)* | Caminho explícito para o executável do Chromium ou Google Chrome. |
 | `RATE_LIMIT_MAX` | `5` | Número máximo de tentativas de login permitidas por IP por minuto. |
+| `RATE_LIMIT_GLOBAL_MAX` | `60` | Teto global de tentativas de login por minuto, somando todos os IPs (barra varredura distribuída). |
+| `LOGIN_LOCK_THRESHOLD` | `10` | Falhas de login que bloqueiam o IP; o tempo dobra a cada novo bloqueio (5 min até 1 h). |
+| `TZ` | `America/Sao_Paulo` (imagem) | Fuso do processo; define os horários da trilha de auditoria e dos logs. |
 | `SEED_USERNAME` | `passoz` | Nome de usuário criado automaticamente no primeiro boot do banco. |
 | `SEED_PASSWORD` | `senha-de-teste` | Senha inicial do usuário administrador. |
 | `DEFAULT_LANDLORD_NAME`| `Locador` | Nome padrão do locador inserido nas configurações iniciais. |
@@ -407,6 +413,9 @@ aluxen/
 └── test/                       # Suíte de testes automatizados
     ├── app.test.ts             # Testes de integração de rotas, PDFs, APIs e auditoria
     ├── build-info.test.ts      # Identificação do build (Dockerfile, workflow e git)
+    ├── login-gate.test.ts      # Rate limit, teto global e bloqueio progressivo do login
+    ├── format.test.ts          # Formatadores de data (SQLite e aplicação)
+    ├── validation.test.ts      # Validação de formato de e-mail
     ├── logger.test.ts          # Testes do logger (níveis, formatos e redação)
     ├── datepicker.test.tsx     # Testes unitários do seletor de datas
     └── migration.test.ts       # Testes de integridade do esquema e migrações

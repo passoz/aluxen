@@ -5,6 +5,12 @@ export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  /**
+   * Data da primeira troca de senha. Nulo significa que o administrador ainda
+   * usa a senha semeada (`SEED_PASSWORD`/padrão) e a troca é obrigatória antes
+   * de qualquer acesso ao painel.
+   */
+  passwordChangedAt: text('password_changed_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 });
 

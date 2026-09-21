@@ -104,7 +104,7 @@ export function formatLocalDate(date: Date) {
 }
 
 export function parseLocalDateTime(value: string) {
-  const [datePart = '', timePart = '00:00'] = value.split('T');
+  const [datePart = '', timePart = '00:00'] = value.split(/[T ]/);
   const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute] = timePart.split(':').map(Number);
   return new Date(year ?? 2000, (month || 1) - 1, day || 1, hour || 0, minute || 0);
@@ -117,15 +117,17 @@ export function formatLocalDateTime(date: Date) {
   return `${datePart}T${hour}:${minute}`;
 }
 
+/** Aceita `YYYY-MM-DD` e `YYYY-MM-DDTHH:mm` (o SQLite grava `YYYY-MM-DD HH:mm:ss`). */
 export function formatDateBr(value: string | null) {
   if (!value) return '-';
-  const [year, month, day] = value.split(/[-T]/).map(Number);
+  const [datePart = ''] = value.split(/[T ]/);
+  const [year, month, day] = datePart.split('-').map(Number);
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`;
 }
 
 export function formatDateTimeBr(value: string | null) {
   if (!value) return '-';
-  const [datePart = '', timePart = ''] = value.split('T');
+  const [datePart = '', timePart = ''] = value.split(/[T ]/);
   const [year, month, day] = datePart.split('-').map(Number);
   if (timePart) {
     const [hour, minute] = timePart.split(':');

@@ -239,6 +239,29 @@ function friendlyWhatsAppError(raw: string): string {
   return raw;
 }
 
+/** Estado da credencial da Área do Cliente exibido na listagem de inquilinos. */
+function renderPortalCredential(tenant: Tenant) {
+  if (!tenant.cpf) {
+    return (
+      <span className="status-badge due" title="Cadastre o CPF para liberar o acesso do locatário">
+        Sem CPF
+      </span>
+    );
+  }
+  if (tenant.password_changed_at) {
+    return (
+      <span className="status-badge paid" title={`Senha pessoal definida em ${formatDateTimeBr(tenant.password_changed_at)}`}>
+        Senha própria
+      </span>
+    );
+  }
+  return (
+    <span className="status-badge overdue" title="Ainda usa a senha padrão (o próprio CPF); a troca é exigida no primeiro acesso">
+      Senha padrão
+    </span>
+  );
+}
+
 /** Etapas exibidas ao usuário durante o envio automático pelo WhatsApp. */
 const WHATSAPP_SEND_STEPS: { stage: SendStage; label: string }[] = [
   { stage: 'preparing', label: 'Preparando o envio' },
@@ -1367,12 +1390,13 @@ export function DashboardPage(initialData: DashboardProps) {
                           onClick={() => toggleSort(tenantSort, 'phone', setTenantSort)}
                         />
                       </th>
+                      <th>Área do Cliente</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {initialLoading ? (
-                      <LoadingRow colSpan={5} />
+                      <LoadingRow colSpan={6} />
                     ) : pagedTenants.length ? (
                       pagedTenants.map((tenant) => (
                         <tr key={tenant.id}>
@@ -1387,6 +1411,7 @@ export function DashboardPage(initialData: DashboardProps) {
                           <td data-label="Email">{tenant.email}</td>
                           <td data-label="CPF">{tenant.cpf || '-'}</td>
                           <td data-label="Telefone">{tenant.phone || '-'}</td>
+                          <td data-label="Área do Cliente">{renderPortalCredential(tenant)}</td>
                           <td className="row-actions">
                             <button
                               type="button"
@@ -1412,7 +1437,7 @@ export function DashboardPage(initialData: DashboardProps) {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5}>Nenhum inquilino cadastrado.</td>
+                        <td colSpan={6}>Nenhum inquilino cadastrado.</td>
                       </tr>
                     )}
                   </tbody>

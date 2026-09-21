@@ -935,29 +935,37 @@ input[type="checkbox"] {
   flex-wrap: wrap;
 }
 
-.filter-bar input {
-  flex: 1;
-  min-width: 220px;
-}
-
-/* Campo de filtro com rótulo, alinhado com os demais controles da barra */
-.filter-field {
+/* Filtros: rótulos e controles alinhados na mesma linha, com a mesma altura. */
+.filter-bar .filter-field,
+.filter-bar .form-group {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  margin: 0;
   min-width: 0;
+}
+
+.filter-bar .filter-label,
+.filter-bar .form-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1;
+  margin: 0;
+}
+
+.filter-bar input,
+.filter-bar .small-select-display,
+.filter-bar .date-picker-display {
+  height: 38px;
+  padding: 0 0.75rem;
+  font-size: 0.8125rem;
+  box-sizing: border-box;
 }
 
 .filter-field-grow {
   flex: 1;
   min-width: 220px;
-}
-
-.filter-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  letter-spacing: 0.01em;
 }
 
 .filter-field input {

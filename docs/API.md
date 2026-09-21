@@ -81,14 +81,22 @@ Redireciona para `/dashboard?tab=tenants` se autenticado, ou `/login` se desaute
 Retorna a página de login renderizada via SSR.
 
 ### `POST /login`
-Autentica o usuário com proteção de rate limit (máximo de 5 tentativas por minuto por IP por padrão).
+Autentica o usuário com três camadas de proteção: limite por IP/minuto (`RATE_LIMIT_MAX`, padrão 5), teto global por minuto (`RATE_LIMIT_GLOBAL_MAX`, padrão 60) e bloqueio progressivo do IP após `LOGIN_LOCK_THRESHOLD` falhas (padrão 10 → 5 min, dobrando até 1 h).
 - **Corpo**: `application/x-www-form-urlencoded` ou `multipart/form-data`
   - `username` (string, obrigatório)
   - `password` (string, obrigatório)
 - **Respostas**:
-  - `302 Found`: Sucesso (define o cookie `__aluxen_session` e redireciona para `/dashboard?tab=tenants`).
+  - `302 Found`: Sucesso (define o cookie `__aluxen_session`). O destino é `/dashboard?tab=dashboard` ou `/settings?forced=1` quando a senha semeada ainda não foi trocada.
+  - `400 Bad Request`: Usuário ou senha em branco.
   - `401 Unauthorized`: Credenciais inválidas.
-  - `429 Too Many Requests`: Limite de tentativas por minuto atingido.
+  - `429 Too Many Requests`: Limite por IP, teto global ou IP bloqueado por falhas repetidas — sempre com o cabeçalho `Retry-After` em segundos. O evento na trilha registra o motivo e o usuário tentado.
+
+### Trava de senha padrão (administrador)
+Enquanto `users.password_changed_at` for nulo (senha semeada por `SEED_PASSWORD` ainda vigente), qualquer rota administrativa exige a troca antes de prosseguir:
+- Rotas HTML (painel, exportação, importação, auditoria) respondem `302` para `/settings?forced=1`.
+- Rotas de API respondem `403` com `{"error":"Troca de senha obrigatória."}`.
+- Ficam liberadas: `/login`, `/logout`, `/settings` (a própria troca), `/api/health`, `/portal/*` e `/validar/*`.
+- A troca (`intent: "change-password"`) redireciona para `/dashboard?tab=dashboard` quando era obrigatória.
 
 ### `POST /logout` ou `GET /logout`
 Invalida o cookie de sessão e redireciona para `/login`.
@@ -106,6 +114,7 @@ Invalida o cookie de sessão e redireciona para `/login`.
   - `status` (string, opcional): Filtro de recibos (`'all'`, `'paid'`, `'pending'`, `'overdue'`).
   - `json` (boolean, opcional): Se `'true'`, retorna os dados brutos da tela em formato JSON.
 - **Resposta**: HTML completo (SSR) ou payload JSON estruturado contendo listas de inquilinos, imóveis, contratos e recibos.
+- Cada inquilino traz `password_changed_at` (nulo = ainda usa a senha padrão da Área do Cliente).
 
 ### `POST /dashboard` (Mutations)
 Executa operações de escrita no sistema. Identificado pelo campo `intent`.
@@ -190,8 +199,9 @@ Processa mutações de configuração conforme o campo `intent`:
   - `app_url` (string, URL pública para geração de QR Codes)
 - `intent: "change-password"`:
   - `current_password` (string, obrigatório)
-  - `new_password` (string, mínimo 4 caracteres)
+  - `new_password` (string, mínimo 6 caracteres)
   - `confirm_password` (string, confirmação)
+  - Define `password_changed_at`, liberando o painel quando a troca era obrigatória.
 
 ---
 
@@ -390,7 +400,8 @@ Renderiza a aba **Histórico e Auditoria** no servidor, já com a primeira pági
 - **Autenticação**: Requerida (Sessão).
 - **Query Params**: os mesmos filtros de `GET /audit`.
 - **Resposta**: `200 OK` com `Content-Type: text/csv; charset=utf-8` e `Content-Disposition: attachment; filename="aluxen-historico-YYYY-MM-DD.csv"`.
-- CSV com BOM UTF-8 e separador `;` (abre direto no Excel em português), com as colunas *Data/Hora, Usuário, Ação, Registro, Resumo, Alterações, Origem, IP, Request*. Limitado a 5.000 linhas por arquivo.
+- CSV com BOM UTF-8 e separador `;` (abre direto no Excel em português), com as colunas *Data/Hora, Usuário, Ação, Área, Registro, ID do registro, Resumo, Alterações, Metadados, Origem, IP, User-Agent, Request*. Limitado a 5.000 linhas por arquivo.
+- `Origem` sai com o rótulo legível (Painel, Área do Cliente, Link público, Rotina automática) e `Metadados` traz o contexto do evento (`Motivo: ... | Usuário: ...`).
 - A própria exportação é registrada na trilha (`history.export`).
 
 ---
