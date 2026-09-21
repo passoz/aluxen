@@ -19,6 +19,9 @@ ENV APP_ENV=production \
     DB_DIR=/data \
     LOG_FORMAT=json \
     TZ=America/Sao_Paulo
+LABEL aluxen="go" \
+      org.opencontainers.image.title="aluxen:go"
+
 
 EXPOSE 3000
 

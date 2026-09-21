@@ -6,6 +6,7 @@ on:
     branches:
       - release
       - main
+      - devgo
 
 env:
   GHCR_REGISTRY: ghcr.io
@@ -47,8 +48,12 @@ jobs:
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=true
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' || github.ref_name == 'release' }}
+            type=raw,value=go,enable=${{ github.ref_name == 'devgo' }}
             type=sha,prefix=sha-
+          labels: |
+            aluxen:go
+            aluxen=go
 
       - name: Resolve build metadata
         run: |

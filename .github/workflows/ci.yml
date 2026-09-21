@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, release]
+    branches: [main, release, devgo]
   pull_request:
     branches: [main, release]
 concurrency:
@@ -92,4 +92,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: docker build
-        run: docker build -t aluxen:${{ github.sha }} .
+        run: |
+          docker build \
+            -t aluxen:${{ github.sha }} \
+            -t aluxen:go \
+            --label "aluxen:go" \
+            --label "aluxen=go" \
+            .
