@@ -164,7 +164,8 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 15. Informações do Sistema & Build em Execução
 - **Botão "Informações"** no rodapé da barra lateral (abaixo de *Configurações*), abrindo um modal com a identificação exata do que está rodando.
-- **Identificação do build**: origem (`Imagem publicada (GHCR)` ou `Execução local`), versão do `package.json`, commit, branch/tag, **tag da imagem** (`ghcr.io/passoz/aluxen:sha-<commit>`), data de construção (UTC) e link direto para a execução do GitHub Actions que gerou a imagem.
+- **Versão que sempre avança**: a versão exibida é `MAJOR.MINOR` do `package.json` com o **número do build** como subversão (ex.: `1.0.61`) — o número vem da contagem de commits no pipeline (`git rev-list --count HEAD`) e é gravado na imagem, então cada build publicado tem uma versão diferente da anterior.
+- **Identificação do build**: origem (`Imagem publicada (GHCR)` ou `Execução local`), versão, número do build, commit, branch/tag, **tag da imagem** (`ghcr.io/passoz/aluxen:sha-<commit>`), data de construção (UTC) e link direto para a execução do GitHub Actions que gerou a imagem.
 - **Estado do sistema**: runtime do Bun, ambiente, fuso horário, hora de início e tempo no ar, caminho e tamanho do banco SQLite, URL pública configurada e contagem de inquilinos, imóveis, contratos e recibos.
 - Os metadados são injetados na imagem pelo workflow de publicação (`build-args` → `ENV` no `Dockerfile`) e lidos em runtime por `src/utils/build-info.ts`; fora da imagem, o sistema cai para o repositório git local. Sem metadados, o modal avisa que a execução não é identificável.
 
@@ -242,7 +243,7 @@ O Aluxen funciona perfeitamente com valores padrão pré-configurados, mas você
 | `DEFAULT_LANDLORD_CPF` | `""` | CPF inicial do locador. |
 | `LOG_LEVEL` | `info` | Nível mínimo dos logs: `debug`, `info`, `warn`, `error` ou `silent`. |
 | `LOG_FORMAT` | `json` fora de TTY, `pretty` em terminal | Formato de saída do logger (`json` para JSON Lines ou `pretty` para leitura humana). |
-| `ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL` | *(injetados na imagem)* | Metadados do build exibidos no modal **Informações**. Preenchidos pelo workflow de publicação via `build-args`; podem ser definidos manualmente para identificar uma execução local. |
+| `ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL`, `ALUXEN_BUILD_NUMBER` | *(injetados na imagem)* | Metadados do build exibidos no modal **Informações**. `ALUXEN_BUILD_NUMBER` é a subversão da versão (`1.0.<número>`). Preenchidos pelo workflow de publicação via `build-args`; podem ser definidos manualmente para identificar uma execução local. |
 
 ---
 
@@ -314,7 +315,7 @@ docker pull passoz/aluxen:latest
 docker run -d -p 3000:3000 -v /minha-pasta/data:/data passoz/aluxen:latest
 ```
 
-Cada build é publicado com duas tags: `latest` e `sha-<commit>`. O commit, a branch, a data de construção e a tag exata da imagem ficam gravados dentro da própria imagem (`build-args` → `ENV`) e aparecem no painel em **Informações** — dá para confirmar qual build está rodando sem consultar o GitHub.
+Cada build é publicado com duas tags: `latest` e `sha-<commit>`. O commit, a branch, a data de construção, a **versão (`1.0.<nº do build>`)** e a tag exata da imagem ficam gravados dentro da própria imagem (`build-args` → `ENV`) e aparecem no painel em **Informações** — dá para confirmar qual build está rodando sem consultar o GitHub.
 
 ---
 

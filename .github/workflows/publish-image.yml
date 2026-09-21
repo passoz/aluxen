@@ -22,6 +22,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Histórico completo: o número do build é a contagem de commits.
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -51,6 +54,8 @@ jobs:
         run: |
           echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          # Subversão da versão exibida no painel: cresce a cada build publicado.
+          echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -70,5 +75,6 @@ jobs:
             ALUXEN_BUILD_TIME=${{ env.BUILD_TIME }}
             ALUXEN_BUILD_IMAGE=${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ env.SHORT_SHA }}
             ALUXEN_BUILD_RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            ALUXEN_BUILD_NUMBER=${{ env.BUILD_NUMBER }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

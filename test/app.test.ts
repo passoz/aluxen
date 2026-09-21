@@ -1349,6 +1349,7 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     const info = (await res.json()) as {
       app: string;
       version: string;
+      buildNumber: number | null;
       runtime: string;
       nodeEnv: string;
       uptimeSeconds: number;
@@ -1358,6 +1359,9 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     };
     expect(info.app).toBe('Aluxen');
     expect(info.version).toMatch(/^\d+\.\d+\.\d+/);
+    // A subversão da versão é o número do build (commits), então nunca repete.
+    expect(info.buildNumber).toBeGreaterThan(0);
+    expect(info.version.endsWith(`.${info.buildNumber}`)).toBe(true);
     expect(info.runtime).toMatch(/^Bun \d+\./);
     expect(info.build.shortCommit).toMatch(/^[0-9a-f]{7,}$/);
     expect(info.build.source).toBe('local');

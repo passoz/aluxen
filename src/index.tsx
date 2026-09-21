@@ -260,6 +260,8 @@ async function collectSystemInfo(): Promise<SystemInfo> {
   return {
     app: 'Aluxen',
     version: build.version,
+    packageVersion: build.packageVersion,
+    buildNumber: build.buildNumber,
     runtime: `Bun ${Bun.version}`,
     nodeEnv: process.env.NODE_ENV || 'development',
     timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,

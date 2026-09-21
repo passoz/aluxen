@@ -43,7 +43,9 @@ Alimenta o modal **Informações** do painel: identificação do build em execu�
 ```json
 {
   "app": "Aluxen",
-  "version": "1.0.0",
+  "version": "1.0.61",
+  "packageVersion": "1.0.0",
+  "buildNumber": 61,
   "runtime": "Bun 1.4.2",
   "nodeEnv": "production",
   "timezone": "America/Sao_Paulo",
@@ -64,6 +66,7 @@ Alimenta o modal **Informações** do painel: identificação do build em execu�
   }
 }
 ```
+- `version` é `MAJOR.MINOR` do `package.json` com o `buildNumber` como subversão (`1.0.61`), garantindo que cada build publicado exiba uma versão distinta.
 - `build.source`: `image` (metadados injetados pelo workflow), `local` (execução de desenvolvimento com git) ou `unknown` (execução sem metadados, como uma imagem publicada antes desta funcionalidade).
 - `startedAt` e `buildTime` são ISO 8601 em UTC; o painel exibe os dois convertidos para leitura com a marcação `(UTC)`.
 

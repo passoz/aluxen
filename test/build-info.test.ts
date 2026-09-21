@@ -17,7 +17,11 @@ describe('Identificação do build', () => {
 
   it('resolve versão e commit do repositório quando roda fora da imagem', () => {
     const info = getBuildInfo();
-    expect(info.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(info.packageVersion).toMatch(/^\d+\.\d+\.\d+/);
+    // A subversão exibida é o número do build (commits da branch), sempre crescente.
+    expect(info.buildNumber).toBeGreaterThan(0);
+    const [major, minor] = info.packageVersion.split('.');
+    expect(info.version).toBe(`${major}.${minor}.${info.buildNumber}`);
     expect(info.shortCommit).toMatch(/^[0-9a-f]{7,}$/);
     expect(info.commit).toMatch(/^[0-9a-f]{40}$/);
     expect(info.source).toBe('local');

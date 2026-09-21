@@ -257,6 +257,7 @@ O painel exibe no modal **Informações** exatamente qual build está no ar, o q
 1. O workflow `Publish Image` resolve `SHORT_SHA` e `BUILD_TIME` e repassa `build-args` (`ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL`) ao `docker/build-push-action`.
 2. O `Dockerfile` declara cada `ARG` e o promove a `ENV`, de modo que o valor exista no processo em execução.
 3. `src/utils/build-info.ts` lê as variáveis uma única vez no boot (`BUILD_ENV_VARS` é o contrato compartilhado com o Dockerfile/workflow); sem elas, cai para `git rev-parse` do repositório local e, na ausência de ambos, marca a origem como `unknown`.
+   - **Versão efetiva**: `MAJOR.MINOR` do `package.json` + `ALUXEN_BUILD_NUMBER` como patch. O pipeline calcula esse número com `git rev-list --count HEAD` (por isso o checkout usa `fetch-depth: 0`), o que faz a subversão crescer a cada build — localmente o mesmo cálculo é feito no repositório git.
 4. `GET /api/info` (protegido por sessão) agrega essa identificação com runtime, banco, tempo no ar e contagens; o modal do painel consome o endpoint a cada abertura, então o operador sempre vê o build do processo atual.
 5. `test/build-info.test.ts` garante que toda variável lida em runtime está declarada no `Dockerfile` e repassada pelo workflow — renomear de um lado sem o outro quebraria a identificação apenas em produção.
 

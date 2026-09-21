@@ -314,6 +314,7 @@ function SystemInfoContent({ info }: { info: SystemInfo }) {
         <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Build em execução</h4>
         <InfoRow label="Origem" value={BUILD_SOURCE_LABELS[build.source] || build.source} />
         <InfoRow label="Versão" value={info.version} />
+        {info.buildNumber ? <InfoRow label="Número do build" value={`#${info.buildNumber}`} /> : null}
         <InfoRow label="Commit" value={build.shortCommit || '—'} mono />
         <InfoRow label="Branch / tag" value={build.ref || '—'} mono />
         <InfoRow label="Imagem" value={build.image || '—'} mono />
