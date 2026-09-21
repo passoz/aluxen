@@ -203,6 +203,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Caução por contrato**: `deposit.set` registra o valor, a data de recebimento e a observação; `deposit.refund` devolve o valor (total ou parcial) e classifica a situação em `held`, `refunded`, `partially_refunded` ou `forfeited`. Contrato sem caução registrada não emite o recibo de devolução.
 - **Auto de vistoria**: entrada (`checkin`) e saída (`checkout`) com data da realização, estado geral (Ótima, Boa, Regular, Ruim), itens conferidos (área, item, estado e observação, em linhas paralelas) e até **10 fotos de 8 MiB** cada (JPG, PNG, WEBP, HEIC/HEIF). O PDF sai com os itens e as fotos anexadas.
 - **Documentos próprios da temporada**: `/inspection-pdf` e `/deposit-pdf`, validáveis publicamente em `/validar/vistoria/:id` e `/validar/caucao/:id`.
+- **Comparação de vistorias por imagem** (aba *Temporada*): com provedor de visão configurado, o botão *Comparar vistorias* confronta as fotos da entrada com as da saída e devolve o laudo da comparação — achados por área e item com grau **Sem alteração**, **Atenção** ou **Dano**, resumo quantitativo e confiança da leitura. O código decide: achado que não cita foto nenhuma ou cita foto que não foi enviada é **descartado e contado no resumo**; severidade fora do vocabulário derruba a resposta inteira (`502`) em vez de virar dano presumido. Sem provedor configurado, a rota responde `503`. `GET /comparison-pdf?lease_id=` emite o laudo em PDF com selo de autenticidade. O laudo sai como **subsídio para o locador**, nunca como dano presumido.
 - **Calendário de ocupação** (aba *Calendário*): grade por imóvel e dia do mês, com temporada, contrato ativo, contrato suspenso e dias livres; a tela é só leitura — nada é gravado por ela.
 - **Categorias de lançamento**: além de aluguel (`rent`) e avulsa (`extra`), existem taxa de limpeza (`cleaning`), consumíveis (`consumables`) e devolução de caução (`deposit-refund`).
 - **Contratos de temporada**: a situação `season` é um estado do contrato, aceita na criação e na edição, e bloqueia sobreposição no mesmo imóvel junto com os contratos ativos.
@@ -298,9 +299,9 @@ A configuração vem **do ambiente** (12-factor); `.env.example` é o contrato d
 | `WAHA_API_KEY` | *(vazio)* | Autentica as chamadas ao canal. |
 | `WAHA_SESSION` | `default` | Sessão do canal usada pela instância. |
 | `WAHA_WEBHOOK_SECRET` | *(vazio)* | Segredo HMAC que valida o webhook de mensagens recebidas. **Obrigatório** fora do modo demo. |
-| `AI_API_URL` | *(vazio)* | Base da API do provedor de IA (leitura de documentos). |
+| `AI_API_URL` | *(vazio)* | Base da API do provedor de IA (leitura de documentos e comparação de vistorias). |
 | `AI_API_KEY` | *(vazio)* | Autentica as chamadas ao provedor de IA. |
-| `AI_MODEL` | *(vazio; `.env.example` sugere `deepseek-v4.1-flash`)* | Modelo usado nas extrações por IA (o operador de IA no aviso de privacidade). Sem base/modelo configurados, a leitura envia o comprovante para a fila de revisão. |
+| `AI_MODEL` | *(vazio; `.env.example` sugere `deepseek-v4.1-flash`)* | Modelo usado nas extrações por IA (o operador de IA no aviso de privacidade). Sem base/modelo configurados, a leitura envia o comprovante para a fila de revisão e a comparação de vistorias responde `503`. |
 | `AI_CONFIDENCE_THRESHOLD` | `0.9` | Confiança mínima para a baixa automática; abaixo disso vai para revisão humana. |
 | `EASYPANEL_URL` | *(vazio)* | Base da API de provisionamento por instância. |
 | `EASYPANEL_API_KEY` | *(vazio)* | Autentica as chamadas à API de provisionamento. |

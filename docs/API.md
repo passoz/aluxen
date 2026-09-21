@@ -596,6 +596,42 @@ Emite o auto de vistoria em PDF (itens conferidos e fotos anexadas).
   `Este documento não pertence ao seu cadastro.`
 - **Auditoria**: `document.inspection`.
 
+### `POST /api/inspections/compare`
+Compara as fotos da vistoria de entrada com as da vistoria de saída do contrato
+e devolve o laudo da comparação (leitura assistida por visão, Tier 2).
+- **Autenticação**: sessão do administrador + CSRF.
+- **Corpo**: `lease_id` — formulário do painel ou JSON `{"lease_id": "..."}`.
+- **Resposta**: `200 OK` `{"ok":true,"comparison":{...}}`, com os achados
+  (`area`, `item`, `state`, `severity`/`severityLabel`, `note`, fotos citadas),
+  o `summary` (`findings`, `ok`, `attention`, `damaged`, `photos`, `discarded`,
+  `confidence`) e o texto do laudo.
+- **Códigos**: `400` `Não foi possível ler os dados enviados.` (corpo ilegível)
+  mais as validações do domínio — `Informe o contrato da comparação.`,
+  `Registre as vistorias de entrada e de saída do contrato antes de comparar.`,
+  `Registre a vistoria de entrada do contrato antes de comparar.`,
+  `Registre a vistoria de saída do contrato antes de comparar.`
+  e `Contrato não encontrado.` (contrato inexistente ou de outro titular);
+  `503` `Comparação por imagem não configurada nesta instância.` (sem provedor);
+  `502` `A comparação devolveu um resultado fora do formato esperado. Tente novamente.`
+- **Regra de decisão**: severidade fora de `ok|atencao|dano`, JSON inválido ou
+  confiança fora de `0..1` derrubam a resposta (`502`). Achado que não cita foto
+  nenhuma ou cita foto que não foi enviada é **descartado** e contado em
+  `summary.discarded` — um achado inventado não invalida o laudo.
+- **Auditoria**: `inspection.compare` (origem painel ou link público).
+
+### `GET /comparison-pdf?lease_id=&token=`
+Emite o laudo da comparação de vistorias em PDF, com o resumo, os achados e o
+selo de autenticidade.
+- **Autenticação**: como os demais documentos (administrador, token HMAC ou
+  locatário titular do contrato) — a posse é conferida sobre a vistoria de
+  entrada do contrato.
+- **Resposta**: `200 OK`, `application/pdf`,
+  `Content-Disposition: inline; filename="laudo-<lease_id>.pdf"`.
+- **Erros**: `400` `Não foi possível ler os dados enviados.` e `Informe o contrato da comparação.`; `404`
+  `Vistoria de entrada não encontrada`; `503`/`502` como no `POST` acima; `403`
+  `Este documento não pertence ao seu cadastro.`
+- **Auditoria**: `document.inspection`.
+
 ### `GET /deposit-pdf?id=&token=`
 Emite o recibo de devolução de caução em PDF.
 - **Autenticação**: administrador, token HMAC ou locatário titular.

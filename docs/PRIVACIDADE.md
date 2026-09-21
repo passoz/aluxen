@@ -13,9 +13,12 @@ quanto tempo, quem decide sobre eles e como o titular exerce os seus direitos.
   dados cadastrar e para quê. O locador responde pelas finalidades do tratamento.
 - **Operador:** o **provedor de IA** configurado na instância, usado apenas na
   leitura assistida de documentos (extrair campos de um contrato antigo, de um
-  RG/CNH ou de um comprovante). O modelo usado é o configurado em `AI_MODEL`
-  (ex.: `deepseek-v4.1-flash`). O provedor trata os dados somente para devolver a
-  leitura, seguindo as instruções do locador.
+  RG/CNH ou de um comprovante) e na **comparação de fotos de vistoria**. O modelo
+  usado é o configurado em `AI_MODEL` (ex.: `deepseek-v4.1-flash`). O provedor
+  trata os dados somente para devolver a leitura, seguindo as instruções do
+  locador — e o resultado que ele devolve é conferido pelo código, não aplicado
+  direto (a comparação de vistorias sai como subsídio, sem baixa nem registro de
+  dano automático).
 - **Aluxen (software):** o programa em si. Não é controlador nem operador: é o
   instrumento que o locador usa. O Aluxen não recebe cópia dos dados do locador —
   cada instância guarda o seu próprio banco (SQLite ou Postgres) e o seu próprio
