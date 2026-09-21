@@ -23,6 +23,7 @@ Sistema completo e moderno de **gestão de locações imobiliárias**, executand
   - [12. PWA, Responsividade & Sincronização Offline](#12-pwa-responsividade--sincronização-offline)
   - [13. Observabilidade & Logs Estruturados](#13-observabilidade--logs-estruturados)
   - [14. Área do Cliente (Portal do Locatário)](#14-área-do-cliente-portal-do-locatário)
+  - [15. Informações do Sistema & Build em Execução](#15-informações-do-sistema--build-em-execução)
 - [Guia Rápido de Instalação e Execução](#-guia-rápido-de-instalação-e-execução)
 - [Variáveis de Ambiente](#-variáveis-de-ambiente)
 - [Scripts Disponíveis](#-scripts-disponíveis)
@@ -157,6 +158,12 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 - **Isolamento por titular**: recibos em aberto e documentos de outros locatários não aparecem na listagem nem podem ser baixados via `/pdf` e `/contract-pdf` (`403`).
 - **Auditoria integrada**: acessos, tentativas negadas, saídas e trocas de senha do locatário são registrados na trilha com a origem `client` (Área do Cliente).
 
+### 15. Informações do Sistema & Build em Execução
+- **Botão "Informações"** no rodapé da barra lateral (abaixo de *Configurações*), abrindo um modal com a identificação exata do que está rodando.
+- **Identificação do build**: origem (`Imagem publicada (GHCR)` ou `Execução local`), versão do `package.json`, commit, branch/tag, **tag da imagem** (`ghcr.io/passoz/aluxen:sha-<commit>`), data de construção (UTC) e link direto para a execução do GitHub Actions que gerou a imagem.
+- **Estado do sistema**: runtime do Bun, ambiente, fuso horário, hora de início e tempo no ar, caminho e tamanho do banco SQLite, URL pública configurada e contagem de inquilinos, imóveis, contratos e recibos.
+- Os metadados são injetados na imagem pelo workflow de publicação (`build-args` → `ENV` no `Dockerfile`) e lidos em runtime por `src/utils/build-info.ts`; fora da imagem, o sistema cai para o repositório git local. Sem metadados, o modal avisa que a execução não é identificável.
+
 ---
 
 ## 🚀 Guia Rápido de Instalação e Execução
@@ -223,6 +230,7 @@ O Aluxen funciona perfeitamente com valores padrão pré-configurados, mas você
 | `DEFAULT_LANDLORD_CPF` | `""` | CPF inicial do locador. |
 | `LOG_LEVEL` | `info` | Nível mínimo dos logs: `debug`, `info`, `warn`, `error` ou `silent`. |
 | `LOG_FORMAT` | `json` fora de TTY, `pretty` em terminal | Formato de saída do logger (`json` para JSON Lines ou `pretty` para leitura humana). |
+| `ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL` | *(injetados na imagem)* | Metadados do build exibidos no modal **Informações**. Preenchidos pelo workflow de publicação via `build-args`; podem ser definidos manualmente para identificar uma execução local. |
 
 ---
 
@@ -294,6 +302,8 @@ docker pull passoz/aluxen:latest
 docker run -d -p 3000:3000 -v /minha-pasta/data:/data passoz/aluxen:latest
 ```
 
+Cada build é publicado com duas tags: `latest` e `sha-<commit>`. O commit, a branch, a data de construção e a tag exata da imagem ficam gravados dentro da própria imagem (`build-args` → `ENV`) e aparecem no painel em **Informações** — dá para confirmar qual build está rodando sem consultar o GitHub.
+
 ---
 
 ## 🧪 Testes e Qualidade de Código
@@ -358,11 +368,13 @@ aluxen/
 │   │   └── seed-demo.ts        # Dados demonstrativos para testes
 │   ├── types/                  # Tipagens TypeScript compartilhadas
 │   │   ├── dashboard.ts        # Tipos de entidades (Tenant, Property, Lease, Receipt)
+│   │   ├── system.ts           # Payload do modal de Informações (build + estado)
 │   │   └── http.ts             # Variáveis tipadas de request do Hono (requestId)
 │   ├── utils/                  # Utilitários de sistema
 │   │   ├── auth.ts             # Lógica de login e alteração de senha (bcryptjs)
 │   │   ├── auth-token.ts       # Geração e checagem de tokens HMAC e QR Codes
 │   │   ├── session.ts          # Gerenciamento do cookie de sessão HTTP-only
+│   │   ├── build-info.ts       # Identificação do build em execução (imagem/git)
 │   │   ├── tenant-auth.ts      # Credencial do locatário (login por CPF e troca de senha)
 │   │   ├── logger.ts           # Logger estruturado (níveis, JSON/pretty, redação)
 │   │   ├── audit.ts            # Trilha de auditoria: gravação, diffs e consultas
@@ -380,6 +392,7 @@ aluxen/
 │       └── types.ts            # Interfaces e estados de conexão
 └── test/                       # Suíte de testes automatizados
     ├── app.test.ts             # Testes de integração de rotas, PDFs, APIs e auditoria
+    ├── build-info.test.ts      # Identificação do build (Dockerfile, workflow e git)
     ├── logger.test.ts          # Testes do logger (níveis, formatos e redação)
     ├── datepicker.test.tsx     # Testes unitários do seletor de datas
     └── migration.test.ts       # Testes de integridade do esquema e migrações

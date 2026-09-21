@@ -47,6 +47,11 @@ jobs:
             type=raw,value=latest,enable=true
             type=sha,prefix=sha-
 
+      - name: Resolve build metadata
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+          echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
@@ -58,5 +63,12 @@ jobs:
           sbom: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            ALUXEN_BUILD_COMMIT=${{ github.sha }}
+            ALUXEN_BUILD_COMMIT_SHORT=${{ env.SHORT_SHA }}
+            ALUXEN_BUILD_REF=${{ github.ref_name }}
+            ALUXEN_BUILD_TIME=${{ env.BUILD_TIME }}
+            ALUXEN_BUILD_IMAGE=${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ env.SHORT_SHA }}
+            ALUXEN_BUILD_RUN_URL=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

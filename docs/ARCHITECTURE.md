@@ -239,7 +239,6 @@ Regras de projeto:
 - A origem distingue o canal do evento: `web` (painel do locador), `client` (Área do Cliente do locatário), `public` (links com token de autenticidade) e `job` (rotinas automáticas). Os eventos da Área do Cliente usam a ação `auth.client-*` e o autor é o próprio locatário.
 
 ### 5.4. Observabilidade e Logs
-
 `src/utils/logger.ts` implementa o logger estruturado usado por todo o runtime (zero dependências):
 
 - **Níveis**: `debug`, `info`, `warn`, `error` e `silent`, controlados por `LOG_LEVEL`.
@@ -249,6 +248,16 @@ Regras de projeto:
 - **Erros**: objetos `Error` são serializados com `name`, `message` e as primeiras linhas do `stack`.
 - **Middleware HTTP**: gera um `requestId` curto por requisição, mede a duração e classifica o evento — estáticos em `debug`, 4xx em `warn`, 5xx em `error` e requisições acima de 1 s em `warn`. O mesmo `requestId` aparece na página/JSON de erro e na trilha de auditoria, permitindo reconstruir o que aconteceu a partir de um protocolo.
 - **Erros não tratados**: `app.onError` registra o stack trace e responde com uma página amigável (ou JSON, para rotas `/api`), em vez do erro genérico do framework.
+
+### 5.5. Identificação do Build em Execução
+
+O painel exibe no modal **Informações** exatamente qual build está no ar, o que exige transportar metadados do pipeline até o runtime (a imagem não carrega o repositório git):
+
+1. O workflow `Publish Image` resolve `SHORT_SHA` e `BUILD_TIME` e repassa `build-args` (`ALUXEN_BUILD_COMMIT`, `ALUXEN_BUILD_COMMIT_SHORT`, `ALUXEN_BUILD_REF`, `ALUXEN_BUILD_TIME`, `ALUXEN_BUILD_IMAGE`, `ALUXEN_BUILD_RUN_URL`) ao `docker/build-push-action`.
+2. O `Dockerfile` declara cada `ARG` e o promove a `ENV`, de modo que o valor exista no processo em execução.
+3. `src/utils/build-info.ts` lê as variáveis uma única vez no boot (`BUILD_ENV_VARS` é o contrato compartilhado com o Dockerfile/workflow); sem elas, cai para `git rev-parse` do repositório local e, na ausência de ambos, marca a origem como `unknown`.
+4. `GET /api/info` (protegido por sessão) agrega essa identificação com runtime, banco, tempo no ar e contagens; o modal do painel consome o endpoint a cada abertura, então o operador sempre vê o build do processo atual.
+5. `test/build-info.test.ts` garante que toda variável lida em runtime está declarada no `Dockerfile` e repassada pelo workflow — renomear de um lado sem o outro quebraria a identificação apenas em produção.
 
 ---
 

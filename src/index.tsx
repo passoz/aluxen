@@ -3,7 +3,7 @@ import type { Handler } from 'hono';
 import { serveStatic } from 'hono/bun';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import path from 'path';
 
 import { initializeDatabase, getSetting, setSetting, db, sqlite } from './db';
@@ -39,6 +39,8 @@ import {
 import type { AuditPage } from './utils/audit-meta';
 import { DEFAULT_AUDIT_QUERY } from './utils/audit-meta';
 import type { AppEnv } from './types/http';
+import type { SystemInfo } from './types/system';
+import { getBuildInfo } from './utils/build-info';
 import { createReceiptPdfBuffer } from './utils/pdf';
 import { createContractPdfBuffer } from './utils/contract-pdf';
 import { buildClientBundle } from './build-client';
@@ -241,6 +243,47 @@ app.get('/api/health', (c) => {
     orm: 'drizzle-orm',
     timestamp: new Date().toISOString(),
   });
+});
+
+/** Identificação do build e estado geral do sistema exibidos no modal de Informações. */
+async function collectSystemInfo(): Promise<SystemInfo> {
+  const build = getBuildInfo();
+  const dbPath = sqlite.filename;
+  const [tenantRows, propertyRows, leaseRows, receiptRows] = await Promise.all([
+    db.select({ value: sql<number>`count(*)` }).from(tenants),
+    db.select({ value: sql<number>`count(*)` }).from(properties),
+    db.select({ value: sql<number>`count(*)` }).from(leases),
+    db.select({ value: sql<number>`count(*)` }).from(receipts),
+  ]);
+
+  return {
+    app: 'Aluxen',
+    version: build.version,
+    runtime: `Bun ${Bun.version}`,
+    nodeEnv: process.env.NODE_ENV || 'development',
+    timezone: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone,
+    startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    database: {
+      path: dbPath,
+      sizeBytes: existsSync(dbPath) ? statSync(dbPath).size : 0,
+    },
+    counts: {
+      tenants: Number(tenantRows[0]?.value ?? 0),
+      properties: Number(propertyRows[0]?.value ?? 0),
+      leases: Number(leaseRows[0]?.value ?? 0),
+      receipts: Number(receiptRows[0]?.value ?? 0),
+    },
+    appUrl: (await getSetting('app_url')) || '',
+    build,
+  };
+}
+
+// Informações do sistema e do build em execução (modal de Informações do painel)
+app.get('/api/info', async (c) => {
+  const userId = requireUserId(c);
+  if (!userId) return c.json({ error: 'Não autorizado.' }, 401);
+  return c.json(await collectSystemInfo());
 });
 
 // Raiz: Redireciona conforme autenticação

@@ -32,6 +32,7 @@ import {
   IconReceipts,
   IconLogout,
   IconSettings,
+  IconInfo,
   IconDashboard,
   IconHistory,
   IconWhatsApp,
@@ -40,6 +41,7 @@ import {
 import { MetricsView } from './metrics';
 import { HistoryView } from './history';
 import type { AuditPage } from '../utils/audit-meta';
+import type { SystemInfo } from '../types/system';
 
 import type {
   Tenant,
@@ -244,6 +246,117 @@ const WHATSAPP_SEND_STEPS: { stage: SendStage; label: string }[] = [
   { stage: 'confirming', label: 'Confirmando a entrega' },
 ];
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unit = units[0]!;
+  for (let index = 0; index < units.length - 1 && value >= 1024; index++) {
+    value /= 1024;
+    unit = units[index + 1]!;
+  }
+  return `${value.toFixed(1)} ${unit}`;
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const parts = [days ? `${days}d` : '', hours ? `${hours}h` : '', minutes || (!days && !hours) ? `${minutes}min` : ''].filter(Boolean);
+  return parts.join(' ');
+}
+
+/** Linha rótulo/valor do modal de Informações. */
+function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        gap: '1rem',
+        paddingBottom: '0.5rem',
+        borderBottom: '1px solid var(--border)',
+      }}
+    >
+      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{label}</span>
+      <span
+        style={{
+          fontSize: '0.9rem',
+          textAlign: 'right',
+          wordBreak: 'break-word',
+          fontFamily: mono ? 'monospace' : undefined,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** Como o build em execução foi obtido, para exibição no modal de Informações. */
+const BUILD_SOURCE_LABELS: Record<string, string> = {
+  image: 'Imagem publicada (GHCR)',
+  local: 'Execução local (repositório git)',
+  unknown: 'Sem identificação de build',
+};
+
+/** Identificação do build (imagem GHCR) e informações gerais do sistema. */
+function SystemInfoContent({ info }: { info: SystemInfo }) {
+  const { build } = info;
+  const buildTime = build.buildTime ? `${formatDateTimeBr(build.buildTime.replace('Z', ''))} (UTC)` : '—';
+
+  return (
+    <div className="stack">
+      <section className="stack" style={{ gap: '0.5rem' }}>
+        <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Build em execução</h4>
+        <InfoRow label="Origem" value={BUILD_SOURCE_LABELS[build.source] || build.source} />
+        <InfoRow label="Versão" value={info.version} />
+        <InfoRow label="Commit" value={build.shortCommit || '—'} mono />
+        <InfoRow label="Branch / tag" value={build.ref || '—'} mono />
+        <InfoRow label="Imagem" value={build.image || '—'} mono />
+        <InfoRow label="Construída em" value={buildTime} />
+        {build.runUrl ? (
+          <InfoRow
+            label="Execução no GitHub"
+            value={
+              <a href={build.runUrl} target="_blank" rel="noreferrer">
+                Ver build
+              </a>
+            }
+          />
+        ) : null}
+        {build.source === 'unknown' ? (
+          <p className="subtitle" style={{ margin: 0, fontSize: '0.8rem' }}>
+            Esta execução não traz os metadados de build. Publique uma imagem pelo workflow para identificá-la aqui.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="stack" style={{ gap: '0.5rem' }}>
+        <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Sistema</h4>
+        <InfoRow label="Aplicação" value={`${info.app} ${info.version}`} />
+        <InfoRow label="Runtime" value={info.runtime} />
+        <InfoRow label="Ambiente" value={info.nodeEnv} />
+        <InfoRow label="Fuso horário" value={info.timezone} />
+        <InfoRow label="Iniciado em" value={`${formatDateTimeBr(info.startedAt.replace('Z', ''))} (UTC)`} />
+        <InfoRow label="No ar há" value={formatUptime(info.uptimeSeconds)} />
+        <InfoRow label="Banco de dados" value={info.database.path} mono />
+        <InfoRow label="Tamanho do banco" value={formatBytes(info.database.sizeBytes)} />
+        <InfoRow label="URL pública" value={info.appUrl || '—'} />
+      </section>
+
+      <section className="stack" style={{ gap: '0.5rem' }}>
+        <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Registros</h4>
+        <InfoRow label="Inquilinos" value={info.counts.tenants} />
+        <InfoRow label="Imóveis" value={info.counts.properties} />
+        <InfoRow label="Contratos" value={info.counts.leases} />
+        <InfoRow label="Recibos" value={info.counts.receipts} />
+      </section>
+    </div>
+  );
+}
+
 export function DashboardPage(initialData: DashboardProps) {
   const [tab, setTab] = useState<Tab>(initialData.tab);
   const [user] = useState(initialData.user);
@@ -417,6 +530,24 @@ export function DashboardPage(initialData: DashboardProps) {
   const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
   const [connectWhatsappOpen, setConnectWhatsappOpen] = useState(false);
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null);
+  const [systemInfo, setSystemInfo] = useState<{ open: boolean; loading: boolean; data?: SystemInfo; error?: string } | null>(null);
+
+  /** Abre o modal de Informações já com a identificação do build em execução. */
+  const openSystemInfo = async () => {
+    setSystemInfo({ open: true, loading: true });
+    try {
+      const res = await fetch('/api/info', { credentials: 'same-origin' });
+      const data = (await res.json()) as SystemInfo & { error?: string };
+      if (!res.ok) throw new Error(data.error || 'Não foi possível carregar as informações.');
+      setSystemInfo({ open: true, loading: false, data });
+    } catch (error) {
+      setSystemInfo({
+        open: true,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Não foi possível carregar as informações.',
+      });
+    }
+  };
 
   const loadWhatsAppStatus = React.useCallback(async () => {
     try {
@@ -1107,6 +1238,18 @@ export function DashboardPage(initialData: DashboardProps) {
             <span className="nav-icon"><IconSettings /></span>
             {!collapsed || mobileMenuOpen ? <span className="nav-label">Configurações</span> : null}
           </a>
+          <button
+            type="button"
+            className="nav-link"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              void openSystemInfo();
+            }}
+            title="Informações do sistema"
+          >
+            <span className="nav-icon"><IconInfo /></span>
+            {!collapsed || mobileMenuOpen ? <span className="nav-label">Informações</span> : null}
+          </button>
           <form action="/logout" method="post">
             <button type="submit">
               <span className="nav-icon"><IconLogout /></span>
@@ -3175,6 +3318,18 @@ export function DashboardPage(initialData: DashboardProps) {
               });
             }}
           />
+
+          {systemInfo?.open ? (
+            <Modal title="Informações do sistema" wide onClose={() => setSystemInfo(null)}>
+              {systemInfo.loading ? (
+                <p className="subtitle" style={{ margin: 0 }}>
+                  Carregando informações...
+                </p>
+              ) : null}
+              {systemInfo.error ? <div className="error" style={{ marginTop: 0 }}>{systemInfo.error}</div> : null}
+              {systemInfo.data ? <SystemInfoContent info={systemInfo.data} /> : null}
+            </Modal>
+          ) : null}
         </div>
       </main>
     </div>

@@ -1315,6 +1315,45 @@ describe('Aluxen Bun + Hono 1:1 Parity Tests', () => {
     expect(csv).not.toContain('lease.create');
   });
 
+  it('GET /api/info exige sessão e devolve identificação do build e estado do sistema', async () => {
+    const anonymous = await server.fetch(new Request('http://localhost:3000/api/info'));
+    expect(anonymous.status).toBe(401);
+
+    const res = await server.fetch(
+      new Request('http://localhost:3000/api/info', { headers: { Cookie: sessionCookie } })
+    );
+    expect(res.status).toBe(200);
+    const info = (await res.json()) as {
+      app: string;
+      version: string;
+      runtime: string;
+      nodeEnv: string;
+      uptimeSeconds: number;
+      database: { path: string; sizeBytes: number };
+      counts: { tenants: number; properties: number; leases: number; receipts: number };
+      build: { shortCommit: string | null; source: string; version: string };
+    };
+    expect(info.app).toBe('Aluxen');
+    expect(info.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(info.runtime).toMatch(/^Bun \d+\./);
+    expect(info.build.shortCommit).toMatch(/^[0-9a-f]{7,}$/);
+    expect(info.build.source).toBe('local');
+    expect(info.database.path).toBeTruthy();
+    expect(info.database.sizeBytes).toBeGreaterThan(0);
+    expect(info.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(info.counts.tenants).toBeGreaterThan(0);
+  });
+
+  it('GET /dashboard renderiza o botão Informações no rodapé da barra lateral', async () => {
+    const res = await server.fetch(
+      new Request('http://localhost:3000/dashboard?tab=dashboard', { headers: { Cookie: sessionCookie } })
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('aria-label="Informações"');
+    expect(html).toContain('Informações</span>');
+  });
+
   it('GET /dashboard?tab=history renderiza a trilha de auditoria no SSR', async () => {
     const res = await server.fetch(
       new Request('http://localhost:3000/dashboard?tab=history', {

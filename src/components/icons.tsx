@@ -60,6 +60,17 @@ export function IconSettings() {
   );
 }
 
+/** Ícone do botão Informações (círculo com "i"). */
+export function IconInfo() {
+  return (
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Informações" role="img" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 11V16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="8" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconTheme() {
   return (
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" aria-label="Tema" role="img" xmlns="http://www.w3.org/2000/svg">

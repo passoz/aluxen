@@ -36,6 +36,37 @@ Retorna o estado operacional do runtime e serviços essenciais.
 }
 ```
 
+### `GET /api/info`
+Alimenta o modal **Informações** do painel: identificação do build em execução e estado geral do sistema.
+- **Autenticação**: Requerida (Sessão).
+- **Resposta**: `200 OK` (JSON) — `401 Unauthorized` sem sessão.
+```json
+{
+  "app": "Aluxen",
+  "version": "1.0.0",
+  "runtime": "Bun 1.4.2",
+  "nodeEnv": "production",
+  "timezone": "America/Sao_Paulo",
+  "startedAt": "2026-09-21T15:09:00.000Z",
+  "uptimeSeconds": 3600,
+  "database": { "path": "/data/aluxen.db", "sizeBytes": 266240 },
+  "counts": { "tenants": 36, "properties": 36, "leases": 36, "receipts": 77 },
+  "appUrl": "https://aluxen.evolucsia.com",
+  "build": {
+    "version": "1.0.0",
+    "commit": "90cd003c8ef0c4eec2369715470fc6ff3ca6eacfc61e3be316d132b1dc7969de",
+    "shortCommit": "7f2ba68",
+    "ref": "release",
+    "buildTime": "2026-09-21T14:52:02Z",
+    "image": "ghcr.io/passoz/aluxen:sha-7f2ba68",
+    "runUrl": "https://github.com/passoz/aluxen/actions/runs/35615036183",
+    "source": "image"
+  }
+}
+```
+- `build.source`: `image` (metadados injetados pelo workflow), `local` (execução de desenvolvimento com git) ou `unknown` (execução sem metadados, como uma imagem publicada antes desta funcionalidade).
+- `startedAt` e `buildTime` são ISO 8601 em UTC; o painel exibe os dois convertidos para leitura com a marcação `(UTC)`.
+
 ---
 
 ## 2. Autenticação e Sessão
