@@ -436,9 +436,9 @@ A interface web descarta SPAs pesadas (React/Vue/Angular) em favor de renderiza�
 
 ## 12. Governança e Verificação Normativa
 
-O desenvolvimento deste port é estritamente auditado e governado pela suite **Piwerness (`pwn`)**:
+O desenvolvimento deste port é estritamente auditado e governado pela suite **PWN (`pwn`)**:
 
-- **Obrigatoriedade de Contratos V4:** cada pacote e caso de uso responde a contratos normativos congelados em `.piwerness/work/NNNN/CTR-*.json`.
+- **Obrigatoriedade de Contratos V4:** cada pacote e caso de uso responde a contratos normativos congelados em `.pwn/work/NNNN/CTR-*.json`.
 - **Portões Determinísticos (Gates):**
   - `GATE-DISC-REQ`: alinhamento entre descoberta e requisitos.
   - `GATE-REQ-PRD`: completude e rastreabilidade entre requisitos e PRD.

@@ -1,8 +1,0 @@
-{"timestamp":"2026-09-21T21:01:27.952Z","type":"start","message":"Run RUN-mubqd2j2 inicializado para task WORK (risk: L3)"}
-{"timestamp":"2026-09-21T21:01:28.170Z","type":"step","message":"Sandbox criado: /home/passoz/dev/aluxen/.piwerness/sandboxes/RUN-mubqd2j2 (branch: pwn-sandbox-RUN-mubqd2j2)"}
-{"timestamp":"2026-09-21T21:01:28.171Z","type":"step","message":"Tool API vinculada ao sandbox: /home/passoz/dev/aluxen/.piwerness/sandboxes/RUN-mubqd2j2"}
-{"timestamp":"2026-09-21T21:01:28.171Z","type":"policy_check","message":"ALLOW shell_exec go test ./...","detail":{"allowed":true,"domain":"shell","operation":{"type":"shell_exec","command":"go","args":["test","./..."]}}}
-{"timestamp":"2026-09-21T21:01:37.104Z","type":"step","message":"Executed go test ./... (exit=1)"}
-{"timestamp":"2026-09-21T21:01:37.362Z","type":"diff_check","message":"DIFF OK: 0 arquivo(s) verificado(s)"}
-{"timestamp":"2026-09-21T21:01:37.362Z","type":"end","message":"Run RUN-mubqd2j2 finalizado: aborted"}
-{"timestamp":"2026-09-21T21:01:37.383Z","type":"step","message":"Sandbox removido: /home/passoz/dev/aluxen/.piwerness/sandboxes/RUN-mubqd2j2"}

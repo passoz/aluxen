@@ -1,7 +1,7 @@
 # 💻 Guia do Desenvolvedor — Aluxen (Go)
 
 > **Manual prático de onboarding, fluxo de trabalho e padrões de engenharia para desenvolvedores no Aluxen.**
-> Cobre: setup local, live-reload com Air, ciclo de banco (Goose + sqlc), paridade de esquemas, criação de casos de uso na Clean Architecture, testes automatizados e governança com Piwerness.
+> Cobre: setup local, live-reload com Air, ciclo de banco (Goose + sqlc), paridade de esquemas, criação de casos de uso na Clean Architecture, testes automatizados e governança com PWN.
 
 ---
 
@@ -14,7 +14,7 @@
 5. [Criando uma Nova Funcionalidade (Passo a Passo)](#5-criando-uma-nova-funcionalidade-passo-a-passo)
 6. [Testes Automatizados & Gate de Cobertura (`make test`)](#6-testes-automatizados--gate-de-cobertura-make-test)
 7. [Padrões de Código & Boas Práticas](#7-padrões-de-código--boas-práticas)
-8. [Governança com Piwerness (`pwn`)](#8-governança-com-piwerness-pwn)
+8. [Governança com PWN (`pwn`)](#8-governança-com-pwn-pwn)
 
 ---
 
@@ -191,7 +191,7 @@ go test ./internal/infrastructure/web/... -race
 
 ---
 
-## 8. Governança com Piwerness (`pwn`)
+## 8. Governança com PWN (`pwn`)
 
 O desenvolvimento no Aluxen é auditado e governado por contratos normativos:
 

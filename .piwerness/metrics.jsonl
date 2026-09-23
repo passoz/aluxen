@@ -1,2 +1,0 @@
-{"timestamp":"2026-09-21T21:01:37.383Z","runId":"RUN-mubqd2j2","workId":"0001","taskId":"WORK","agentRole":"strong","model":"bun","tokensInput":0,"tokensOutput":0,"costUSD":0,"durationMs":9433,"status":"failed","attempts":1,"isolated":true}
-{"timestamp":"2026-09-21T21:02:01.264Z","runId":"RUN-mubqdknl","workId":"0001","taskId":"WORK","agentRole":"strong","model":"bun","tokensInput":0,"tokensOutput":0,"costUSD":0,"durationMs":9823,"status":"failed","attempts":1,"isolated":true}

@@ -33,10 +33,12 @@ data-test/
 whatsapp-session/
 
 # Governança do pwn (runtime)
-.piwerness/sandboxes/
-.piwerness/metrics.jsonl
-.piwerness/RUN-*.jsonl
-.piwerness/learnings.json
+.pwn/sandboxes/
+.pwn/metrics.jsonl
+.pwn/RUN-*.jsonl
+.pwn/learnings.json
+.pwn/gate-cache/
+.piwerness
 queue/review/*.json
 
 # Logs e caches
