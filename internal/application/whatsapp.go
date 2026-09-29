@@ -336,21 +336,28 @@ func deliverWhatsApp(ctx context.Context, deps Deps, channel WhatsAppChannel, re
 	messageID, err := channel.SendText(ctx, phone, message)
 	if err != nil {
 		reason := err.Error()
-		channel.Fail(jobID, reason)
+		// A trilha é gravada antes de o job virar falha: um job em estado
+		// terminal precisa ser a prova de que o desfecho já está auditado. Na
+		// ordem inversa, uma queda entre as duas etapas perdia o registro — a
+		// gravação é de melhor esforço e só alerta em log.
 		recordWhatsAppSendFailure(ctx, deps, request, jobID, phone, reason)
+		channel.Fail(jobID, reason)
 		return
 	}
 	if messageID != "" {
 		channel.Stage(jobID, StageConfirming)
 	}
 
+	// Mesmo invariante no caminho de sucesso: a auditoria vem antes de o job
+	// ficar observável como concluído, para que quem pollar o status e já ler a
+	// trilha encontre o registro.
+	recordWhatsAppSend(ctx, deps, request, jobID, phone)
 	channel.Complete(jobID, WhatsAppSendResult{
 		Success:   true,
 		To:        phone,
 		Message:   message,
 		Timestamp: deps.Clock.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 	})
-	recordWhatsAppSend(ctx, deps, request, jobID, phone)
 }
 
 // WhatsAppJobStatus devolve o job do administrador informado. Job de outro dono

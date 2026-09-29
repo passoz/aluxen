@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, release, devgo]
+    branches: [main, release]
   pull_request:
     branches: [main, release]
   # Reaproveitado pelo workflow de publicação: nenhuma imagem sai de um commit
