@@ -1,0 +1,28 @@
+title = "Aluxen — gitleaks"
+
+[extend]
+# Nenhuma regra é desativada: a lista padrão é estendida, não substituída.
+useDefault = true
+
+# Exceção única, para vetores dourados de compatibilidade com o app Bun.
+#
+# Os arquivos abaixo guardam o segredo padrão aposentado do app anterior
+# ("aluxen-authenticity-secret-key-2026") e os tokens HMAC que ele produz. São
+# valores fixos por definição: os testes existem para provar que o port Go
+# reproduz o cálculo antigo, garantindo que documentos já impressos continuem
+# válidos. Trocá-los por literais de outro formato faria o teste afirmar uma
+# mentira e apagaria a garantia de retrocompatibilidade em silêncio.
+#
+# A lista é restrita a estes sete arquivos — todo o resto do repositório,
+# inclusive os demais arquivos de teste, continua varrido.
+[allowlist]
+description = "Vetores dourados de compatibilidade com o app Bun (segredo padrão aposentado e tokens HMAC derivados)"
+paths = [
+  '''internal/infrastructure/authz/token_test\.go''',
+  '''internal/infrastructure/authz/coverage_test\.go''',
+  '''internal/infrastructure/pdf/receipt_test\.go''',
+  '''internal/infrastructure/pdf/contract_test\.go''',
+  '''internal/infrastructure/pdf/deposit_test\.go''',
+  '''internal/infrastructure/pdf/inspection_test\.go''',
+  '''internal/infrastructure/pdf/inspection_comparison_test\.go''',
+]
