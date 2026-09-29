@@ -2,7 +2,6 @@ package db_test
 
 import (
 	"context"
-	"database/sql"
 	"os"
 	"testing"
 
@@ -11,6 +10,7 @@ import (
 
 	"github.com/passoz/aluxen/internal/domain"
 	"github.com/passoz/aluxen/internal/infrastructure/db"
+	"github.com/passoz/aluxen/internal/testsupport/pgtest"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -35,40 +35,25 @@ func targets(t *testing.T) []target {
 func openStore(t *testing.T, tgt target) *db.Store {
 	t.Helper()
 	ctx := context.Background()
+	dsn := tgt.dsn
 	if tgt.name == "postgres" {
-		resetPostgres(t, tgt.dsn)
+		dsn = isolatedDSN(t, tgt.dsn)
 	}
-	store, err := db.Open(ctx, tgt.dsn, "")
+	store, err := db.Open(ctx, dsn, "")
 	require.NoError(t, err, "abrir banco %s", tgt.name)
 	t.Cleanup(func() { require.NoError(t, store.Close()) })
 	return store
 }
 
-// resetPostgres limpa o banco de teste para cada caso começar do zero. As
-// tabelas são descobertas no catálogo (e não numa lista fixa) para que uma
-// tabela nova nunca vaze de um caso para o outro.
-func resetPostgres(t *testing.T, dsn string) {
+// isolatedDSN dá ao caso de teste o seu próprio schema no Postgres de teste,
+// apagado no fim. Sem isso os casos — e os demais pacotes da suíte, que rodam em
+// paralelo — escreveriam na mesma base e enxergariam o que não é deles.
+func isolatedDSN(t *testing.T, dsn string) string {
 	t.Helper()
-	ctx := context.Background()
-	handle, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, handle.Close()) }()
-
-	rows, err := handle.QueryContext(ctx, "SELECT tablename FROM pg_tables WHERE schemaname = current_schema()")
-	require.NoError(t, err)
-	var tables []string
-	for rows.Next() {
-		var name string
-		require.NoError(t, rows.Scan(&name))
-		tables = append(tables, name)
-	}
-	require.NoError(t, rows.Err())
-	require.NoError(t, rows.Close())
-
-	for _, table := range tables {
-		_, err := handle.ExecContext(ctx, `DROP TABLE IF EXISTS "`+table+`" CASCADE`)
-		require.NoError(t, err, "limpar %s", table)
-	}
+	schema, err := pgtest.Isolate(context.Background(), dsn)
+	require.NoError(t, err, "criar schema isolado")
+	t.Cleanup(func() { require.NoError(t, schema.Drop(context.Background())) })
+	return schema.DSN
 }
 
 // ── Usuários ───────────────────────────────────────────────────────

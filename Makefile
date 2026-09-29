@@ -67,7 +67,7 @@ dev: ## Executa o app em modo desenvolvimento com live-reload via Air
 		echo "==> Air não encontrado no PATH. Instalando via 'go install github.com/air-verse/air@latest'..."; \
 		go install github.com/air-verse/air@latest || { echo "ERRO: Falha ao instalar Air"; exit 1; }; \
 	fi
-	@mkdir -p tmp/dev-data/storage
+	@mkdir -p data/storage
 	@"$(if $(wildcard $(AIR_BIN)),$(AIR_BIN),air)" -c .air.toml
 
 # ── TEST: Suíte completa com PostgreSQL provisionado via Podman ──────────────
@@ -86,9 +86,10 @@ test: ## Sobe PostgreSQL com Podman, executa testes com -race e checa cobertura 
 	@$(PODMAN_BIN) rm -f aluxen-test-postgres >/dev/null 2>&1 || true
 	@$(PODMAN_BIN) run -d --name aluxen-test-postgres -p 5432:5432 \
 		-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=aluxen \
-		postgres:17 || { \
+		docker.io/library/postgres:17 || { \
 			echo "ERRO: Falha ao iniciar container PostgreSQL via Podman."; \
-			echo "Verifique se o socket ou serviço do Podman está ativo (ex: systemctl --user start podman.socket)."; \
+			echo "Nome completo da imagem (docker.io/library/postgres:17) evita o erro de short-name."; \
+			echo "Se a mensagem acima for de conexão, verifique o socket do Podman (ex: systemctl --user start podman.socket)."; \
 			exit 1; \
 		}
 	@bash -c '\

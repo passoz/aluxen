@@ -13,6 +13,7 @@ import (
 
 	"github.com/passoz/aluxen/internal/application"
 	"github.com/passoz/aluxen/internal/infrastructure/db"
+	"github.com/passoz/aluxen/internal/testsupport/pgtest"
 )
 
 // ── Apoio ──────────────────────────────────────────────────────────
@@ -21,8 +22,10 @@ import (
 // arquivo temporário migrado pelo próprio produto, e o destino é um banco
 // migrado e vazio. Sem TEST_DATABASE_URL o destino é SQLite em memória (mesmo
 // esquema, marcador de parâmetro diferente): a cópia, a verificação e o
-// rollback são provados sem rede. Com TEST_DATABASE_URL apontando para um
-// Postgres vazio, o mesmo teste roda contra o dialeto de produção.
+// rollback são provados sem rede. Com TEST_DATABASE_URL definida, o mesmo teste
+// roda contra o dialeto de produção, num schema exclusivo do caso de teste (a
+// cópia exige destino vazio e a base de teste é compartilhada com o resto da
+// suíte).
 
 // migratedTables é a ordem de cópia esperada (dependências primeiro).
 var migratedTables = []string{
@@ -84,7 +87,8 @@ func openStore(t *testing.T, dsn string) *db.Store {
 }
 
 // testDestination devolve o destino da migração: o Postgres de TEST_DATABASE_URL
-// quando existir (precisa estar vazio), senão um SQLite em memória migrado.
+// quando existir — num schema exclusivo deste caso, porque a cópia só aceita
+// destino vazio — senão um SQLite em memória migrado.
 func testDestination(t *testing.T) (*db.Store, application.Dialect) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -92,7 +96,12 @@ func testDestination(t *testing.T) (*db.Store, application.Dialect) {
 		store := openStore(t, ":memory:")
 		return store, application.DialectSQLite
 	}
-	store := openStore(t, dsn)
+
+	schema, err := pgtest.Isolate(context.Background(), dsn)
+	require.NoError(t, err, "criar schema isolado")
+	t.Cleanup(func() { require.NoError(t, schema.Drop(context.Background())) })
+
+	store := openStore(t, schema.DSN)
 	return store, application.DialectPostgres
 }
 

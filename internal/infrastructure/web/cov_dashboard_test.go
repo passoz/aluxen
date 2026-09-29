@@ -153,6 +153,9 @@ func TestCovDashboardRendersEveryPublishedTab(t *testing.T) {
 			if !strings.Contains(recorder.Body.String(), "<html") {
 				t.Fatal("aba não devolveu a casca do painel")
 			}
+			if strings.Contains(recorder.Body.String(), `class="tabs"`) {
+				t.Fatal("barra de abas redundante não deve ser renderizada")
+			}
 		})
 	}
 }
@@ -178,6 +181,31 @@ func TestCovDashboardReportsSnapshotFailure(t *testing.T) {
 	recorder := panel.as(http.MethodGet, "/dashboard", nil, panel.admin.ID)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, esperado 500 quando o instantâneo falha", recorder.Code)
+	}
+}
+func TestCovDashboardCalendarInteractiveFeatures(t *testing.T) {
+	panel := covSeedPanel(t)
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=calendar&year=2026&month=9", nil, panel.admin.ID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, esperado 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+	for _, expected := range []string{
+		"calendar-stats-bar",
+		"Taxa de Ocupação",
+		"calendar-select-group",
+		"calendar-month-select",
+		"calendar-year-select",
+		"data-calendar-property-filter",
+		"calendar-details-modal",
+		"data-calendar-cell",
+		"Janeiro",
+		"Setembro",
+		"2026",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("calendário interativo sem %q", expected)
+		}
 	}
 }
 

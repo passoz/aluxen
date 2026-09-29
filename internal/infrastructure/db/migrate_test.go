@@ -187,14 +187,14 @@ func TestMigratePartialDatabase(t *testing.T) {
 // base), base vazia e base parcial (dump de antes da última migração). Sem a
 // adoção, o boot reaplicaria o ADD COLUMN e morreria.
 func TestPostgresAdoption(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	base := os.Getenv("TEST_DATABASE_URL")
+	if base == "" {
 		t.Skip("TEST_DATABASE_URL não definida: sem servidor Postgres para o teste de adoção")
 	}
 	ctx := context.Background()
 
 	t.Run("base já no schema final sem tabela do goose", func(t *testing.T) {
-		resetPostgres(t, dsn)
+		dsn := isolatedDSN(t, base)
 
 		first, err := db.Open(ctx, dsn, "")
 		require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestPostgresAdoption(t *testing.T) {
 	})
 
 	t.Run("base vazia aplica todas as migrações", func(t *testing.T) {
-		resetPostgres(t, dsn)
+		dsn := isolatedDSN(t, base)
 
 		store, err := db.Open(ctx, dsn, "")
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestPostgresAdoption(t *testing.T) {
 	})
 
 	t.Run("base parcial aplica só o que falta", func(t *testing.T) {
-		resetPostgres(t, dsn)
+		dsn := isolatedDSN(t, base)
 
 		first, err := db.Open(ctx, dsn, "")
 		require.NoError(t, err)
@@ -298,7 +298,7 @@ func TestPostgresAdoption(t *testing.T) {
 	})
 
 	t.Run("segunda abertura não faz nada", func(t *testing.T) {
-		resetPostgres(t, dsn)
+		dsn := isolatedDSN(t, base)
 
 		first, err := db.Open(ctx, dsn, "")
 		require.NoError(t, err)

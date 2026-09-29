@@ -48,21 +48,6 @@
 
       {{with .Data}}{{if .Toast}}<div class="success">{{.Toast}}</div>{{end}}{{end}}
 
-      <nav class="tabs" aria-label="Seções do painel">
-        <a class="tab-link{{if eq .Page "dashboard"}} active{{end}}" href="/dashboard?tab=dashboard">Dashboard</a>
-        <a class="tab-link{{if eq .Page "tenants"}} active{{end}}" href="/dashboard?tab=tenants">Inquilinos</a>
-        <a class="tab-link{{if eq .Page "properties"}} active{{end}}" href="/dashboard?tab=properties">Imóveis</a>
-        <a class="tab-link{{if eq .Page "leases"}} active{{end}}" href="/dashboard?tab=leases">Contratos</a>
-        <a class="tab-link{{if eq .Page "receipts"}} active{{end}}" href="/dashboard?tab=receipts">Pagamentos</a>
-        <a class="tab-link{{if eq .Page "history"}} active{{end}}" href="/dashboard?tab=history">Histórico</a>
-        <a class="tab-link{{if eq .Page "season"}} active{{end}}" href="/dashboard?tab=season">Temporada</a>
-        <a class="tab-link{{if eq .Page "calendar"}} active{{end}}" href="/dashboard?tab=calendar">Calendário</a>
-        <a class="tab-link{{if eq .Page "review"}} active{{end}}" href="/dashboard?tab=review">Revisão</a>
-        <a class="tab-link{{if eq .Page "conversations"}} active{{end}}" href="/dashboard?tab=conversations">Conversas</a>
-        <a class="tab-link{{if eq .Page "adjustment"}} active{{end}}" href="/dashboard?tab=adjustment">Reajuste</a>
-        <a class="tab-link{{if eq .Page "metrics"}} active{{end}}" href="/dashboard?tab=metrics">Indicadores</a>
-      </nav>
-
       {{.Content}}
     </div>
   </main>

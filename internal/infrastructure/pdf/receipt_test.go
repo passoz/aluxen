@@ -130,6 +130,18 @@ func TestBuildReceiptKeepsTheTextsAndTheMoneyInWords(t *testing.T) {
 		t.Fatal("recibo integral anunciou pagamento parcial")
 	}
 }
+func TestBuildReceiptHasNoBrandLogo(t *testing.T) {
+	input := paidRentReceipt()
+	input.LogoPNG = logoPNG(t)
+	receipt, err := pdf.BuildReceipt(input)
+	if err != nil {
+		t.Fatalf("BuildReceipt devolveu erro: %v", err)
+	}
+	brands := blocksOfKind(receipt, pdf.BlockBrand)
+	if len(brands) != 0 {
+		t.Fatalf("recibo não deve conter bloco de marca/logo, encontrou %d", len(brands))
+	}
+}
 
 func TestBuildReceiptCarriesTheAuthenticitySeal(t *testing.T) {
 	receipt, err := pdf.BuildReceipt(paidRentReceipt())

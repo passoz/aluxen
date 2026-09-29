@@ -85,7 +85,9 @@ func firstDatePart(value string) string {
 	return value
 }
 
-var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+// O TLD exige duas letras ou mais, como no app anterior: `ana@exemplo.c` não é
+// um endereço válido e não pode entrar no cadastro.
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$`)
 
 // ValidateEmail aceita o endereço ou devolve o erro com a mensagem do app atual.
 func ValidateEmail(email string) error {

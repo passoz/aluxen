@@ -502,6 +502,109 @@ input[data-mask="money"] {
   }
 }
 
+/* ── Controles e Métricas do Calendário ────────────────────────── */
+.calendar-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.calendar-stat-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.calendar-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.calendar-select-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.calendar-nav-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.calendar-period-badge {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.calendar-period-badge:hover {
+  background: var(--surface-subtle);
+  border-color: var(--primary);
+}
+
+.calendar-day.is-today {
+  color: var(--primary);
+  font-weight: 700;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.calendar-cell.is-today {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.calendar-cell[data-calendar-cell] {
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.calendar-cell[data-calendar-cell]:hover {
+  transform: scale(1.15);
+  filter: brightness(1.12);
+  z-index: 5;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.calendar-cell[data-calendar-cell]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+  z-index: 6;
+}
+
 /* ── Calendário de ocupação ─────────────────────────────────────── */
 .calendar-legend {
   display: flex;

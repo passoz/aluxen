@@ -5,6 +5,9 @@ on:
     branches: [main, release, devgo]
   pull_request:
     branches: [main, release]
+  # Reaproveitado pelo workflow de publicação: nenhuma imagem sai de um commit
+  # que não passou por lint, testes com gate de cobertura e análise de segurança.
+  workflow_call:
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

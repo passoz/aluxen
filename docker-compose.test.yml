@@ -2,7 +2,7 @@
 # Executado exclusivamente com Podman: make test
 services:
   postgres:
-    image: postgres:17
+    image: docker.io/library/postgres:17
     container_name: aluxen-test-postgres
     ports:
       - "5432:5432"

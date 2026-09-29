@@ -94,6 +94,48 @@ func TestEnsureAdminRenamesLegacyUser(t *testing.T) {
 		})
 	}
 }
+func TestEnsureAdminPreservesChangedPasswordAcrossRestartAndSeedDemo(t *testing.T) {
+	for _, tgt := range targets(t) {
+		t.Run(tgt.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := openStore(t, tgt)
+
+			// 1. Boot inicial semeia o administrador
+			require.NoError(t, store.EnsureAdmin(ctx, "passoz", "senha-de-teste", "Locador", ""))
+			user, err := store.Users.ByUsername(ctx, "passoz")
+			require.NoError(t, err)
+			assert.True(t, user.MustChangePassword(), "administrador semeado obriga troca")
+
+			// 2. Administrador troca a senha
+			changedAt := "2026-09-22 14:00:00"
+			require.NoError(t, store.Users.UpdatePassword(ctx, user.ID, "hash-senha-pessoal", changedAt))
+			user, err = store.Users.ByUsername(ctx, "passoz")
+			require.NoError(t, err)
+			assert.False(t, user.MustChangePassword(), "senha trocada não obriga mais troca")
+			assert.Equal(t, "hash-senha-pessoal", user.PasswordHash)
+			require.NotNil(t, user.PasswordChangedAt)
+			assert.Equal(t, changedAt, *user.PasswordChangedAt)
+
+			// 3. Reinício da aplicação executa EnsureAdmin novamente
+			require.NoError(t, store.EnsureAdmin(ctx, "passoz", "senha-de-teste", "Locador", ""))
+			reloaded, err := store.Users.ByUsername(ctx, "passoz")
+			require.NoError(t, err)
+			assert.Equal(t, "hash-senha-pessoal", reloaded.PasswordHash, "EnsureAdmin não pode sobrescrever senha já trocada")
+			require.NotNil(t, reloaded.PasswordChangedAt)
+			assert.Equal(t, changedAt, *reloaded.PasswordChangedAt)
+			assert.False(t, reloaded.MustChangePassword())
+
+			// 4. Execução de SeedDemo também não pode reverter a senha trocada
+			require.NoError(t, db.SeedDemo(ctx, store))
+			afterDemo, err := store.Users.ByUsername(ctx, "passoz")
+			require.NoError(t, err)
+			assert.Equal(t, "hash-senha-pessoal", afterDemo.PasswordHash, "SeedDemo não pode sobrescrever senha já trocada")
+			require.NotNil(t, afterDemo.PasswordChangedAt)
+			assert.Equal(t, changedAt, *afterDemo.PasswordChangedAt)
+			assert.False(t, afterDemo.MustChangePassword())
+		})
+	}
+}
 
 // ── Dados de demonstração ──────────────────────────────────────────
 
@@ -239,6 +281,35 @@ func TestSeedDemo(t *testing.T) {
 			inspections, err = store.Inspections.List(ctx)
 			require.NoError(t, err)
 			assert.Len(t, inspections, 1, "a vistoria antiga sai junto com o contrato excluído")
+
+			// comprovantes de pagamento semeados
+			proofs, err := store.PaymentProofs.List(ctx, 10)
+			require.NoError(t, err)
+			assert.Len(t, proofs, 3)
+
+			// mensagens do WhatsApp semeadas
+			allTenants, err := store.Tenants.List(ctx)
+			require.NoError(t, err)
+			var clariceID string
+			for _, tn := range allTenants {
+				if tn.Name == "Clarice Lispector" {
+					clariceID = tn.ID
+					break
+				}
+			}
+			clariceMsgs, err := store.WhatsApp.ByTenant(ctx, clariceID, 10)
+			require.NoError(t, err)
+			assert.Len(t, clariceMsgs, 2)
+
+			// cadastros propostos semeados
+			intakes, err := store.Intakes.List(ctx, 10)
+			require.NoError(t, err)
+			assert.Len(t, intakes, 1)
+
+			// trilha de auditoria semeada
+			auditLogs, err := store.Audit.List(ctx, domain.AuditFilter{Limit: 10})
+			require.NoError(t, err)
+			assert.Len(t, auditLogs, 5)
 		})
 	}
 }

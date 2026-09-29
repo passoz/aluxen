@@ -37,6 +37,9 @@ type Repositories struct {
 type Options struct {
 	// PublicBaseURL é a URL pública configurada na instância (`APP_URL`/`BASE_URL`).
 	PublicBaseURL string
+	// Port é a porta HTTP da instância. Entra na base de rede local usada
+	// quando nada está configurado: sem ela o link apontaria para o `:80`.
+	Port int
 	// SeedUsername é o usuário administrador semeado (usado no login).
 	SeedUsername string
 	// RateLimitMax, RateLimitGlobalMax e LoginLockThreshold reproduzem os limites

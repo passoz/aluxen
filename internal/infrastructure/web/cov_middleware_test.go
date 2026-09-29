@@ -194,6 +194,27 @@ func TestCovForceHTTPSOnlyAppliesInProduction(t *testing.T) {
 	}
 }
 
+// As sondas de saúde (k8s liveness/readiness) chegam por HTTP simples, direto no
+// pod: sem a isenção o redirect para HTTPS deixaria o pod unhealthy para sempre.
+func TestCovProbePathsAreExemptFromTheHTTPSRedirect(t *testing.T) {
+	panel := newCovPanel(t)
+	panel.common.Cfg.AppEnv = "production"
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		request := httptest.NewRequest(http.MethodGet, "http://aluxen.example"+path, nil)
+		if recorder := panel.do(request); recorder.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d sem X-Forwarded-Proto, esperado 200", path, recorder.Code)
+		}
+	}
+
+	// fora da lista de sondas a trava continua valendo
+	request := httptest.NewRequest(http.MethodGet, "http://aluxen.example/api/health", nil)
+	request.Host = "aluxen.example"
+	if recorder := panel.do(request); recorder.Code != http.StatusMovedPermanently {
+		t.Fatalf("status = %d em /api/health, esperado 301", recorder.Code)
+	}
+}
+
 func TestCovStaticFilesAreServedBeforeTheHTTPSLockAndPasswordGate(t *testing.T) {
 	panel := newCovPanel(t)
 	panel.common.Cfg.AppEnv = "production"

@@ -5,7 +5,7 @@ tmp_dir = "tmp"
 [build]
 cmd = "go build -o ./tmp/main ./cmd/app"
 entrypoint = "./tmp/main"
-full_bin = "APP_ENV=development PORT=3000 DB_DIR=./tmp/dev-data STORAGE_DIR=./tmp/dev-data/storage SESSION_SECRET=aluxen-dev-session-secret-not-for-prod ./tmp/main"
+full_bin = "APP_ENV=development PORT=3000 DB_DIR=./data STORAGE_DIR=./data/storage SESSION_SECRET=aluxen-dev-session-secret-not-for-prod ./tmp/main"
 include_ext = ["go", "html", "css", "js", "sql"]
 exclude_dir = ["assets", "tmp", "vendor", "test", ".git", ".todo", ".piwerness", "data", "data-test"]
 include_dir = ["cmd", "internal"]
@@ -29,7 +29,7 @@ runner = "green"
 app = "white"
 
 [misc]
-clean_on_exit = true
+clean_on_exit = false
 
 [screen]
 clear_on_rebuild = true

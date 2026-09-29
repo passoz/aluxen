@@ -829,6 +829,12 @@ func TestCseaBuildCalendarOccupancyAndNavigation(t *testing.T) {
 	if calendar.Month.Previous != "/dashboard?tab=calendar&year=2026&month=8" || calendar.Month.Next != "/dashboard?tab=calendar&year=2026&month=10" {
 		t.Fatalf("navegação inesperada: %q / %q", calendar.Month.Previous, calendar.Month.Next)
 	}
+	if len(calendar.Month.Months) != 12 || len(calendar.Month.Years) == 0 {
+		t.Fatalf("opções de mês/ano ausentes: %+v", calendar.Month)
+	}
+	if calendar.Summary.TotalProperties != 2 || calendar.Summary.TotalOccupiedDays != 34 {
+		t.Fatalf("resumo de ocupação inesperado: %+v", calendar.Summary)
+	}
 
 	byID := map[string]CalendarProperty{}
 	for _, property := range calendar.Properties {

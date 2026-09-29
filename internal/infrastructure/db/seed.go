@@ -63,6 +63,19 @@ func (s *Store) EnsureAdmin(ctx context.Context, username, password, landlordNam
 
 // createOrAdoptAdmin cria o administrador semeado ou adota o usuário legado.
 func (s *Store) createOrAdoptAdmin(ctx context.Context, username, password string) error {
+	if username != defaultSeedUsername {
+		defaultAdmin, err := s.Users.ByUsername(ctx, defaultSeedUsername)
+		switch {
+		case err == nil:
+			if err := s.Users.UpdateUsername(ctx, defaultAdmin.ID, username); err != nil {
+				return fmt.Errorf("renomear administrador %q: %w", defaultSeedUsername, err)
+			}
+			return nil
+		case !errors.Is(err, domain.ErrNotFound):
+			return fmt.Errorf("procurar administrador %q: %w", defaultSeedUsername, err)
+		}
+	}
+
 	legacy, err := s.Users.ByUsername(ctx, legacySeedUsername)
 	switch {
 	case err == nil:

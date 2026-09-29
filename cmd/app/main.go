@@ -88,7 +88,14 @@ func run() error {
 	if err := store.EnsureAdmin(ctx, cfg.SeedUsername, cfg.SeedPassword, cfg.DefaultLandlordName, cfg.DefaultLandlordCPF); err != nil {
 		return fmt.Errorf("semear administrador: %w", err)
 	}
-	if cfg.SeedDemo {
+	shouldSeedDemo := cfg.SeedDemo
+	if !shouldSeedDemo && cfg.AppEnv == "development" {
+		tenantCount, err := store.Tenants.Count(ctx)
+		if err == nil && tenantCount == 0 {
+			shouldSeedDemo = true
+		}
+	}
+	if shouldSeedDemo {
 		if err := db.SeedDemo(ctx, store); err != nil {
 			return fmt.Errorf("semear demonstração: %w", err)
 		}
@@ -116,6 +123,7 @@ func run() error {
 		Log:    logger,
 		Opts: application.Options{
 			PublicBaseURL:      firstNonEmpty(cfg.AppURL, cfg.BaseURL),
+			Port:               cfg.Port,
 			SeedUsername:       cfg.SeedUsername,
 			RateLimitMax:       cfg.RateLimitMax,
 			RateLimitGlobalMax: cfg.RateLimitGlobalMax,

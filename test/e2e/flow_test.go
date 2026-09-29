@@ -26,6 +26,7 @@ import (
 	"github.com/passoz/aluxen/internal/infrastructure/platform"
 	"github.com/passoz/aluxen/internal/infrastructure/storage"
 	"github.com/passoz/aluxen/internal/infrastructure/web"
+	"github.com/passoz/aluxen/internal/testsupport/pgtest"
 )
 
 const (
@@ -378,8 +379,19 @@ func TestEndToEndPostgresFlow(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL não definida: o fluxo Postgres roda só com banco disponível")
 	}
 	// O fluxo é o mesmo; aqui só provamos que a abertura pelo dialeto Postgres
-	// sobe a aplicação com as migrações aplicadas.
-	store, err := db.Open(context.Background(), dsn, "")
+	// sobe a aplicação com as migrações aplicadas. O schema é exclusivo deste
+	// caso: a base de teste é compartilhada com o resto da suíte.
+	schema, err := pgtest.Isolate(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("criar schema isolado: %v", err)
+	}
+	defer func() {
+		if err := schema.Drop(context.Background()); err != nil {
+			t.Errorf("apagar schema isolado: %v", err)
+		}
+	}()
+
+	store, err := db.Open(context.Background(), schema.DSN, "")
 	if err != nil {
 		t.Fatalf("abrir Postgres: %v", err)
 	}

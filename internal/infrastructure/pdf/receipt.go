@@ -78,18 +78,9 @@ func BuildReceipt(input ReceiptInput) (Document, error) {
 
 	blocks := make([]Block, 0, 24)
 	blocks = append(blocks, Block{
-		Kind:     BlockBrand,
-		Text:     "Aluxen",
-		ImagePNG: input.LogoPNG,
-		WidthMM:  38,
-		Tone:     ToneAccent,
-		Bold:     true,
-		Size:     13,
-	})
-	blocks = append(blocks, Block{
 		Kind: BlockTitle,
 		Text: truncate(receiptTitle(input, isExtra), 36),
-		Size: 20,
+		Size: 22,
 		Bold: true,
 	})
 	blocks = append(blocks, Block{

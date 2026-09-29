@@ -230,6 +230,24 @@ func TestCovResolvePublicBaseURLPriority(t *testing.T) {
 	// 5. sem host nenhum, o mesmo vale.
 	require.NotEmpty(t, ResolvePublicBaseURL(ctx, env.deps, ""))
 	require.NotContains(t, ResolvePublicBaseURL(ctx, env.deps, ""), "localhost")
+
+	// 6. o endereço de rede local leva a porta da instância: o QR do documento é
+	// lido de fora e um link sem porta cairia no :80.
+	env.deps.Opts.Port = 3111
+	withPort := ResolvePublicBaseURL(ctx, env.deps, "localhost:8080")
+	if withPort != DefaultProductionURL {
+		require.Equal(t, "http://"+localNetworkAddress()+":3111", withPort)
+	}
+}
+
+// localBaseURL é a base de rede local usada quando não há nada configurado.
+func TestCovLocalBaseURLFields(t *testing.T) {
+	require.Equal(t, "http://192.168.0.10:3111", localBaseURL("192.168.0.10", 3111))
+	// sem porta informada, o endereço sai como sempre saiu
+	require.Equal(t, "http://192.168.0.10", localBaseURL("192.168.0.10", 0))
+	require.Equal(t, "http://192.168.0.10", localBaseURL("192.168.0.10", -1))
+	// IPv6 ganha os colchetes do JoinHostPort
+	require.Equal(t, "http://[fd00::1]:3000", localBaseURL("fd00::1", 3000))
 }
 
 func TestCovResolvePublicBaseURLIgnoresBrokenSetting(t *testing.T) {

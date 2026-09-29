@@ -3,25 +3,79 @@
 {{with $calendar}}
 <div class="stack-lg">
   <div class="section-header">
-    <h2 style="font-size: 1.05rem; margin: 0;">Ocupação de {{.Month.Label}}</h2>
-    <p class="subtitle" style="margin: 0.25rem 0 0;">
-      Leitura dos contratos existentes: temporada, contrato ativo e suspenso com marcação distinta.
-      Nada é gravado por esta tela.
-    </p>
+    <div>
+      <h2 style="font-size: 1.15rem; margin: 0;">Ocupação e Reservas · {{.Month.Label}}</h2>
+      <p class="subtitle" style="margin: 0.25rem 0 0;">
+        Visão completa da ocupação dos imóveis: estadias de temporada, locações ativas e períodos livres.
+      </p>
+    </div>
+    <div class="cell-muted" style="font-size: 0.825rem;">
+      Início do mês em <strong>{{weekdayName .Month.FirstWeek}}</strong>
+    </div>
   </div>
 
-  <div class="row-actions" style="justify-content: flex-start; gap: 0.5rem;">
-    <a class="btn btn-sm btn-outline" href="{{.Month.Previous}}">Mês anterior</a>
-    <a class="btn btn-sm btn-outline" href="{{.Month.Next}}">Próximo mês</a>
-    <span class="cell-muted">Início do mês em {{weekdayName .Month.FirstWeek}}</span>
+  <div class="calendar-stats-bar">
+    <div class="calendar-stat-card">
+      <span class="calendar-stat-label">Taxa de Ocupação</span>
+      <span class="calendar-stat-value" style="color: var(--primary);">{{printf "%.1f" .Summary.OccupancyRate}}%</span>
+    </div>
+    <div class="calendar-stat-card">
+      <span class="calendar-stat-label">Dias Ocupados</span>
+      <span class="calendar-stat-value">{{.Summary.TotalOccupiedDays}} <span style="font-size: 0.85rem; font-weight: normal; color: var(--text-muted);">/ {{.Summary.TotalDaysCapacity}} dias</span></span>
+    </div>
+    <div class="calendar-stat-card">
+      <span class="calendar-stat-label">Imóveis no Portfólio</span>
+      <span class="calendar-stat-value">{{.Summary.TotalProperties}}</span>
+    </div>
+    <div class="calendar-stat-card">
+      <span class="calendar-stat-label">Mês Selecionado</span>
+      <span class="calendar-stat-value" style="font-size: 0.95rem; text-transform: capitalize;">{{.Month.Label}}</span>
+    </div>
+  </div>
+
+  <div class="calendar-controls">
+    <form method="get" action="/dashboard" class="calendar-select-group">
+      <input type="hidden" name="tab" value="calendar">
+      <label for="calendar-month-select" class="visually-hidden">Mês</label>
+      <select id="calendar-month-select" name="month" class="input input-sm" onchange="this.form.submit()" aria-label="Selecionar mês">
+        {{range .Month.Months}}
+          <option value="{{.Number}}" {{if eq .Number $.Calendar.Month.Month}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+      <label for="calendar-year-select" class="visually-hidden">Ano</label>
+      <select id="calendar-year-select" name="year" class="input input-sm" onchange="this.form.submit()" aria-label="Selecionar ano">
+        {{range .Month.Years}}
+          <option value="{{.}}" {{if eq . $.Calendar.Month.Year}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+      <noscript><button type="submit" class="btn btn-sm btn-secondary">Ir</button></noscript>
+    </form>
+
+    <div class="calendar-nav-group">
+      <a class="btn btn-sm btn-outline" href="{{.Month.Previous}}" title="Ir para o mês anterior">← Anterior</a>
+      <a class="btn btn-sm btn-outline" href="/dashboard?tab=calendar" title="Voltar ao mês atual">Hoje</a>
+      <a class="btn btn-sm btn-outline" href="{{.Month.Next}}" title="Ir para o próximo mês">Próximo →</a>
+    </div>
+
+    <div style="min-width: 200px; flex: 1; max-width: 320px;">
+      <input type="search" class="input input-sm" data-calendar-property-filter placeholder="Filtrar por imóvel ou cidade..." aria-label="Filtrar imóveis no calendário">
+    </div>
   </div>
 
   <section class="card" style="padding: 1.25rem;">
-    <div class="calendar-legend">
-      <span><span class="status-dot" style="background: var(--primary);"></span> Temporada</span>
-      <span><span class="status-dot" style="background: #3b82f6;"></span> Contrato ativo</span>
-      <span><span class="status-dot" style="background: var(--warning);"></span> Suspenso</span>
-      <span><span class="status-dot" style="background: var(--surface-subtle);"></span> Livre</span>
+    <div class="calendar-legend" style="justify-content: space-between; align-items: center;">
+      <div style="display: flex; flex-wrap: wrap; gap: 1rem;">
+        <span><span class="status-dot" style="background: var(--primary);"></span> Temporada</span>
+        <span><span class="status-dot" style="background: #3b82f6;"></span> Contrato ativo</span>
+        <span><span class="status-dot" style="background: var(--warning);"></span> Suspenso</span>
+        <span><span class="status-dot" style="background: var(--surface-subtle); border: 1px solid var(--border);"></span> Livre</span>
+        {{if gt .Month.TodayDay 0}}
+          <span><span class="status-dot" style="background: transparent; border: 2px solid var(--primary);"></span> Hoje (dia {{.Month.TodayDay}})</span>
+        {{end}}
+      </div>
+      <div class="cell-muted" style="font-size: 0.775rem;">
+        💡 Clique em qualquer dia ou período para ver detalhes.
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -29,38 +83,110 @@
         <thead>
           <tr>
             <th class="calendar-property">Imóvel</th>
-            {{range seq 1 .Month.Days}}<th class="calendar-day">{{.}}</th>{{end}}
+            {{range seq 1 .Month.Days}}
+              <th class="calendar-day{{if eq . $.Calendar.Month.TodayDay}} is-today{{end}}">{{.}}</th>
+            {{end}}
             <th class="calendar-total">Dias</th>
           </tr>
         </thead>
         <tbody>
           {{range .Properties}}
-            <tr>
+            <tr data-property-name="{{.PropertyName}}" data-property-city="{{.City}} {{.State}}">
               <th class="calendar-property" scope="row">
-                <div>{{.PropertyName}}</div>
+                <div style="font-size: 0.85rem;">{{.PropertyName}}</div>
                 <div class="cell-muted" style="font-size: 0.75rem;">{{.City}}/{{.State}}</div>
                 {{range .Periods}}
-                  <div class="cell-muted" style="font-size: 0.72rem;">
+                  {{$periodDates := printf "%s a %s" (date .StartDate) (date .EndDate)}}
+                  <div class="calendar-period-badge"
+                       data-modal-open="calendar-details-modal"
+                       data-modal-fill='{{json (dict "property" .PropertyName "location" "" "date" $periodDates "status" .StatusLabel "tenant" .TenantName "period" $periodDates "rent" (money .RentAmount) "notes" "Período com reserva/contrato ativo cadastrado.")}}'
+                       title="Clique para detalhes do período: {{.TenantName}}">
                     {{date .StartDate}} – {{date .EndDate}} · {{.TenantName}}
                   </div>
                 {{end}}
               </th>
               {{$property := .}}
               {{range .Days}}
-                <td class="calendar-cell {{if .Occupied}}{{if eq (printf "%s" .Status) "season"}}occupied-season{{else}}occupied-active{{end}}{{else if eq (printf "%s" .Status) "suspended"}}occupied-suspended{{end}}"
-                    title="{{if .TenantName}}{{.TenantName}} · {{leaseStatus .Status}}{{else}}Livre{{end}}">
+                {{$isSeason := eq (printf "%s" .Status) "season"}}
+                {{$isActive := and .Occupied (not $isSeason)}}
+                {{$isSuspended := eq (printf "%s" .Status) "suspended"}}
+                {{$statusLabel := "Livre"}}
+                {{if $isSeason}}{{$statusLabel = "Temporada"}}
+                {{else if $isActive}}{{$statusLabel = "Contrato Ativo"}}
+                {{else if $isSuspended}}{{$statusLabel = "Suspenso"}}{{end}}
+                {{$tenantDisplay := "—"}}
+                {{if .TenantName}}{{$tenantDisplay = .TenantName}}{{end}}
+                {{$periodDisplay := "—"}}
+                {{if .StartDate}}{{$periodDisplay = printf "%s a %s" (date .StartDate) (date .EndDate)}}{{end}}
+                {{$rentDisplay := "—"}}
+                {{if gt .RentAmount 0.0}}{{$rentDisplay = money .RentAmount}}{{end}}
+                {{$notesDisplay := "Imóvel livre para locação e novas reservas nesta data."}}
+                {{if .Occupied}}{{$notesDisplay = "Imóvel ocupado nesta data conforme contrato vigente."}}{{end}}
+                {{$dateTitle := printf "Dia %02d · %s" .Day $.Calendar.Month.Label}}
+                {{$propLocation := printf "%s/%s" $property.City $property.State}}
+                <td class="calendar-cell{{if $isSeason}} occupied-season{{else if $isActive}} occupied-active{{else if $isSuspended}} occupied-suspended{{end}}{{if eq .Day $.Calendar.Month.TodayDay}} is-today{{end}}"
+                    data-calendar-cell
+                    data-modal-open="calendar-details-modal"
+                    data-modal-fill='{{json (dict "property" $property.PropertyName "location" $propLocation "date" $dateTitle "status" $statusLabel "tenant" $tenantDisplay "period" $periodDisplay "rent" $rentDisplay "notes" $notesDisplay)}}'
+                    title="{{if .TenantName}}{{.TenantName}} · {{$statusLabel}} (clique para detalhes){{else}}Dia {{.Day}} livre · clique para detalhes{{end}}"
+                    role="button"
+                    tabindex="0"
+                    aria-label="{{$property.PropertyName}}, Dia {{.Day}}: {{$statusLabel}}">
                   {{if .Occupied}}<span class="visually-hidden">Ocupado</span>{{end}}
                 </td>
               {{end}}
               <td class="calendar-total">{{$property.OccupiedDays}}</td>
             </tr>
           {{else}}
-            <tr><td class="empty-state">Nenhum imóvel cadastrado.</td></tr>
+            <tr><td class="empty-state" colspan="34">Nenhum imóvel cadastrado.</td></tr>
           {{end}}
         </tbody>
       </table>
     </div>
   </section>
+</div>
+
+<div class="modal-backdrop" id="calendar-details-modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Detalhes da Reserva / Data">
+    <div class="modal-header">
+      <h3 style="margin: 0; font-size: 1.1rem;" data-field="date">Detalhes do Dia</h3>
+      <button type="button" class="btn btn-sm btn-secondary" data-modal-close aria-label="Fechar">✕</button>
+    </div>
+    <div class="stack" style="gap: 1rem; padding: 1rem 0;">
+      <div class="info-row">
+        <span class="info-row-label">Imóvel</span>
+        <span class="info-row-value">
+          <strong data-field="property"></strong>
+          <span class="cell-muted" style="margin-left: 0.35rem;" data-field="location"></span>
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="info-row-label">Situação</span>
+        <span class="info-row-value">
+          <span class="status-badge" data-field="status" style="font-weight: 600;"></span>
+        </span>
+      </div>
+      <div class="info-row">
+        <span class="info-row-label">Locatário / Titular</span>
+        <span class="info-row-value" data-field="tenant"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-row-label">Vigência do Contrato</span>
+        <span class="info-row-value" data-field="period"></span>
+      </div>
+      <div class="info-row">
+        <span class="info-row-label">Valor do Aluguel</span>
+        <span class="info-row-value" data-field="rent"></span>
+      </div>
+      <div style="background: var(--surface-subtle); border-radius: var(--radius-sm); padding: 0.75rem; margin-top: 0.25rem;">
+        <p class="cell-muted" data-field="notes" style="margin: 0; font-size: 0.85rem;"></p>
+      </div>
+    </div>
+    <div class="row-actions" style="justify-content: flex-end; gap: 0.5rem; border-top: 1px solid var(--border); padding-top: 0.75rem;">
+      <a href="/dashboard?tab=leases" class="btn btn-sm btn-outline">Ver Contratos</a>
+      <button type="button" class="btn btn-sm btn-primary" data-modal-close>Fechar</button>
+    </div>
+  </div>
 </div>
 {{else}}
 <div class="card empty-state">Calendário indisponível.</div>

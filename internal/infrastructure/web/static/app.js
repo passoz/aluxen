@@ -2327,7 +2327,7 @@
       return;
     }
 
-    var tabLink = target.closest('a.tab-link');
+    var tabLink = target.closest('a.tab-link, .sidebar a[href*="tab="]');
     if (tabLink && window.navigator.onLine === false) {
       var tab = '';
       try {
@@ -2383,6 +2383,20 @@
     if (target.matches('input[data-mask]')) {
       maskField(target, true);
     }
+    if (target.matches('[data-calendar-property-filter]')) {
+      var calendarQuery = target.value.trim().toLowerCase();
+      var rows = document.querySelectorAll('.calendar-table tbody tr[data-property-name]');
+      rows.forEach(function (row) {
+        var name = (row.getAttribute('data-property-name') || '').toLowerCase();
+        var city = (row.getAttribute('data-property-city') || '').toLowerCase();
+        if (!calendarQuery || name.indexOf(calendarQuery) !== -1 || city.indexOf(calendarQuery) !== -1) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+      return;
+    }
 
     if (target.matches('input[data-filter]')) {
       var group = tableGroup(target);
@@ -2423,6 +2437,14 @@
   });
 
   document.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      var activeCell = document.activeElement;
+      if (activeCell && activeCell.hasAttribute('data-calendar-cell')) {
+        event.preventDefault();
+        activeCell.click();
+        return;
+      }
+    }
     if (event.key !== 'Escape') return;
     if (activePicker) {
       closePicker();

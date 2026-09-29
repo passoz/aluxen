@@ -111,6 +111,10 @@ func (h *Handlers) forceHTTPS(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if isProbePath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
 			target := "https://" + r.Host + r.URL.RequestURI()
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
@@ -118,6 +122,15 @@ func (h *Handlers) forceHTTPS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isProbePath diz se o caminho é consultado por sonda de saúde.
+//
+// As sondas (k8s liveness/readiness) falam HTTP direto com o pod e não passam
+// pelo proxy que injeta o `X-Forwarded-Proto`. Redirecioná-las para HTTPS
+// deixaria o pod permanentemente unhealthy — e, no k8s, preso em CrashLoop.
+func isProbePath(path string) bool {
+	return path == "/healthz" || path == "/readyz"
 }
 
 // serveStatic entrega os arquivos embutidos antes da trava de senha, para que

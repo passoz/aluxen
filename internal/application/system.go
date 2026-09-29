@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/passoz/aluxen/internal/domain"
@@ -92,9 +93,20 @@ func ResolvePublicBaseURL(ctx context.Context, deps Deps, requestHost string) st
 		return scheme + "://" + host
 	}
 	if address := localNetworkAddress(); address != "" {
-		return "http://" + address
+		return localBaseURL(address, deps.Opts.Port)
 	}
 	return DefaultProductionURL
+}
+
+// localBaseURL monta a base de rede local. A porta faz parte do endereço porque
+// a instância atende numa porta própria (era `PORT||3000` no app anterior): um
+// endereço sem porta apontaria para o `:80` e o QR do documento — que é lido de
+// fora — cairia em link morto.
+func localBaseURL(address string, port int) string {
+	if port <= 0 {
+		return "http://" + address
+	}
+	return "http://" + net.JoinHostPort(address, strconv.Itoa(port))
 }
 
 func isLocalHost(host string) bool {

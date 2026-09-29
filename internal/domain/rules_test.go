@@ -123,7 +123,7 @@ func TestValidateEmail(t *testing.T) {
 		}
 	}
 
-	invalid := []string{"", "sem-arroba", "sem@tld", "com espaço@exemplo.com", "@exemplo.com"}
+	invalid := []string{"", "sem-arroba", "sem@tld", "com espaço@exemplo.com", "@exemplo.com", "ana@exemplo.c", "ana@exemplo.1"}
 	for _, email := range invalid {
 		err := ValidateEmail(email)
 		if err == nil {

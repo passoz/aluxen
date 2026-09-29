@@ -113,10 +113,239 @@ func SeedDemo(ctx context.Context, s *Store) error {
 	if err := s.Inspections.Create(ctx, inspection); err != nil {
 		return fmt.Errorf("semear vistoria de entrada: %w", err)
 	}
+	if s.PaymentProofs != nil {
+		if err := seedDemoPaymentProofs(ctx, s, stamp, t1, t2, receipts[5].ID, receipts[3].ID, receipts[1].ID); err != nil {
+			return fmt.Errorf("semear comprovantes de demonstração: %w", err)
+		}
+	}
+	if s.WhatsApp != nil {
+		if err := seedDemoWhatsApp(ctx, s, stamp, t1, t2); err != nil {
+			return fmt.Errorf("semear mensagens de whatsapp da demonstração: %w", err)
+		}
+	}
+	if s.Intakes != nil {
+		if err := seedDemoIntakes(ctx, s, stamp); err != nil {
+			return fmt.Errorf("semear cadastros propostos da demonstração: %w", err)
+		}
+	}
+	if s.Audit != nil {
+		if err := seedDemoAudit(ctx, s, stamp, l1, l2, l3, receipts[2].ID, inspection.ID); err != nil {
+			return fmt.Errorf("semear trilha de auditoria da demonstração: %w", err)
+		}
+	}
 
 	slog.Info("banco de demonstração populado", "scope", "db.seed",
 		"tenants", len(tenants), "properties", len(properties),
 		"leases", len(leases), "receipts", len(receipts), "inspections", 1)
+	return nil
+}
+
+func seedDemoPaymentProofs(ctx context.Context, s *Store, stamp, t1, t2, lateReceiptID, openReceiptID, paidReceiptID string) error {
+	proofs := []domain.PaymentProof{
+		{
+			ID:                  newID(),
+			CreatedAt:           stamp,
+			UpdatedAt:           stamp,
+			Source:              domain.PaymentProofSourceWhatsApp,
+			Phone:               domain.StrPtr("(22) 99777-2233"),
+			TenantID:            domain.StrPtr(t2),
+			ReceiptID:           domain.StrPtr(lateReceiptID),
+			FileName:            domain.StrPtr("comprovante-pix-clarice.png"),
+			FilePath:            domain.StrPtr("comprovante-pix-clarice.png"),
+			Mime:                domain.StrPtr("image/png"),
+			ExtractedAmount:     domain.FloatPtr(3200),
+			ExtractedDate:       domain.StrPtr("2026-08-26"),
+			ExtractedPayer:      domain.StrPtr("Clarice Lispector"),
+			ExtractedPayee:      domain.StrPtr("Locador Demonstração"),
+			ExtractedIdentifier: domain.StrPtr("E2026082614300012345"),
+			Confidence:          domain.FloatPtr(0.92),
+			Status:              domain.PaymentProofStatusReview,
+			Decision:            domain.PaymentDecisionPending,
+		},
+		{
+			ID:                  newID(),
+			CreatedAt:           stamp,
+			UpdatedAt:           stamp,
+			Source:              domain.PaymentProofSourcePortal,
+			TenantID:            domain.StrPtr(t1),
+			ReceiptID:           domain.StrPtr(openReceiptID),
+			FileName:            domain.StrPtr("recibo-ted-carlos.pdf"),
+			FilePath:            domain.StrPtr("recibo-ted-carlos.pdf"),
+			Mime:                domain.StrPtr("application/pdf"),
+			ExtractedAmount:     domain.FloatPtr(2500),
+			ExtractedDate:       domain.StrPtr("2026-09-09"),
+			ExtractedPayer:      domain.StrPtr("Carlos Drummond de Andrade"),
+			ExtractedPayee:      domain.StrPtr("Locador"),
+			ExtractedIdentifier: domain.StrPtr("TED-994821"),
+			Confidence:          domain.FloatPtr(0.85),
+			Status:              domain.PaymentProofStatusReview,
+			Decision:            domain.PaymentDecisionPending,
+		},
+		{
+			ID:                  newID(),
+			CreatedAt:           stamp,
+			UpdatedAt:           stamp,
+			Source:              domain.PaymentProofSourceWhatsApp,
+			Phone:               domain.StrPtr("(22) 99888-1122"),
+			TenantID:            domain.StrPtr(t1),
+			ReceiptID:           domain.StrPtr(paidReceiptID),
+			FileName:            domain.StrPtr("pix-agosto-carlos.jpg"),
+			FilePath:            domain.StrPtr("pix-agosto-carlos.jpg"),
+			Mime:                domain.StrPtr("image/jpeg"),
+			ExtractedAmount:     domain.FloatPtr(2500),
+			ExtractedDate:       domain.StrPtr("2026-08-10"),
+			ExtractedPayer:      domain.StrPtr("Carlos Drummond"),
+			ExtractedPayee:      domain.StrPtr("Locador"),
+			ExtractedIdentifier: domain.StrPtr("PIX-0810-99"),
+			Confidence:          domain.FloatPtr(0.99),
+			Status:              domain.PaymentProofStatusAccepted,
+			Decision:            domain.PaymentDecisionAuto,
+			DecisionReason:      domain.StrPtr("Valor, vencimento e destinatário conferem com o lançamento."),
+		},
+	}
+	for i := range proofs {
+		if err := s.PaymentProofs.Create(ctx, &proofs[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedDemoWhatsApp(ctx context.Context, s *Store, stamp, t1, t2 string) error {
+	ext1, ext2, ext3, ext4 := newID(), newID(), newID(), newID()
+	messages := []domain.WhatsAppMessage{
+		{
+			ID:         newID(),
+			CreatedAt:  "2026-08-26 09:15:00",
+			Direction:  domain.WhatsAppDirectionOut,
+			ChatID:     "5522997772233@c.us",
+			Phone:      "5522997772233",
+			TenantID:   domain.StrPtr(t2),
+			Body:       "Olá Clarice, seu aluguel da Casa das Dunas venceu em 25/08 no valor de R$ 3.200,00. Segue a chave PIX para pagamento.",
+			Status:     "delivered",
+			ExternalID: &ext1,
+		},
+		{
+			ID:         newID(),
+			CreatedAt:  "2026-08-26 10:20:00",
+			Direction:  domain.WhatsAppDirectionIn,
+			ChatID:     "5522997772233@c.us",
+			Phone:      "5522997772233",
+			TenantID:   domain.StrPtr(t2),
+			Body:       "Bom dia! Fiz o PIX agora mesmo, segue o comprovante anexo. Desculpe pelo atraso!",
+			Status:     "received",
+			ExternalID: &ext2,
+		},
+		{
+			ID:         newID(),
+			CreatedAt:  "2026-08-10 10:30:00",
+			Direction:  domain.WhatsAppDirectionOut,
+			ChatID:     "5522998881122@c.us",
+			Phone:      "5522998881122",
+			TenantID:   domain.StrPtr(t1),
+			Body:       "Olá Carlos, confirmamos o recebimento do seu aluguel referente a Agosto/2026. Obrigado!",
+			Status:     "delivered",
+			ExternalID: &ext3,
+		},
+		{
+			ID:         newID(),
+			CreatedAt:  "2026-08-10 10:35:00",
+			Direction:  domain.WhatsAppDirectionIn,
+			ChatID:     "5522998881122@c.us",
+			Phone:      "5522998881122",
+			TenantID:   domain.StrPtr(t1),
+			Body:       "Muito obrigado pelo envio rápido do recibo!",
+			Status:     "received",
+			ExternalID: &ext4,
+		},
+	}
+	for i := range messages {
+		if _, err := s.WhatsApp.InsertIfAbsent(ctx, &messages[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedDemoIntakes(ctx context.Context, s *Store, stamp string) error {
+	intake := &domain.DocumentIntake{
+		ID:         newID(),
+		CreatedAt:  stamp,
+		UpdatedAt:  stamp,
+		Kind:       domain.IntakeKindLease,
+		FileName:   domain.StrPtr("minuta-contrato-machado.pdf"),
+		FilePath:   domain.StrPtr("minuta-contrato-machado.pdf"),
+		Mime:       domain.StrPtr("application/pdf"),
+		Status:     domain.IntakeStatusPending,
+		Confidence: domain.FloatPtr(0.95),
+		Notes:      domain.StrPtr("Contrato de locação residencial lido via IA, aguardando aprovação."),
+	}
+	return s.Intakes.Create(ctx, intake)
+}
+
+func seedDemoAudit(ctx context.Context, s *Store, stamp, l1, l2, l3, rPaidID, inspID string) error {
+	entries := []domain.AuditLog{
+		{
+			ID:          newID(),
+			CreatedAt:   "2026-09-01 10:00:00",
+			ActorName:   domain.StrPtr("passoz"),
+			Action:      domain.ActionLogin,
+			Entity:      domain.EntityUser,
+			EntityID:    domain.StrPtr("passoz"),
+			EntityLabel: domain.StrPtr("passoz"),
+			Origin:      domain.AuditOriginWeb,
+			Summary:     "Login realizado com sucesso · passoz",
+		},
+		{
+			ID:          newID(),
+			CreatedAt:   "2026-09-02 11:30:00",
+			ActorName:   domain.StrPtr("passoz"),
+			Action:      domain.ActionLeaseCreate,
+			Entity:      domain.EntityLease,
+			EntityID:    domain.StrPtr(l3),
+			EntityLabel: domain.StrPtr("Machado de Assis · Cobertura Caiçara"),
+			Origin:      domain.AuditOriginWeb,
+			Summary:     "Contrato criado · Machado de Assis (Cobertura Caiçara)",
+		},
+		{
+			ID:          newID(),
+			CreatedAt:   "2026-09-05 14:15:00",
+			ActorName:   domain.StrPtr("passoz"),
+			Action:      domain.ActionReceiptPay,
+			Entity:      domain.EntityReceipt,
+			EntityID:    domain.StrPtr(rPaidID),
+			EntityLabel: domain.StrPtr("Clarice Lispector · R$ 3.200,00"),
+			Origin:      domain.AuditOriginWeb,
+			Summary:     "Baixa de pagamento confirmada · R$ 3.200,00",
+		},
+		{
+			ID:          newID(),
+			CreatedAt:   "2026-09-10 16:45:00",
+			ActorName:   domain.StrPtr("passoz"),
+			Action:      domain.ActionInspectionCreate,
+			Entity:      domain.EntityInspection,
+			EntityID:    domain.StrPtr(inspID),
+			EntityLabel: domain.StrPtr("Vistoria de entrada · Casa de Búzios"),
+			Origin:      domain.AuditOriginWeb,
+			Summary:     "Vistoria de entrada realizada · Casa de Búzios",
+		},
+		{
+			ID:          newID(),
+			CreatedAt:   "2026-09-15 09:00:00",
+			ActorName:   domain.StrPtr("passoz"),
+			Action:      domain.ActionSettingLandlord,
+			Entity:      domain.EntitySetting,
+			EntityID:    domain.StrPtr(domain.SettingLandlordName),
+			EntityLabel: domain.StrPtr("Locador Demonstração"),
+			Origin:      domain.AuditOriginWeb,
+			Summary:     "Configurações do locador atualizadas",
+		},
+	}
+	for i := range entries {
+		if err := s.Audit.Insert(ctx, &entries[i]); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -161,6 +390,14 @@ func clearDemoData(ctx context.Context, s *Store) error {
 	for i := range tenants {
 		if err := s.Tenants.Delete(ctx, tenants[i].ID); err != nil {
 			return fmt.Errorf("apagar locatário %q: %w", tenants[i].ID, err)
+		}
+	}
+	if s.db != nil {
+		tables := []string{"payment_proofs", "whatsapp_messages", "document_intakes", "audit_logs"}
+		for _, table := range tables {
+			if _, err := s.db.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+				slog.Warn("limpeza auxiliar de demonstração", "table", table, "err", err)
+			}
 		}
 	}
 	return nil

@@ -322,6 +322,36 @@ func TestCovDBEnsureAdminPropagatesRenameError(t *testing.T) {
 		t.Fatalf("erro ao renomear inesperado: %v", err)
 	}
 }
+func TestCovDBEnsureAdminPropagatesDefaultLookupError(t *testing.T) {
+	fakes := covDBNewFakes()
+	fakes.users.errByName[defaultSeedUsername] = domain.ErrUnauthorized
+	err := fakes.store().EnsureAdmin(context.Background(), "novo-admin", "senha-forte", "Locador", "000")
+	if err == nil || !strings.Contains(err.Error(), defaultSeedUsername) {
+		t.Fatalf("erro de leitura do default inesperado: %v", err)
+	}
+}
+
+func TestCovDBEnsureAdminPropagatesDefaultRenameError(t *testing.T) {
+	fakes := covDBNewFakes()
+	fakes.users.users[defaultSeedUsername] = &domain.User{ID: "user-default", Username: defaultSeedUsername}
+	fakes.users.updateErr = domain.ErrConflict
+	err := fakes.store().EnsureAdmin(context.Background(), "novo-admin", "senha-forte", "Locador", "000")
+	if err == nil || !strings.Contains(err.Error(), "renomear administrador") {
+		t.Fatalf("erro ao renomear default inesperado: %v", err)
+	}
+}
+
+func TestCovDBEnsureAdminAdoptsDefaultUser(t *testing.T) {
+	fakes := covDBNewFakes()
+	fakes.users.users[defaultSeedUsername] = &domain.User{ID: "user-default", Username: defaultSeedUsername, PasswordHash: "hash-existente"}
+	err := fakes.store().EnsureAdmin(context.Background(), "novo-admin", "senha-forte", "Locador", "000")
+	if err != nil {
+		t.Fatalf("adoção do usuário default falhou: %v", err)
+	}
+	if user, ok := fakes.users.users["novo-admin"]; !ok || user.PasswordHash != "hash-existente" {
+		t.Fatalf("usuário não renomeado corretamente: %+v", user)
+	}
+}
 
 func TestCovDBEnsureAdminRejectsTooLongPassword(t *testing.T) {
 	// o bcrypt recusa senha acima de 72 bytes; o erro não pode ser engolido

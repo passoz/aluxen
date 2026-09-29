@@ -1,8 +1,8 @@
 # Aluxen — execução local da instância (app Go + volume de dados).
 #
-# Em produção cada cliente tem a sua própria instância (container, volume e
-# subdomínio), provisionada no Easypanel; este arquivo serve para rodar a
-# instância na máquina de desenvolvimento com o mesmo formato.
+# O destino de produção é Kubernetes (a imagem é publicada no GHCR); este
+# arquivo serve para rodar a instância na máquina de desenvolvimento com o
+# mesmo formato da imagem.
 services:
   app:
     build:
@@ -22,9 +22,12 @@ services:
       - STORAGE_DIR=/data/storage
       - LOG_FORMAT=json
       - TZ=America/Sao_Paulo
-      - SESSION_SECRET=${SESSION_SECRET:-aluxen-prod-session-secret-change-in-production-min-32-chars}
+      # Sem valor padrão embutido: o compose recusa subir sem estes dois. O
+      # SESSION_SECRET assina a sessão, o CSRF e a chave de autenticidade dos
+      # documentos — um padrão versionado permitiria forjar todos os três.
+      - SESSION_SECRET=${SESSION_SECRET:?defina SESSION_SECRET com pelo menos 16 caracteres}
       - SEED_USERNAME=${SEED_USERNAME:-passoz}
-      - SEED_PASSWORD=${SEED_PASSWORD:-senha-de-teste}
+      - SEED_PASSWORD=${SEED_PASSWORD:?defina SEED_PASSWORD do administrador}
       - DEFAULT_LANDLORD_NAME=${DEFAULT_LANDLORD_NAME:-Locador}
       - DEFAULT_LANDLORD_CPF=${DEFAULT_LANDLORD_CPF:-}
       - APP_URL=${APP_URL:-}

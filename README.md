@@ -92,7 +92,7 @@ O **Aluxen** foi desenvolvido para locadores e administradores de imóveis que b
 
 ### 3. Gestão de Imóveis
 - Controle de propriedades residenciais e comerciais (Nome, Endereço, Cidade, Estado/UF, CEP).
-- **CEP com máscara `00000-000`**: endereço, cidade e estado são digitados no próprio formulário — no port Go o cadastro **não** consulta serviço externo de CEP; número e complemento vão no campo Endereço.
+- **CEP com máscara `00000-000` e consulta ao ViaCEP**: com os 8 dígitos preenchidos, o campo consulta o ViaCEP e completa endereço, cidade e UF (como no app anterior); número e complemento continuam por conta de quem digita e, se a consulta falhar, o aviso aparece e o cadastro segue manual.
 - Listagem com filtros, ordenação e paginação no navegador.
 - Exclusão pela tela: o contrato aponta para o imóvel por chave estrangeira com `ON DELETE CASCADE`, então excluir um imóvel remove os contratos vinculados — use a exclusão com o imóvel já desocupado.
 
@@ -260,7 +260,7 @@ CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o aluxen ./cmd/app
 ```bash
 ./aluxen
 ```
-No boot, o app **abre o banco e aplica as migrações automaticamente**, semeia o administrador (se a base estiver vazia) e só então começa a servir. A prontidão é observável por `GET /healthz` (processo vivo) e `GET /readyz` (banco pronto).
+No boot, o app **abre o banco e aplica as migrações automaticamente**, semeia o administrador (se a base estiver vazia) e só então começa a servir. A prontidão é observável por `GET /healthz` (processo vivo) e `GET /readyz` (banco pronto). As duas rotas são **isentas do redirecionamento para HTTPS**: a sonda do orquestrador (container ou Kubernetes) fala HTTP direto com o processo e não passa pelo proxy que injeta o `X-Forwarded-Proto`.
 
 ### Credenciais Padrão no Primeiro Acesso
 - **Painel administrativo**: usuário `passoz` / senha `senha-de-teste` — a troca é exigida no primeiro login (as variáveis `SEED_USERNAME`/`SEED_PASSWORD` valem apenas até essa troca).

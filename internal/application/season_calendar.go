@@ -31,6 +31,20 @@ type CalendarPeriod struct {
 	EndsHere   bool
 }
 
+// MonthOption representa uma opção de mês para a seleção rápida.
+type MonthOption struct {
+	Number int
+	Name   string
+}
+
+// CalendarSummary reúne os indicadores gerais de ocupação do mês.
+type CalendarSummary struct {
+	TotalProperties   int
+	TotalOccupiedDays int
+	TotalDaysCapacity int
+	OccupancyRate     float64
+}
+
 // CalendarDay é um dia do mês na grade de ocupação do imóvel.
 type CalendarDay struct {
 	Day        int
@@ -39,6 +53,12 @@ type CalendarDay struct {
 	// Starts e Ends marcam o primeiro e o último dia do período dentro do mês.
 	Starts bool
 	Ends   bool
+	// Detalhes da locação para interatividade na grade
+	LeaseID      string
+	PropertyName string
+	StartDate    string
+	EndDate      string
+	RentAmount   float64
 }
 
 // Occupied informa se o dia está tomado por contrato que bloqueia sobreposição.
@@ -67,12 +87,16 @@ type CalendarMonth struct {
 	FirstWeek int
 	Previous  string
 	Next      string
+	TodayDay  int           // dia de hoje se o mês/ano for o corrente, senão 0
+	Months    []MonthOption // opções de meses para seleção direta
+	Years     []int         // opções de anos para seleção direta
 }
 
 // CalendarView é o corpo do calendário de ocupação.
 type CalendarView struct {
 	Month      CalendarMonth
 	Properties []CalendarProperty
+	Summary    CalendarSummary
 }
 
 var calendarMonthLabels = []string{
@@ -131,6 +155,32 @@ func BuildCalendar(ctx context.Context, deps Deps, year, month int) (*CalendarVi
 		}
 	}
 
+	var calendarMonthNames = []string{
+		"Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+		"Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+	}
+	monthOptions := make([]MonthOption, 12)
+	for i := range 12 {
+		monthOptions[i] = MonthOption{
+			Number: i + 1,
+			Name:   calendarMonthNames[i],
+		}
+	}
+
+	clockNow := deps.Clock.Now()
+	todayDay := 0
+	if clockNow.Year() == year && int(clockNow.Month()) == month {
+		todayDay = clockNow.Day()
+	}
+
+	currentYear := clockNow.Year()
+	minYear := min(year, currentYear) - 2
+	maxYear := max(year, currentYear) + 3
+	yearOptions := make([]int, 0, maxYear-minYear+1)
+	for y := minYear; y <= maxYear; y++ {
+		yearOptions = append(yearOptions, y)
+	}
+
 	previousYear, previousMonthNumber := previousMonth(year, month)
 	nextYear, nextMonthNumber := nextMonth(year, month)
 	view := &CalendarView{
@@ -142,6 +192,9 @@ func BuildCalendar(ctx context.Context, deps Deps, year, month int) (*CalendarVi
 			FirstWeek: int(monthStart.Weekday()),
 			Previous:  fmt.Sprintf("/dashboard?tab=calendar&year=%d&month=%d", previousYear, previousMonthNumber),
 			Next:      fmt.Sprintf("/dashboard?tab=calendar&year=%d&month=%d", nextYear, nextMonthNumber),
+			TodayDay:  todayDay,
+			Months:    monthOptions,
+			Years:     yearOptions,
 		},
 	}
 
@@ -158,6 +211,22 @@ func BuildCalendar(ctx context.Context, deps Deps, year, month int) (*CalendarVi
 			Days:         buildCalendarDays(periods, year, month, daysInMonth),
 			OccupiedDays: occupied[property.ID],
 		})
+	}
+
+	totalOccupied := 0
+	for _, p := range view.Properties {
+		totalOccupied += p.OccupiedDays
+	}
+	totalCapacity := len(properties) * daysInMonth
+	occupancyRate := 0.0
+	if totalCapacity > 0 {
+		occupancyRate = float64(totalOccupied) / float64(totalCapacity) * 100
+	}
+	view.Summary = CalendarSummary{
+		TotalProperties:   len(properties),
+		TotalOccupiedDays: totalOccupied,
+		TotalDaysCapacity: totalCapacity,
+		OccupancyRate:     occupancyRate,
 	}
 	return view, nil
 }
@@ -185,6 +254,11 @@ func buildCalendarDays(periods []CalendarPeriod, year, month, daysInMonth int) [
 			}
 			entry.Status = period.Status
 			entry.TenantName = period.TenantName
+			entry.LeaseID = period.LeaseID
+			entry.PropertyName = period.PropertyName
+			entry.StartDate = period.StartDate
+			entry.EndDate = period.EndDate
+			entry.RentAmount = period.RentAmount
 			entry.Starts = !date.After(start)
 			entry.Ends = !date.Before(end)
 		}
