@@ -1793,3 +1793,32 @@ input[type="checkbox"] {
     width: 100%;
   }
 }
+
+/* Tooltips do painel (Work 0007): pill escura legível nos dois temas. */
+.dashboard-tip {
+  position: fixed;
+  z-index: 1200;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #111c33;
+  color: #f4f6fb;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.35);
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+[data-theme="dark"] .dashboard-tip {
+  background: #e8ecf5;
+  color: #111c33;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Elemento com tooltip mostra foco visível no teclado. */
+[data-tip]:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}

@@ -10,6 +10,7 @@
 //   6. tabelas (`data-table`): ordenação, busca local, filtros, paginação e lote;
 //   7. modais (`data-modal-open`/`data-modal-close`/`data-modal-fill`);
 //   8. envio por WhatsApp (`data-whatsapp-send`) e PWA (service worker + manifest).
+//   9. tooltips do painel (`data-tip`): texto pronto do servidor, o JS só posiciona.
 //
 // Os eventos são delegados em `document` (click, submit, input, change, keydown),
 // então conteúdo trocado depois — cache offline, modais e linhas de paginação
@@ -2477,6 +2478,81 @@
       });
     });
   }
+
+  /* ── Tooltips do painel (`data-tip`) ────────────────────────────────────── */
+  // O texto vem pronto do servidor no atributo: o JS só posiciona e mostra o
+  // elemento. Funciona com ponteiro (hover) e com teclado (foco).
+
+  var tipEl = null;
+
+  function tipElement() {
+    if (!tipEl) {
+      tipEl = document.createElement('div');
+      tipEl.className = 'dashboard-tip';
+      tipEl.setAttribute('role', 'tooltip');
+      tipEl.hidden = true;
+      document.body.appendChild(tipEl);
+    }
+    return tipEl;
+  }
+
+  function showTip(target) {
+    var text = target.getAttribute('data-tip');
+    if (!text) {
+      hideTip();
+      return;
+    }
+    var el = tipElement();
+    el.textContent = text;
+    el.hidden = false;
+    var rect = target.getBoundingClientRect();
+    var tipRect = el.getBoundingClientRect();
+    var top = rect.bottom + 8;
+    if (top + tipRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - tipRect.height - 8);
+    }
+    var left = rect.left + (rect.width - tipRect.width) / 2;
+    left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+    el.style.top = Math.round(top) + 'px';
+    el.style.left = Math.round(left) + 'px';
+  }
+
+  function hideTip() {
+    if (tipEl) tipEl.hidden = true;
+  }
+
+  document.addEventListener('mouseover', function (event) {
+    var target = event.target.closest ? event.target.closest('[data-tip]') : null;
+    if (target) {
+      showTip(target);
+    } else {
+      hideTip();
+    }
+  });
+
+  document.addEventListener('mouseout', function (event) {
+    var target = event.target.closest ? event.target.closest('[data-tip]') : null;
+    if (target && !(event.relatedTarget && target.contains(event.relatedTarget))) {
+      hideTip();
+    }
+  });
+
+  document.addEventListener('focusin', function (event) {
+    var target = event.target.closest ? event.target.closest('[data-tip]') : null;
+    if (target) showTip(target);
+  });
+
+  document.addEventListener('focusout', function () {
+    hideTip();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') hideTip();
+  });
+
+  document.addEventListener('scroll', function () {
+    hideTip();
+  }, true);
 
   /* ── Inicialização ────────────────────────────────────────────────────── */
 

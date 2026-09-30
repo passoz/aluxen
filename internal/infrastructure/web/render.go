@@ -140,13 +140,15 @@ func NewRenderer() (*Renderer, error) {
 		// As funções abaixo desenham os gráficos da aba de indicadores em SVG.
 		// A aritmética de escala fica fora do template para que ele apenas
 		// posicione os elementos.
-		"svgNum":          svgNum,
-		"metricValueFont": metricValueFont,
-		"categoryColor":   categoryColor,
-		"donutSlices":     donutSlices,
-		"monthlyChart":    monthlyChart,
-		"categoryBars":    categoryBars,
-		"occupancyBars":   occupancyBars,
+		"svgNum":            svgNum,
+		"metricValueFont":   metricValueFont,
+		"categoryColor":     categoryColor,
+		"donutSlices":       donutSlices,
+		"monthlyChart":      monthlyChart,
+		"categoryBars":      categoryBars,
+		"occupancyBars":     occupancyBars,
+		"occupancyTip":      occupancyTip,
+		"dashboardCardTips": dashboardCardTips,
 		// leaseStatusSummary reproduz o texto do badge de contratos do app
 		// original: os totais por status que existem, na ordem ativo, suspenso e
 		// temporada; sem nenhum deles, o total de contratos.
@@ -306,32 +308,39 @@ func categoryColor(category string) string {
 	}
 }
 
-// categoryBar é uma linha do gráfico de recibos por categoria.
+// categoryBar é uma linha do gráfico de recibos por categoria. Tip é o texto
+// do tooltip da barra.
 type categoryBar struct {
 	Category string
 	Label    string
 	Count    int
 	Total    string
 	Width    string
+	Tip      string
 }
 
 // categoryBars monta as barras por categoria, escaladas pelo maior total do
 // conjunto: a categoria de maior valor ocupa a barra inteira.
 func categoryBars(categories []application.MetricsCategory) []categoryBar {
 	max := 1.0
+	grand := 0.0
 	for _, category := range categories {
 		if category.Total > max {
 			max = category.Total
 		}
+		grand += category.Total
 	}
 	bars := make([]categoryBar, 0, len(categories))
 	for _, category := range categories {
+		total := format.FormatCurrency(category.Total)
 		bars = append(bars, categoryBar{
 			Category: category.Category,
 			Label:    category.Label,
 			Count:    category.Count,
-			Total:    format.FormatCurrency(category.Total),
+			Total:    total,
 			Width:    barWidth(category.Total, max),
+			Tip: fmt.Sprintf("%s · %d recibo(s) · %s (%d%% do total)",
+				category.Label, category.Count, total, tipShare(category.Total, grand)),
 		})
 	}
 	return bars
@@ -374,10 +383,12 @@ func occupancyBars(properties []application.MetricsProperty, limit int) []occupa
 	return bars
 }
 
-// donutSlice é uma fatia do gráfico de rosca com o traço já calculado.
+// donutSlice é uma fatia do gráfico de rosca com o traço já calculado. Tip é
+// o texto do tooltip da fatia.
 type donutSlice struct {
 	DashArray  string
 	DashOffset float64
+	Tip        string
 }
 
 // donutView é a rosca pronta para o template: o total das contagens e as
@@ -406,6 +417,8 @@ func donutSlices(status []application.MetricsStatus, radius float64) donutView {
 		slices = append(slices, donutSlice{
 			DashArray:  svgNum(length) + " " + svgNum(circumference-length),
 			DashOffset: offset,
+			Tip: fmt.Sprintf("%s · %d recibo(s) (%d%%)",
+				entry.Label, entry.Count, tipShare(float64(entry.Count), float64(total))),
 		})
 		offset -= length
 	}
@@ -427,7 +440,7 @@ type chartGuide struct {
 }
 
 // chartColumn é uma coluna do gráfico de barras verticais: o esperado fica
-// atrás e o recebido à frente.
+// atrás e o recebido à frente. Tip é o texto do tooltip da coluna.
 type chartColumn struct {
 	Label     string
 	X         float64
@@ -438,6 +451,7 @@ type chartColumn struct {
 	ReceivedH float64
 	LabelX    float64
 	LabelY    float64
+	Tip       string
 }
 
 // chartView é a geometria de um gráfico de barras verticais.
@@ -499,6 +513,9 @@ func monthlyChart(months []application.MetricsMonth) chartView {
 			ReceivedH: received,
 			LabelX:    x + columnWidth/2,
 			LabelY:    height - 8,
+			Tip: fmt.Sprintf("%s · recebido %s de %s esperados · %s em aberto",
+				month.Label, format.FormatCurrency(month.Received),
+				format.FormatCurrency(month.Expected), format.FormatCurrency(month.Open)),
 		})
 	}
 
@@ -514,6 +531,199 @@ func monthlyChart(months []application.MetricsMonth) chartView {
 		})
 	}
 	return view
+}
+
+// ── Tooltips do painel ───────────────────────────────────────────────────
+// Todo texto de tooltip é montado aqui, no servidor, a partir do instantâneo
+// que o template já recebe. O JS só posiciona e mostra o elemento: nenhum
+// número é montado no navegador (Work 0007, BR-703). A composição acrescenta
+// informação em vez de repetir o valor impresso: todo tooltip junta as partes
+// com " · " ou declara a ausência com "nenhum".
+
+// cardTips são os oito textos dos cartões de indicador do painel.
+type cardTips struct {
+	Tenants    string
+	Properties string
+	Receipts   string
+	Received   string
+	Open       string
+	Overdue    string
+	Expected   string
+	Total      string
+}
+
+// dashboardCardTips monta os textos dos cartões a partir do instantâneo. A
+// situação do lançamento usa a mesma regra do resto do painel
+// (domain.ReceiptStatusOf, que normaliza a referência para a meia-noite).
+func dashboardCardTips(snapshot *application.DashboardData) cardTips {
+	tips := cardTips{
+		Tenants:    "nenhum inquilino cadastrado",
+		Properties: "nenhum imóvel cadastrado",
+		Receipts:   "nenhum lançamento",
+		Received:   "nenhum lançamento pago ainda",
+		Open:       "nenhum lançamento a vencer",
+		Overdue:    "nenhum lançamento vencido",
+		Expected:   "nenhum contrato ativo",
+		Total:      "nenhum lançamento",
+	}
+	if snapshot == nil {
+		return tips
+	}
+
+	now := time.Now()
+	activeTenants := map[string]bool{}
+	occupiedProperties := map[string]bool{}
+	activeLeases := 0
+	for _, lease := range snapshot.Leases {
+		if lease.Status != domain.LeaseStatusActive {
+			continue
+		}
+		activeLeases++
+		activeTenants[lease.TenantID] = true
+		occupiedProperties[lease.PropertyID] = true
+	}
+
+	if len(snapshot.Tenants) > 0 {
+		tips.Tenants = fmt.Sprintf("%d cadastrado(s) · %d com contrato ativo", len(snapshot.Tenants), len(activeTenants))
+	}
+	if len(snapshot.Properties) > 0 {
+		free := len(snapshot.Properties) - len(occupiedProperties)
+		tips.Properties = fmt.Sprintf("%d imóvel(is) · %d ocupado(s) · %d livre(s)", len(snapshot.Properties), len(occupiedProperties), free)
+	}
+
+	paidCount, partialCount, dueCount, overdueCount := 0, 0, 0, 0
+	paidSum := 0.0
+	earliestDue := ""
+	oldestOverdue := ""
+	for _, receipt := range snapshot.Receipts {
+		switch domain.ReceiptStatusOf(receipt, now) {
+		case domain.ReceiptStatusPaid:
+			paidCount++
+			paidSum += tipPaidAmount(receipt)
+		case domain.ReceiptStatusPartial:
+			partialCount++
+			paidSum += tipPaidAmount(receipt)
+		case domain.ReceiptStatusDue:
+			dueCount++
+			if earliestDue == "" || receipt.DueDate < earliestDue {
+				earliestDue = receipt.DueDate
+			}
+		case domain.ReceiptStatusOverdue:
+			overdueCount++
+			if oldestOverdue == "" || receipt.DueDate < oldestOverdue {
+				oldestOverdue = receipt.DueDate
+			}
+		}
+	}
+
+	if len(snapshot.Receipts) > 0 {
+		parts := []string{}
+		if paidCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d pago(s)", paidCount))
+		}
+		if partialCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d parcial(is)", partialCount))
+		}
+		if dueCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d a vencer", dueCount))
+		}
+		if overdueCount > 0 {
+			parts = append(parts, fmt.Sprintf("%d vencido(s)", overdueCount))
+		}
+		tips.Receipts = fmt.Sprintf("%d lançamento(s) · %s", len(snapshot.Receipts), strings.Join(parts, " · "))
+		tips.Total = fmt.Sprintf("%d lançamento(s) · %s pago(s) (%d%% do total)",
+			len(snapshot.Receipts), format.FormatCurrency(paidSum), tipShare(paidSum, snapshot.Metrics.Totals.TotalAmount))
+	}
+	if paidCount+partialCount > 0 {
+		tips.Received = fmt.Sprintf("%s · recebido de %d recibo(s) pago(s)", format.FormatCurrency(paidSum), paidCount+partialCount)
+	}
+	if dueCount > 0 {
+		tips.Open = fmt.Sprintf("%d a vencer · primeiro vence em %s", dueCount, format.FormatDateBR(earliestDue))
+	}
+	if overdueCount > 0 {
+		tips.Overdue = fmt.Sprintf("%d vencido(s) · mais antigo desde %s (%d dias)",
+			overdueCount, format.FormatDateBR(oldestOverdue), tipDaysOverdue(oldestOverdue, now))
+	}
+	if activeLeases > 0 {
+		average := 0.0
+		if snapshot.Metrics.Totals.ExpectedMonthly > 0 {
+			average = snapshot.Metrics.Totals.ExpectedMonthly / float64(activeLeases)
+		}
+		tips.Expected = fmt.Sprintf("%d contrato(s) ativo(s) · ticket médio %s", activeLeases, format.FormatCurrency(average))
+	}
+	return tips
+}
+
+// tipPaidAmount devolve o valor efetivamente pago do lançamento, com a mesma
+// convenção da agregação de indicadores: valor explícito quando há, total
+// quando a baixa não informa valor.
+func tipPaidAmount(receipt domain.Receipt) float64 {
+	if receipt.PaidAmount != nil {
+		return *receipt.PaidAmount
+	}
+	if receipt.PaidAt != nil && *receipt.PaidAt != "" {
+		return receipt.Amount
+	}
+	return 0
+}
+
+// tipShare devolve o percentual inteiro de value sobre total, limitado a 0-100.
+func tipShare(value, total float64) int {
+	if total <= 0 {
+		return 0
+	}
+	share := int(math.Round(value / total * 100))
+	if share < 0 {
+		return 0
+	}
+	if share > 100 {
+		return 100
+	}
+	return share
+}
+
+// tipDaysOverdue devolve há quantos dias o vencimento passou, contando da
+// meia-noite de hoje até a meia-noite do vencimento.
+func tipDaysOverdue(dueDate string, now time.Time) int {
+	due, err := time.ParseInLocation("2006-01-02", tipDatePart(dueDate), now.Location())
+	if err != nil {
+		return 0
+	}
+	midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	days := int(midnight.Sub(due).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
+	return days
+}
+
+// tipDatePart extrai a parte de data (aaaa-mm-dd) do vencimento.
+func tipDatePart(value string) string {
+	if len(value) >= 10 {
+		return value[:10]
+	}
+	return value
+}
+
+// occupancyTip monta o texto da barra de ocupação do imóvel: o nome inteiro,
+// quantos contratos ativos ele tem e quem ocupa. Imóvel sem contrato ativo
+// declara a ausência em vez de repetir o zero impresso na linha.
+func occupancyTip(bar occupancyBar, leases []domain.Lease) string {
+	names := []string{}
+	active := 0
+	for _, lease := range leases {
+		if lease.PropertyID != bar.ID || lease.Status != domain.LeaseStatusActive {
+			continue
+		}
+		active++
+		if lease.TenantName != "" {
+			names = append(names, lease.TenantName)
+		}
+	}
+	if active == 0 {
+		return bar.Title + " · nenhum contrato ativo"
+	}
+	return fmt.Sprintf("%s · %d contrato(s) ativo(s) · %s", bar.Title, active, strings.Join(names, ", "))
 }
 
 // Has informa se o template existe. Permite que áreas independentes publiquem

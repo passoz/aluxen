@@ -544,3 +544,77 @@ func TestCovDashboardSingleIndicatorsEntry(t *testing.T) {
 		t.Fatal("metrics: o conteúdo dos indicadores não foi renderizado")
 	}
 }
+
+// TestCovDashboardHoverExplainsEveryNumber (Work 0007, task 7.2): todo cartão
+// e todo objeto de gráfico do painel carrega o texto do tooltip com a
+// composição do número, e nenhum tooltip repete só o valor já impresso.
+func TestCovDashboardHoverExplainsEveryNumber(t *testing.T) {
+	panel := covSeedPanel(t)
+	// Um pagamento para exercitar o ranking de inquilinos e a composição do
+	// recebido: sem ele o painel-semente não tem nenhum recibo pago.
+	panel.receipts.items = append(panel.receipts.items, domain.Receipt{
+		ID:           "receipt-paid",
+		LeaseID:      covString("lease-1"),
+		TenantID:     covString("tenant-1"),
+		PropertyID:   covString("property-1"),
+		Category:     domain.ReceiptCategoryRent,
+		DueDate:      "2026-09-05",
+		Amount:       2500,
+		PaidAt:       covString("2026-09-05T10:00"),
+		PaidAmount:   covFloat(2500),
+		TenantName:   "Ana",
+		PropertyName: "Casa da praia",
+	})
+
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=dashboard", nil, panel.admin.ID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("dashboard: status = %d, esperado 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+
+	// Cada tooltip existe e traz a composição do número, não só o valor.
+	for _, want := range []string{
+		"com contrato ativo",
+		"ocupado",
+		"livre",
+		"1 vencido(s)",
+		"de 1 recibo(s) pago(s)",
+		"nenhum lançamento a vencer",
+		"mais antigo desde 10/09/2026",
+		"ticket médio",
+		"% do total",
+		"recebido R$",
+		"recibo(s) (",
+		"contrato(s) ativo(s) · Ana",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("tooltip sem a composição %q no painel", want)
+		}
+	}
+
+	// Nenhum tooltip vazio.
+	if strings.Contains(body, `data-tip=""`) {
+		t.Fatal("tooltip vazio no painel")
+	}
+
+	// Todo tooltip compõe (separador " · ") ou declara a ausência ("nenhum"):
+	// nenhum repete só o valor já impresso no cartão ou no gráfico.
+	for _, match := range covTooltipValues(body) {
+		if strings.Contains(match, " · ") || strings.HasPrefix(match, "nenhum") {
+			continue
+		}
+		t.Fatalf("tooltip sem composição: %q", match)
+	}
+}
+
+// covTooltipValues extrai os valores dos atributos data-tip do HTML.
+func covTooltipValues(body string) []string {
+	values := []string{}
+	parts := strings.Split(body, "data-tip=\"")
+	for _, part := range parts[1:] {
+		if index := strings.Index(part, "\""); index >= 0 {
+			values = append(values, part[:index])
+		}
+	}
+	return values
+}
