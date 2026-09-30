@@ -27,6 +27,19 @@ type LeaseInput struct {
 	RentAmount float64
 	// Status vazio na criação vira `active`; na edição mantém a situação atual.
 	Status domain.LeaseStatus
+	// DepositAmount é a caução opcional do formulário: nil preserva a caução
+	// já registrada (na edição) ou segue sem caução (na criação). A caução
+	// não olha o status do contrato: vale para fixo e para temporada.
+	DepositAmount *float64
+	// DepositNotes são as observações da caução, usadas quando DepositAmount
+	// vem preenchida.
+	DepositNotes string
+	// InspectionCheckIn pede a vistoria de entrada na criação do contrato. Na
+	// edição o pedido é ignorado: vistoria se gerencia pela bancada.
+	InspectionCheckIn     bool
+	InspectionCondition   domain.InspectionCondition
+	InspectionPerformedAt string
+	InspectionNotes       string
 }
 
 // LeaseCreate cadastra o contrato e registra a criação na trilha.
@@ -39,6 +52,9 @@ func LeaseCreate(ctx context.Context, deps Deps, actx AuditContext, input LeaseI
 		return nil, domain.Invalid("Status de contrato inválido.")
 	}
 	if err := validateLeaseFields(input); err != nil {
+		return nil, err
+	}
+	if err := validateLeaseDeposit(input); err != nil {
 		return nil, err
 	}
 	if status.BlocksOverlap() {
@@ -83,6 +99,24 @@ func LeaseCreate(ctx context.Context, deps Deps, actx AuditContext, input LeaseI
 	}); err != nil {
 		return nil, err
 	}
+
+	// Caução e vistoria nascem pelo mesmo fluxo da bancada: mesma validação,
+	// mesma trilha, mesmo recibo. Nada aqui olha o status do contrato.
+	if input.DepositAmount != nil {
+		created, err = SetLeaseDeposit(ctx, deps, actx, DepositInput{
+			LeaseID: id,
+			Amount:  *input.DepositAmount,
+			Notes:   input.DepositNotes,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	if input.InspectionCheckIn {
+		if _, err := InspectionCreate(ctx, deps, actx, checkInInput(id, input)); err != nil {
+			return nil, err
+		}
+	}
 	return created, nil
 }
 
@@ -98,6 +132,9 @@ func LeaseUpdate(ctx context.Context, deps Deps, actx AuditContext, input LeaseI
 		return nil, domain.Invalid("Status de contrato inválido.")
 	}
 	if err := validateLeaseFields(input); err != nil {
+		return nil, err
+	}
+	if err := validateLeaseDeposit(input); err != nil {
 		return nil, err
 	}
 
@@ -144,6 +181,20 @@ func LeaseUpdate(ctx context.Context, deps Deps, actx AuditContext, input LeaseI
 		Changes:     domain.BuildAuditChanges(domain.LeaseAuditFields, LeaseSnapshot(before), LeaseSnapshot(updated)),
 	}); err != nil {
 		return nil, err
+	}
+
+	// Campo de caução em branco preserva a caução já registrada: a escrita de
+	// contrato é de linha inteira e o `after` acima já carregou os campos de
+	// caução do `before`. Preenchido, registra pelo fluxo da bancada.
+	if input.DepositAmount != nil {
+		updated, err = SetLeaseDeposit(ctx, deps, actx, DepositInput{
+			LeaseID: id,
+			Amount:  *input.DepositAmount,
+			Notes:   input.DepositNotes,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return updated, nil
 }
@@ -208,6 +259,42 @@ func LeaseDelete(ctx context.Context, deps Deps, actx AuditContext, id string) e
 		Summary:     fmt.Sprintf("Contrato de %s excluído", label),
 		Changes:     domain.BuildAuditChanges(domain.LeaseAuditFields, LeaseSnapshot(before), nil),
 	})
+}
+
+// validateLeaseDeposit valida a caução e a vistoria de entrada opcionais do
+// formulário, antes de gravar qualquer coisa: valor precisa ser positivo, e a
+// vistoria precisa de tipo, estado e data válidos.
+func validateLeaseDeposit(input LeaseInput) error {
+	if input.DepositAmount != nil && *input.DepositAmount <= 0 {
+		return domain.Invalid("Informe o valor da caução.")
+	}
+	if input.InspectionCheckIn {
+		resolved := checkInInput("", input)
+		if err := domain.ValidateInspection(resolved.Kind, resolved.Condition, resolved.PerformedAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkInInput resolve o pedido de vistoria de entrada do formulário: estado
+// padrão é boa e a data padrão é o início do contrato.
+func checkInInput(leaseID string, input LeaseInput) InspectionInput {
+	condition := input.InspectionCondition
+	if condition == "" {
+		condition = domain.InspectionConditionGood
+	}
+	performedAt := strings.TrimSpace(input.InspectionPerformedAt)
+	if performedAt == "" {
+		performedAt = input.StartDate
+	}
+	return InspectionInput{
+		LeaseID:     leaseID,
+		Kind:        domain.InspectionKindCheckIn,
+		PerformedAt: performedAt,
+		Condition:   condition,
+		Notes:       input.InspectionNotes,
+	}
 }
 
 // validateLeaseFields valida os campos comuns à criação e à alteração com as

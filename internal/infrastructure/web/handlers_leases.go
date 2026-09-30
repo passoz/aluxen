@@ -27,10 +27,18 @@ func (h *Handlers) leaseIntent(r *http.Request, user *domain.User, intent string
 
 	switch intent {
 	case "lease.create":
-		_, err := application.LeaseCreate(r.Context(), h.Deps, actx, leaseInput(r, ""))
+		input, err := leaseInput(r, "")
+		if err != nil {
+			return err
+		}
+		_, err = application.LeaseCreate(r.Context(), h.Deps, actx, input)
 		return err
 	case "lease.update":
-		_, err := application.LeaseUpdate(r.Context(), h.Deps, actx, leaseInput(r, r.FormValue("id")))
+		input, err := leaseInput(r, r.FormValue("id"))
+		if err != nil {
+			return err
+		}
+		_, err = application.LeaseUpdate(r.Context(), h.Deps, actx, input)
 		return err
 	case "lease.terminate", "lease.suspend", "lease.reactivate":
 		return application.LeaseSetStatus(r.Context(), h.Deps, actx, intent, r.FormValue("id"))
@@ -42,10 +50,11 @@ func (h *Handlers) leaseIntent(r *http.Request, user *domain.User, intent string
 }
 
 // leaseInput lê os campos do contrato do formulário do painel. `id` vazio deixa
-// o caso de uso gerar o identificador (criação).
-func leaseInput(r *http.Request, id string) application.LeaseInput {
+// o caso de uso gerar o identificador (criação). A caução é opcional: campo em
+// branco preserva a caução já registrada; valor inválido recusa o envio.
+func leaseInput(r *http.Request, id string) (application.LeaseInput, error) {
 	dueDay, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("due_day")))
-	return application.LeaseInput{
+	input := application.LeaseInput{
 		ID:         strings.TrimSpace(id),
 		TenantID:   strings.TrimSpace(r.FormValue("tenant_id")),
 		PropertyID: strings.TrimSpace(r.FormValue("property_id")),
@@ -55,6 +64,19 @@ func leaseInput(r *http.Request, id string) application.LeaseInput {
 		RentAmount: leaseRentAmount(r.FormValue("rent_amount")),
 		Status:     domain.LeaseStatus(strings.TrimSpace(r.FormValue("status"))),
 	}
+	if raw := strings.TrimSpace(r.FormValue("deposit_amount")); raw != "" {
+		amount, err := parseMoneyField(raw)
+		if err != nil {
+			return input, err
+		}
+		input.DepositAmount = &amount
+	}
+	input.DepositNotes = r.FormValue("deposit_notes")
+	input.InspectionCheckIn = strings.TrimSpace(r.FormValue("inspection_checkin")) != ""
+	input.InspectionCondition = domain.InspectionCondition(strings.TrimSpace(r.FormValue("inspection_condition")))
+	input.InspectionPerformedAt = strings.TrimSpace(r.FormValue("inspection_performed_at"))
+	input.InspectionNotes = r.FormValue("inspection_notes")
+	return input, nil
 }
 
 // ── Apoio da aba de contratos ──────────────────────────────────────

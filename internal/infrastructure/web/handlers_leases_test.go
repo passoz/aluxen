@@ -208,6 +208,21 @@ type leaseInspections struct {
 
 func (r *leaseInspections) List(context.Context) ([]domain.Inspection, error) { return r.items, nil }
 
+func (r *leaseInspections) ByLease(_ context.Context, leaseID string) ([]domain.Inspection, error) {
+	out := []domain.Inspection{}
+	for _, inspection := range r.items {
+		if inspection.LeaseID == leaseID {
+			out = append(out, inspection)
+		}
+	}
+	return out, nil
+}
+
+func (r *leaseInspections) Create(_ context.Context, inspection *domain.Inspection) error {
+	r.items = append(r.items, *inspection)
+	return nil
+}
+
 // ── Painel de teste ────────────────────────────────────────────────
 
 type leasePanel struct {
@@ -658,4 +673,128 @@ func modalFillFor(t *testing.T, body, pattern string) map[string]string {
 		t.Fatalf("data-modal-fill inválido: %v (%s)", err, match[1])
 	}
 	return payload
+}
+
+// ── Caução e vistoria opcionais no formulário (Work 0007, task 7.5) ──
+
+func TestLeaseCreateFormExposesDepositFields(t *testing.T) {
+	tenants, properties := leaseFixtures()
+	panel := newLeasePanel(t, tenants, properties)
+	session, _ := panel.authenticate(t)
+
+	recorder := panel.tab(t, session, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("aba de contratos: status %d, esperado 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+	for _, field := range []string{`name="deposit_amount"`, `name="deposit_notes"`, `name="inspection_checkin"`, `name="inspection_condition"`, `name="inspection_performed_at"`} {
+		if !strings.Contains(body, field) {
+			t.Fatalf("formulário de contrato sem o campo %s", field)
+		}
+	}
+}
+
+func TestLeaseCreateIntentPersistsDeposit(t *testing.T) {
+	tenants, properties := leaseFixtures()
+	panel := newLeasePanel(t, tenants, properties)
+	session, csrf := panel.authenticate(t)
+
+	form := leaseCreateForm("t1", "p1", "2026-01-01", "2026-12-31", "10", "2500", "active")
+	form.Set("deposit_amount", "900")
+	form.Set("deposit_notes", "caução do fixo")
+	recorder := panel.mutation(t, session, csrf, form)
+	leaseRequireOK(t, recorder)
+
+	stored, err := panel.leases.List(context.Background())
+	if err != nil {
+		t.Fatalf("listar contratos: %v", err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("contratos = %d, esperado 1", len(stored))
+	}
+	if stored[0].DepositAmount == nil || *stored[0].DepositAmount != 900 {
+		t.Fatalf("caução = %v, esperada 900", stored[0].DepositAmount)
+	}
+	if stored[0].DepositStatus != domain.DepositStatusHeld {
+		t.Fatalf("situação = %q, esperada held", stored[0].DepositStatus)
+	}
+	if actions := panel.server.audit.actions(); !containsAction(actions, domain.ActionLeaseCreate) || !containsAction(actions, domain.ActionLeaseUpdate) {
+		t.Fatalf("trilha sem criação e caução: %v", actions)
+	}
+}
+
+func TestLeaseCreateIntentWithCheckInRegistersInspection(t *testing.T) {
+	tenants, properties := leaseFixtures()
+	panel := newLeasePanel(t, tenants, properties)
+	session, csrf := panel.authenticate(t)
+
+	form := leaseCreateForm("t1", "p1", "2026-01-01", "2026-12-31", "10", "2500", "active")
+	form.Set("inspection_checkin", "on")
+	form.Set("inspection_condition", "boa")
+	form.Set("inspection_performed_at", "2026-01-01")
+	recorder := panel.mutation(t, session, csrf, form)
+	leaseRequireOK(t, recorder)
+
+	stored, err := panel.leases.List(context.Background())
+	if err != nil {
+		t.Fatalf("listar contratos: %v", err)
+	}
+	found, err := panel.server.handler.Deps.Repos.Inspections.ByLease(context.Background(), stored[0].ID)
+	if err != nil {
+		t.Fatalf("listar vistorias: %v", err)
+	}
+	if len(found) != 1 || found[0].Kind != domain.InspectionKindCheckIn {
+		t.Fatalf("vistorias = %+v, esperada 1 de entrada", found)
+	}
+}
+
+func TestLeaseUpdateIntentBlankDepositPreserves(t *testing.T) {
+	tenants, properties := leaseFixtures()
+	panel := newLeasePanel(t, tenants, properties)
+	session, csrf := panel.authenticate(t)
+
+	panel.leases.seed(domain.Lease{
+		ID: "l1", TenantID: "t1", PropertyID: "p1", StartDate: "2026-01-01", EndDate: "2026-12-31",
+		DueDay: 10, RentAmount: 2500, Status: domain.LeaseStatusActive,
+		DepositAmount: domain.FloatPtr(500), DepositStatus: domain.DepositStatusHeld,
+	})
+
+	form := leaseForm("lease.update", map[string]string{
+		"id": "l1", "tenant_id": "t1", "property_id": "p1",
+		"start_date": "2026-01-01", "end_date": "2026-12-31",
+		"due_day": "10", "rent_amount": "2500", "status": "active",
+	})
+	recorder := panel.mutation(t, session, csrf, form)
+	leaseRequireOK(t, recorder)
+
+	if got := panel.leases.items["l1"].DepositAmount; got == nil || *got != 500 {
+		t.Fatalf("caução apagada na edição: %v", got)
+	}
+	if got := panel.leases.items["l1"].DepositStatus; got != domain.DepositStatusHeld {
+		t.Fatalf("situação = %q, esperada held", got)
+	}
+}
+
+func TestLeaseEditModalCarriesDeposit(t *testing.T) {
+	tenants, properties := leaseFixtures()
+	panel := newLeasePanel(t, tenants, properties)
+	session, _ := panel.authenticate(t)
+
+	panel.leases.seed(domain.Lease{
+		ID: "l1", TenantID: "t1", PropertyID: "p1", StartDate: "2026-01-01", EndDate: "2026-12-31",
+		DueDay: 10, RentAmount: 2500, Status: domain.LeaseStatusActive,
+		DepositAmount: domain.FloatPtr(500), DepositStatus: domain.DepositStatusHeld,
+	})
+
+	recorder := panel.tab(t, session, "")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("aba de contratos: status %d, esperado 200", recorder.Code)
+	}
+	fill := modalFillFor(t, recorder.Body.String(), `data-modal-fill='([^']*l1[^']*)'`)
+	if fill["deposit_amount"] != "500.00" {
+		t.Fatalf("payload sem a caução existente: %v", fill)
+	}
+	if _, ok := fill["deposit_notes"]; !ok {
+		t.Fatalf("payload sem as observações da caução: %v", fill)
+	}
 }

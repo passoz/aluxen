@@ -595,3 +595,208 @@ func TestLeaseStatusChangeRejectsMissingLease(t *testing.T) {
 	requireLeaseValidation(t, LeaseSetStatus(context.Background(), deps, AuditContext{}, domain.ActionLeaseTerminate, ""), "Contrato não informado.")
 	requireLeaseValidation(t, LeaseDelete(context.Background(), deps, AuditContext{}, ""), "Contrato não informado.")
 }
+
+// ── Caução e vistoria opcionais no formulário (Work 0007, task 7.5) ──
+
+// leaseDepositDeps estende newLeaseDeps com o repositório de vistorias, para
+// os testes de caução e de vistoria de entrada no formulário de contrato.
+func leaseDepositDeps() (Deps, *leaseFakeLeases, *leaseAuditRepo, *covInspections) {
+	deps, leases, audit := newLeaseDeps()
+	inspections := &covInspections{}
+	deps.Repos.Inspections = inspections
+	return deps, leases, audit, inspections
+}
+
+func leaseDepositSummary(entries []domain.AuditLog) []string {
+	summaries := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		summaries = append(summaries, entry.Summary)
+	}
+	return summaries
+}
+
+func TestLeaseCreateWithDeposit(t *testing.T) {
+	deps, _, audit, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	input := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	input.DepositAmount = domain.FloatPtr(900)
+	input.DepositNotes = "caução do fixo"
+	lease, err := LeaseCreate(ctx, deps, covCtx(), input)
+	if err != nil {
+		t.Fatalf("criar com caução: %v", err)
+	}
+	if lease.DepositAmount == nil || *lease.DepositAmount != 900 {
+		t.Fatalf("caução = %v, esperada 900", lease.DepositAmount)
+	}
+	if lease.DepositStatus != domain.DepositStatusHeld {
+		t.Fatalf("situação = %q, esperada held", lease.DepositStatus)
+	}
+	if lease.DepositReceivedAt == nil || *lease.DepositReceivedAt == "" {
+		t.Fatal("caução sem data de recebimento")
+	}
+	summaries := leaseDepositSummary(audit.entries)
+	foundCreate, foundDeposit := false, false
+	for _, summary := range summaries {
+		if summary == "Contrato de Ana · Casa criado" {
+			foundCreate = true
+		}
+		if summary == "Caução registrada" {
+			foundDeposit = true
+		}
+	}
+	if !foundCreate || !foundDeposit {
+		t.Fatalf("trilha sem criação e caução: %v", summaries)
+	}
+}
+
+func TestLeaseCreateWithDepositOnSeason(t *testing.T) {
+	deps, _, _, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	// A caução não olha o status do contrato: temporada aceita como o fixo.
+	input := leaseFixture("l1", "t1", "p1", "2026-09-01", "2026-09-30", 5, 2500, domain.LeaseStatusSeason)
+	input.DepositAmount = domain.FloatPtr(1200)
+	lease, err := LeaseCreate(ctx, deps, covCtx(), input)
+	if err != nil {
+		t.Fatalf("criar temporada com caução: %v", err)
+	}
+	if lease.DepositStatus != domain.DepositStatusHeld {
+		t.Fatalf("situação = %q, esperada held", lease.DepositStatus)
+	}
+}
+
+func TestLeaseCreateWithoutDeposit(t *testing.T) {
+	deps, leases, _, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	lease, err := LeaseCreate(ctx, deps, covCtx(), leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive))
+	if err != nil {
+		t.Fatalf("criar sem caução: %v", err)
+	}
+	if lease.DepositAmount != nil || lease.DepositStatus != "" {
+		t.Fatalf("contrato sem caução ganhou caução: %+v", lease)
+	}
+	stored, err := leases.ByID(ctx, "l1")
+	if err != nil {
+		t.Fatalf("buscar contrato: %v", err)
+	}
+	if stored.DepositAmount != nil {
+		t.Fatalf("caução gravada sem pedido: %v", stored.DepositAmount)
+	}
+}
+
+func TestLeaseCreateRejectsInvalidDeposit(t *testing.T) {
+	deps, leases, _, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	input := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	input.DepositAmount = domain.FloatPtr(0)
+	_, err := LeaseCreate(ctx, deps, covCtx(), input)
+	requireLeaseValidation(t, err, "Informe o valor da caução.")
+	if _, err := leases.ByID(ctx, "l1"); err == nil {
+		t.Fatal("contrato gravado com caução inválida")
+	}
+}
+
+func TestLeaseUpdateBlankDepositPreserves(t *testing.T) {
+	deps, _, audit, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	if _, err := LeaseCreate(ctx, deps, covCtx(), leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)); err != nil {
+		t.Fatalf("criar: %v", err)
+	}
+	setInput := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	setInput.DepositAmount = domain.FloatPtr(500)
+	if _, err := LeaseUpdate(ctx, deps, covCtx(), setInput); err != nil {
+		t.Fatalf("registrar caução: %v", err)
+	}
+
+	// Campo em branco na edição preserva caução e não registra de novo.
+	before := len(audit.entries)
+	updated, err := LeaseUpdate(ctx, deps, covCtx(), leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2600, domain.LeaseStatusActive))
+	if err != nil {
+		t.Fatalf("editar: %v", err)
+	}
+	if updated.DepositAmount == nil || *updated.DepositAmount != 500 || updated.DepositStatus != domain.DepositStatusHeld {
+		t.Fatalf("caução apagada na edição: %+v", updated)
+	}
+	for _, entry := range audit.entries[before:] {
+		if entry.Summary == "Caução registrada" {
+			t.Fatalf("caução registrada de novo sem pedido: %+v", entry)
+		}
+	}
+}
+
+func TestLeaseUpdateWithDepositSets(t *testing.T) {
+	deps, _, audit, _ := leaseDepositDeps()
+	ctx := context.Background()
+
+	if _, err := LeaseCreate(ctx, deps, covCtx(), leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)); err != nil {
+		t.Fatalf("criar: %v", err)
+	}
+	input := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	input.DepositAmount = domain.FloatPtr(700)
+	updated, err := LeaseUpdate(ctx, deps, covCtx(), input)
+	if err != nil {
+		t.Fatalf("editar com caução: %v", err)
+	}
+	if updated.DepositAmount == nil || *updated.DepositAmount != 700 || updated.DepositStatus != domain.DepositStatusHeld {
+		t.Fatalf("caução = %+v, esperada 700 held", updated)
+	}
+	found := false
+	for _, entry := range audit.entries {
+		if entry.Summary == "Caução registrada" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trilha sem caução: %v", leaseDepositSummary(audit.entries))
+	}
+}
+
+func TestLeaseCreateWithCheckIn(t *testing.T) {
+	deps, _, _, inspections := leaseDepositDeps()
+	ctx := context.Background()
+
+	input := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	input.InspectionCheckIn = true
+	input.InspectionCondition = domain.InspectionConditionGood
+	input.InspectionPerformedAt = "2026-01-01"
+	input.InspectionNotes = "entrada tranquila"
+	if _, err := LeaseCreate(ctx, deps, covCtx(), input); err != nil {
+		t.Fatalf("criar com vistoria: %v", err)
+	}
+	found, err := inspections.ByLease(ctx, "l1")
+	if err != nil {
+		t.Fatalf("listar vistorias: %v", err)
+	}
+	if len(found) != 1 || found[0].Kind != domain.InspectionKindCheckIn {
+		t.Fatalf("vistorias = %+v, esperada 1 de entrada", found)
+	}
+	if found[0].Condition != domain.InspectionConditionGood || found[0].PerformedAt != "2026-01-01" {
+		t.Fatalf("vistoria = %+v", found[0])
+	}
+}
+
+func TestLeaseCreateCheckInDefaults(t *testing.T) {
+	deps, _, _, inspections := leaseDepositDeps()
+	ctx := context.Background()
+
+	// Só o pedido: estado padrão é boa e a data é o início do contrato.
+	input := leaseFixture("l1", "t1", "p1", "2026-01-01", "2026-12-31", 10, 2500, domain.LeaseStatusActive)
+	input.InspectionCheckIn = true
+	if _, err := LeaseCreate(ctx, deps, covCtx(), input); err != nil {
+		t.Fatalf("criar com vistoria padrão: %v", err)
+	}
+	found, err := inspections.ByLease(ctx, "l1")
+	if err != nil {
+		t.Fatalf("listar vistorias: %v", err)
+	}
+	if len(found) != 1 {
+		t.Fatalf("vistorias = %+v, esperada 1", found)
+	}
+	if found[0].Condition != domain.InspectionConditionGood || found[0].PerformedAt != "2026-01-01" {
+		t.Fatalf("padrões = %+v", found[0])
+	}
+}

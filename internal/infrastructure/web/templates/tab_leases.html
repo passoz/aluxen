@@ -78,7 +78,7 @@
                 type="button"
                 class="btn btn-sm btn-secondary"
                 data-modal-open="lease-edit-modal"
-                data-modal-fill='{{json (dict "id" .ID "tenant_id" .TenantID "property_id" .PropertyID "start_date" .StartDate "end_date" .EndDate "due_day" (printf "%d" .DueDay) "rent_amount" (printf "%.2f" .RentAmount) "status" (printf "%s" .Status))}}'
+                data-modal-fill='{{json (dict "id" .ID "tenant_id" .TenantID "property_id" .PropertyID "start_date" .StartDate "end_date" .EndDate "due_day" (printf "%d" .DueDay) "rent_amount" (printf "%.2f" .RentAmount) "deposit_amount" (moneyValuePtr .DepositAmount) "deposit_notes" (deref .DepositNotes) "status" (printf "%s" .Status))}}'
               >
                 Editar
               </button>
@@ -196,6 +196,41 @@
         <label for="create-lease-rent">Aluguel</label>
         <input id="create-lease-rent" name="rent_amount" data-mask="money" data-money-input inputmode="numeric" placeholder="R$ 0,00" required>
       </div>
+      <div class="form-group">
+        <label for="create-lease-deposit">Caução (opcional)</label>
+        <input id="create-lease-deposit" name="deposit_amount" data-mask="money" data-money-input inputmode="numeric" placeholder="R$ 0,00">
+      </div>
+      <div class="form-group">
+        <label for="create-lease-deposit-notes">Observações da caução</label>
+        <textarea id="create-lease-deposit-notes" name="deposit_notes" rows="2"></textarea>
+      </div>
+      <fieldset>
+        <legend class="metric-label">Vistoria de entrada (opcional)</legend>
+        <div class="form-group">
+          <label for="create-lease-inspection">
+            <input id="create-lease-inspection" name="inspection_checkin" type="checkbox" value="on">
+            Registrar vistoria de entrada ao criar
+          </label>
+        </div>
+        <div class="form-group">
+          <label for="create-lease-inspection-condition">Estado geral</label>
+          <select id="create-lease-inspection-condition" name="inspection_condition">
+            <option value="">Padrão (boa)</option>
+            <option value="otima">Ótima</option>
+            <option value="boa">Boa</option>
+            <option value="regular">Regular</option>
+            <option value="ruim">Ruim</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="create-lease-inspection-performed">Realizada em</label>
+          <input id="create-lease-inspection-performed" name="inspection_performed_at" type="text" data-datetime placeholder="dd/mm/aaaa hh:mm">
+        </div>
+        <div class="form-group">
+          <label for="create-lease-inspection-notes">Observações da vistoria</label>
+          <textarea id="create-lease-inspection-notes" name="inspection_notes" rows="2"></textarea>
+        </div>
+      </fieldset>
       <button type="submit" class="btn btn-primary">Adicionar contrato</button>
     </form>
   </div>
@@ -250,6 +285,14 @@
       <div class="form-group">
         <label for="modal-lease-rent">Aluguel</label>
         <input id="modal-lease-rent" name="rent_amount" data-mask="money" data-money-input inputmode="numeric" placeholder="R$ 0,00" required>
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-deposit">Caução (opcional — em branco mantém a registrada)</label>
+        <input id="modal-lease-deposit" name="deposit_amount" data-mask="money" data-money-input inputmode="numeric" placeholder="R$ 0,00">
+      </div>
+      <div class="form-group">
+        <label for="modal-lease-deposit-notes">Observações da caução</label>
+        <textarea id="modal-lease-deposit-notes" name="deposit_notes" rows="2"></textarea>
       </div>
       <button type="submit" class="btn btn-primary">Salvar alterações</button>
       <button type="button" class="btn btn-sm btn-secondary" data-modal-close>Descartar</button>
