@@ -5,17 +5,17 @@
 <div class="stack-lg">
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.75rem;">
     {{$tenants := printf "%d" $totals.Tenants}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Tenants}}">
+    <a class="card metric-card" href="/dashboard?tab=tenants" style="padding: 1rem 1.25rem; min-width: 0;" data-tip="{{$tips.Tenants}}">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Inquilinos</div>
       <div style="font-size: {{metricValueFont $tenants}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$tenants}}">{{$tenants}}</div>
-    </div>
+    </a>
 
     {{$properties := printf "%d" $totals.Properties}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Properties}}">
+    <a class="card metric-card" href="/dashboard?tab=properties" style="padding: 1rem 1.25rem; min-width: 0;" data-tip="{{$tips.Properties}}">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Imóveis</div>
       <div style="font-size: {{metricValueFont $properties}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$properties}}">{{$properties}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.ActiveLeases}} contrato(s) ativo(s)</div>
-    </div>
+    </a>
 
     {{$receipts := printf "%d" $totals.Receipts}}
     <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Receipts}}">
@@ -45,11 +45,11 @@
     </div>
 
     {{$expected := money $totals.ExpectedMonthly}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Expected}}">
+    <a class="card metric-card" href="/dashboard?tab=leases" style="padding: 1rem 1.25rem; min-width: 0;" data-tip="{{$tips.Expected}}">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Esperado mensal</div>
       <div style="font-size: {{metricValueFont $expected}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$expected}}">{{$expected}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Soma dos aluguéis ativos</div>
-    </div>
+    </a>
 
     {{$total := money $totals.TotalAmount}}
     <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Total}}">

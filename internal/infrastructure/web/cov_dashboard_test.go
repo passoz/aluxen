@@ -618,3 +618,37 @@ func covTooltipValues(body string) []string {
 	}
 	return values
 }
+
+// TestCovDashboardCountCardNavigates (Work 0007, task 7.3): os cartões de
+// contagem navegam para a aba correspondente, e nenhum cartão tem link para a
+// própria aba ativa.
+func TestCovDashboardCountCardNavigates(t *testing.T) {
+	panel := covSeedPanel(t)
+
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=dashboard", nil, panel.admin.ID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("dashboard: status = %d, esperado 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+
+	// Os três cartões de contagem são links para a aba correspondente.
+	for _, card := range []struct{ tab, label string }{
+		{"tenants", "Inquilinos"},
+		{"properties", "Imóveis"},
+		{"leases", "Esperado mensal"},
+	} {
+		marker := `<a class="card metric-card" href="/dashboard?tab=` + card.tab + `"`
+		if !strings.Contains(body, marker) {
+			t.Fatalf("cartão %q sem link para a aba no painel", card.label)
+		}
+	}
+
+	// Só os três de contagem são links: o financeiro abre modal (task 7.4) e
+	// nenhum cartão aponta para a própria aba ativa.
+	if got := strings.Count(body, `<a class="card metric-card"`); got != 3 {
+		t.Fatalf("cartões navegáveis = %d, esperados 3", got)
+	}
+	if strings.Contains(body, `<a class="card metric-card" href="/dashboard?tab=dashboard"`) {
+		t.Fatal("cartão com link para a própria aba ativa")
+	}
+}
