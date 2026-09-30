@@ -2554,6 +2554,243 @@
     hideTip();
   }, true);
 
+  /* ── Detalhamento financeiro (`data-drilldown`) ─────────────────────────── */
+  // O recorte vem pronto do servidor (`/api/dashboard/drilldown`): o JS monta
+  // o filtro a partir dos atributos, busca o JSON e desenha o retorno. Cartão
+  // financeiro, coluna do mensal, fatia de status e barra de categoria abrem
+  // o modal com o filtro já preenchido pelo que foi clicado.
+
+  var drilldownMoney = null;
+
+  function drilldownFormatMoney(value) {
+    if (!drilldownMoney) {
+      try {
+        drilldownMoney = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+      } catch (error) {
+        drilldownMoney = null;
+      }
+    }
+    if (drilldownMoney) return drilldownMoney.format(value || 0);
+    return 'R$ ' + Number(value || 0).toFixed(2);
+  }
+
+  function drilldownISODate(brDate) {
+    var parts = String(brDate || '').split('/');
+    if (parts.length !== 3) return '';
+    var day = parts[0].replace(/\D/g, '');
+    var month = parts[1].replace(/\D/g, '');
+    var year = parts[2].replace(/\D/g, '');
+    if (day.length !== 2 || month.length !== 2 || year.length !== 4) return '';
+    return year + '-' + month + '-' + day;
+  }
+
+  function drilldownModal() {
+    return document.getElementById('modal-drilldown');
+  }
+
+  function drilldownSetField(form, name, value) {
+    var field = form.querySelector('[name="' + name + '"]');
+    if (field) field.value = value || '';
+  }
+
+  function drilldownOpen(preset) {
+    var modal = drilldownModal();
+    if (!modal) return;
+    openModal('modal-drilldown');
+    var form = modal.querySelector('[data-drilldown-filters]');
+    if (!form) return;
+    drilldownSetField(form, 'from', '');
+    drilldownSetField(form, 'to', '');
+    drilldownSetField(form, 'status', preset.status || '');
+    drilldownSetField(form, 'category', preset.category || '');
+    drilldownSetField(form, 'tenant_id', '');
+    drilldownSetField(form, 'property_id', '');
+    drilldownSetField(form, 'q', '');
+    if (preset.from) drilldownSetField(form, 'from', drilldownBRDate(preset.from));
+    if (preset.to) drilldownSetField(form, 'to', drilldownBRDate(preset.to));
+    drilldownFetch();
+  }
+
+  function drilldownBRDate(isoDate) {
+    var parts = String(isoDate || '').split('-');
+    if (parts.length !== 3) return '';
+    return parts[2] + '/' + parts[1] + '/' + parts[0];
+  }
+
+  function drilldownFetch() {
+    var modal = drilldownModal();
+    if (!modal) return;
+    var form = modal.querySelector('[data-drilldown-filters]');
+    var error = modal.querySelector('[data-drilldown-error]');
+    var loading = modal.querySelector('[data-drilldown-status]');
+    var result = modal.querySelector('[data-drilldown-result]');
+    if (!form) return;
+
+    var params = new URLSearchParams();
+    var from = drilldownISODate(form.querySelector('[name="from"]').value);
+    var to = drilldownISODate(form.querySelector('[name="to"]').value);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    ['status', 'category', 'tenant_id', 'property_id', 'q'].forEach(function (name) {
+      var field = form.querySelector('[name="' + name + '"]');
+      var value = field ? field.value.trim() : '';
+      if (value) params.set(name, value);
+    });
+
+    error.hidden = true;
+    error.textContent = '';
+    loading.hidden = false;
+    result.hidden = true;
+
+    fetch('/api/dashboard/drilldown?' + params.toString(), {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    }).then(function (response) {
+      return response.json().catch(function () {
+        return { error: 'Não foi possível ler o detalhamento.' };
+      }).then(function (payload) {
+        if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar o detalhamento.');
+        return payload;
+      });
+    }).then(function (payload) {
+      loading.hidden = true;
+      if (!payload || !payload.drilldown) {
+        drilldownShowError('O detalhamento não devolveu resultado.');
+        return;
+      }
+      drilldownRender(payload.drilldown);
+    }).catch(function (err) {
+      loading.hidden = true;
+      drilldownShowError(err && err.message ? err.message : 'Não foi possível carregar o detalhamento.');
+    });
+  }
+
+  function drilldownShowError(message) {
+    var modal = drilldownModal();
+    if (!modal) return;
+    var error = modal.querySelector('[data-drilldown-error]');
+    var result = modal.querySelector('[data-drilldown-result]');
+    result.hidden = true;
+    error.textContent = message;
+    error.hidden = false;
+  }
+
+  function drilldownCell(text, align) {
+    var td = document.createElement('td');
+    td.textContent = text || '';
+    if (align) td.style.textAlign = align;
+    return td;
+  }
+
+  function drilldownRender(drill) {
+    var modal = drilldownModal();
+    if (!modal) return;
+    var result = modal.querySelector('[data-drilldown-result]');
+    var totalsBox = modal.querySelector('[data-drilldown-totals]');
+    var empty = modal.querySelector('[data-drilldown-empty]');
+    var table = modal.querySelector('[data-drilldown-table]');
+    var rows = modal.querySelector('[data-drilldown-rows]');
+    var totals = drill.totals || {};
+
+    totalsBox.textContent = '';
+    [
+      ['Lançamentos', String(totals.count || 0)],
+      ['Soma', drilldownFormatMoney(totals.total)],
+      ['Pago', drilldownFormatMoney(totals.paid)],
+      ['Em aberto', drilldownFormatMoney(totals.open)],
+      ['Vencido', drilldownFormatMoney(totals.overdue)]
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card metric-card';
+      var label = document.createElement('div');
+      label.className = 'metric-label';
+      label.textContent = item[0];
+      var value = document.createElement('div');
+      value.className = 'metric-value';
+      value.textContent = item[1];
+      card.appendChild(label);
+      card.appendChild(value);
+      totalsBox.appendChild(card);
+    });
+
+    rows.textContent = '';
+    var list = drill.rows || [];
+    empty.hidden = list.length !== 0;
+    table.hidden = list.length === 0;
+    list.forEach(function (row) {
+      var tr = document.createElement('tr');
+      tr.appendChild(drilldownCell(row.dueLabel || row.dueDate));
+      tr.appendChild(drilldownCell(row.description || '—'));
+      tr.appendChild(drilldownCell(row.tenantName || '—'));
+      tr.appendChild(drilldownCell(row.propertyName || '—'));
+      tr.appendChild(drilldownCell(row.categoryLabel || row.category));
+      var statusCell = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = 'status-badge ' + (row.status || '');
+      badge.textContent = row.statusLabel || row.status || '';
+      statusCell.appendChild(badge);
+      tr.appendChild(statusCell);
+      tr.appendChild(drilldownCell(drilldownFormatMoney(row.amount), 'right'));
+      tr.appendChild(drilldownCell(drilldownFormatMoney(row.paidAmount), 'right'));
+      var pdfCell = document.createElement('td');
+      var pdf = document.createElement('a');
+      pdf.className = 'btn btn-sm btn-outline';
+      pdf.href = '/pdf?id=' + encodeURIComponent(row.receiptId || row.id);
+      pdf.target = '_blank';
+      pdf.rel = 'noreferrer';
+      pdf.textContent = 'Recibo';
+      pdfCell.appendChild(pdf);
+      tr.appendChild(pdfCell);
+      rows.appendChild(tr);
+    });
+
+    result.hidden = false;
+  }
+
+  document.addEventListener('click', function (event) {
+    var opener = event.target.closest ? event.target.closest('[data-drilldown]') : null;
+    if (!opener) return;
+    // Barra de ocupação é link de navegação; o modal é para o financeiro.
+    if (opener.tagName === 'A') return;
+    event.preventDefault();
+    drilldownOpen({
+      status: opener.getAttribute('data-drill-status') || '',
+      category: opener.getAttribute('data-drill-category') || '',
+      from: opener.getAttribute('data-drill-from') || '',
+      to: opener.getAttribute('data-drill-to') || ''
+    });
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var opener = event.target.closest ? event.target.closest('[data-drilldown]') : null;
+    if (!opener || opener.tagName === 'A' || opener.tagName === 'BUTTON') return;
+    event.preventDefault();
+    drilldownOpen({
+      status: opener.getAttribute('data-drill-status') || '',
+      category: opener.getAttribute('data-drill-category') || '',
+      from: opener.getAttribute('data-drill-from') || '',
+      to: opener.getAttribute('data-drill-to') || ''
+    });
+  });
+
+  document.addEventListener('submit', function (event) {
+    var form = event.target.closest ? event.target.closest('[data-drilldown-filters]') : null;
+    if (!form) return;
+    event.preventDefault();
+    drilldownFetch();
+  });
+
+  document.addEventListener('click', function (event) {
+    var clear = event.target.closest ? event.target.closest('[data-drilldown-clear]') : null;
+    if (!clear) return;
+    var modal = drilldownModal();
+    if (!modal) return;
+    var form = modal.querySelector('[data-drilldown-filters]');
+    if (form) form.reset();
+    drilldownFetch();
+  });
+
   /* ── Inicialização ────────────────────────────────────────────────────── */
 
   function refresh() {

@@ -1838,3 +1838,36 @@ a.card.metric-card:focus-visible {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
 }
+
+/* Detalhamento financeiro (Work 0007). */
+.drilldown-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.metric-card[data-drilldown],
+[data-drilldown][data-drill-status],
+[data-drilldown][data-drill-category],
+[data-drilldown][data-drill-from] {
+  cursor: pointer;
+}
+
+.metric-card[data-drilldown]:hover {
+  border-color: #6366f1;
+}
+
+a.occupancy-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 0.5rem;
+}
+
+a.occupancy-link:hover {
+  background: var(--glass-hover-bg);
+}
+
+a.occupancy-link:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}

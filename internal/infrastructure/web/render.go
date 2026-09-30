@@ -440,7 +440,8 @@ type chartGuide struct {
 }
 
 // chartColumn é uma coluna do gráfico de barras verticais: o esperado fica
-// atrás e o recebido à frente. Tip é o texto do tooltip da coluna.
+// atrás e o recebido à frente. Tip é o texto do tooltip da coluna; From e To
+// são os limites do mês para o recorte do detalhamento.
 type chartColumn struct {
 	Label     string
 	X         float64
@@ -452,6 +453,8 @@ type chartColumn struct {
 	LabelX    float64
 	LabelY    float64
 	Tip       string
+	From      string
+	To        string
 }
 
 // chartView é a geometria de um gráfico de barras verticais.
@@ -503,6 +506,7 @@ func monthlyChart(months []application.MetricsMonth) chartView {
 		x := padLeft + slot*float64(index) + (slot-columnWidth)/2
 		expected := month.Expected / max * chartH
 		received := month.Received / max * chartH
+		from, to := monthBounds(month.Key)
 		view.Columns = append(view.Columns, chartColumn{
 			Label:     month.Label,
 			X:         x,
@@ -516,6 +520,8 @@ func monthlyChart(months []application.MetricsMonth) chartView {
 			Tip: fmt.Sprintf("%s · recebido %s de %s esperados · %s em aberto",
 				month.Label, format.FormatCurrency(month.Received),
 				format.FormatCurrency(month.Expected), format.FormatCurrency(month.Open)),
+			From: from,
+			To:   to,
 		})
 	}
 
@@ -724,6 +730,18 @@ func occupancyTip(bar occupancyBar, leases []domain.Lease) string {
 		return bar.Title + " · nenhum contrato ativo"
 	}
 	return fmt.Sprintf("%s · %d contrato(s) ativo(s) · %s", bar.Title, active, strings.Join(names, ", "))
+}
+
+// monthBounds devolve o primeiro e o último dia do mês da competência
+// (aaaa-mm), para o recorte de período do detalhamento. Chave fora do formato
+// devolve limites vazios, e o recorte os ignora.
+func monthBounds(key string) (string, string) {
+	first, err := time.Parse("2006-01", key)
+	if err != nil {
+		return "", ""
+	}
+	last := first.AddDate(0, 1, -1)
+	return first.Format("2006-01-02"), last.Format("2006-01-02")
 }
 
 // Has informa se o template existe. Permite que áreas independentes publiquem

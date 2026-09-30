@@ -23,6 +23,7 @@ func (h *Handlers) routes() *http.ServeMux {
 	// Painel
 	mux.HandleFunc("GET /dashboard", h.Dashboard)
 	mux.HandleFunc("POST /dashboard", h.DashboardMutation)
+	mux.HandleFunc("GET /api/dashboard/drilldown", h.Drilldown)
 	mux.HandleFunc("GET /settings", h.SettingsPage)
 	mux.HandleFunc("POST /settings", h.SettingsMutation)
 	mux.HandleFunc("GET /metrics", h.Metrics)

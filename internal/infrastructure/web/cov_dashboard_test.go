@@ -652,3 +652,54 @@ func TestCovDashboardCountCardNavigates(t *testing.T) {
 		t.Fatal("cartão com link para a própria aba ativa")
 	}
 }
+
+// TestCovDashboardDrilldown (Work 0007, task 7.4): o detalhamento financeiro
+// responde filtrado em JSON, e o painel traz o modal com os cartões e os
+// objetos de gráfico ligados ao recorte.
+func TestCovDashboardDrilldown(t *testing.T) {
+	panel := covSeedPanel(t)
+
+	// O endpoint devolve o recorte pedido: a semente tem um vencido.
+	recorder := panel.as(http.MethodGet, "/api/dashboard/drilldown?status=overdue", nil, panel.admin.ID)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("drilldown: status = %d, esperado 200", recorder.Code)
+	}
+	payload := covDecodeJSON(t, recorder)
+	if payload["ok"] != true {
+		t.Fatalf("drilldown: ok = %v", payload["ok"])
+	}
+	drill, _ := payload["drilldown"].(map[string]any)
+	rows, _ := drill["rows"].([]any)
+	if len(rows) != 1 {
+		t.Fatalf("drilldown: linhas = %d, esperada 1 (o vencido da semente)", len(rows))
+	}
+	row, _ := rows[0].(map[string]any)
+	if row["id"] != "receipt-1" {
+		t.Fatalf("drilldown: linha = %v", row)
+	}
+	totals, _ := drill["totals"].(map[string]any)
+	if totals["count"] != float64(1) || totals["overdue"] != float64(2500) {
+		t.Fatalf("drilldown: totais = %v", totals)
+	}
+
+	// O painel traz o modal e liga cartões e gráficos ao recorte.
+	page := panel.as(http.MethodGet, "/dashboard?tab=dashboard", nil, panel.admin.ID)
+	if page.Code != http.StatusOK {
+		t.Fatalf("dashboard: status = %d, esperado 200", page.Code)
+	}
+	body := page.Body.String()
+	if !strings.Contains(body, `id="modal-drilldown"`) {
+		t.Fatal("painel sem o modal de detalhamento financeiro")
+	}
+	for _, preset := range []string{
+		`data-drill-status="paid"`,
+		`data-drill-status="due"`,
+		`data-drill-status="overdue"`,
+		`data-drill-category="rent"`,
+		`data-drill-from="2026-09-01"`,
+	} {
+		if !strings.Contains(body, preset) {
+			t.Fatalf("painel sem o atalho de recorte %s", preset)
+		}
+	}
+}

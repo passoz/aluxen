@@ -18,27 +18,27 @@
     </a>
 
     {{$receipts := printf "%d" $totals.Receipts}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Receipts}}">
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Receipts}}" data-drilldown>
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Recibos</div>
       <div style="font-size: {{metricValueFont $receipts}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$receipts}}">{{$receipts}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{add $totals.PaidReceipts $totals.PartialReceipts}} pagos</div>
     </div>
 
     {{$received := money $totals.PaidAmount}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Received}}">
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Received}}" data-drilldown data-drill-status="paid">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Recebido</div>
       <div style="font-size: {{metricValueFont $received}}; font-weight: 700; color: #10b981; margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$received}}">{{$received}}</div>
     </div>
 
     {{$open := money $totals.OpenAmount}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Open}}">
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Open}}" data-drilldown data-drill-status="due">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Em aberto</div>
       <div style="font-size: {{metricValueFont $open}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$open}}">{{$open}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.DueReceipts}} a vencer</div>
     </div>
 
     {{$overdue := money $totals.OverdueAmount}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Overdue}}">
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Overdue}}" data-drilldown data-drill-status="overdue">
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Em atraso</div>
       <div style="font-size: {{metricValueFont $overdue}}; font-weight: 700; color: {{if gt $totals.OverdueReceipts 0}}#ef4444{{else}}var(--text){{end}}; margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$overdue}}">{{$overdue}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">{{$totals.OverdueReceipts}} vencido(s)</div>
@@ -52,7 +52,7 @@
     </a>
 
     {{$total := money $totals.TotalAmount}}
-    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Total}}">
+    <div class="card metric-card" style="padding: 1rem 1.25rem; min-width: 0;" tabindex="0" data-tip="{{$tips.Total}}" data-drilldown>
       <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Total previsto</div>
       <div style="font-size: {{metricValueFont $total}}; font-weight: 700; color: var(--text); margin-top: 0.35rem; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: visible;" title="{{$total}}">{{$total}}</div>
       <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Soma de todos os recibos</div>
@@ -74,7 +74,7 @@
           </g>
         {{end}}
         {{range $chart.Columns}}
-          <g tabindex="0" data-tip="{{.Tip}}">
+          <g tabindex="0" data-tip="{{.Tip}}" data-drilldown data-drill-from="{{.From}}" data-drill-to="{{.To}}">
             <rect x="{{svgNum .X}}" y="{{svgNum .ExpectedY}}" width="{{svgNum .Width}}" height="{{svgNum .ExpectedH}}" fill="#cbd5e1" rx="2" />
             <rect x="{{svgNum .X}}" y="{{svgNum .ReceivedY}}" width="{{svgNum .Width}}" height="{{svgNum .ReceivedH}}" fill="#6366f1" rx="2" />
             <text x="{{svgNum .LabelX}}" y="{{svgNum .LabelY}}" text-anchor="middle" style="font-size: 0.65rem; fill: var(--text-muted);">{{.Label}}</text>
@@ -102,7 +102,7 @@
               <circle r="{{svgNum $radius}}" fill="none" stroke="var(--glass-border)" stroke-width="20" />
               {{range $index, $entry := $metrics.Status}}
                 {{$slice := index $donut.Slices $index}}
-                <circle r="{{svgNum $radius}}" fill="none" stroke="{{statusColor $entry.Status}}" stroke-width="20" stroke-dasharray="{{$slice.DashArray}}" stroke-dashoffset="{{svgNum $slice.DashOffset}}" tabindex="0" data-tip="{{$slice.Tip}}" />
+                <circle r="{{svgNum $radius}}" fill="none" stroke="{{statusColor $entry.Status}}" stroke-width="20" stroke-dasharray="{{$slice.DashArray}}" stroke-dashoffset="{{svgNum $slice.DashOffset}}" tabindex="0" data-tip="{{$slice.Tip}}" data-drilldown data-drill-status="{{$entry.Status}}" />
               {{end}}
             </g>
             <text x="80" y="78" text-anchor="middle" style="font-size: 1.4rem; font-weight: 700; fill: var(--text);">{{$donut.Total}}</text>
@@ -127,7 +127,7 @@
       <div style="display: flex; flex-direction: column; gap: 0.75rem;">
         {{if not $categories}}<div style="color: var(--text-muted);">Sem recibos.</div>{{end}}
         {{range $categories}}
-          <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.25rem;" tabindex="0" data-tip="{{.Tip}}">
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.25rem;" tabindex="0" data-tip="{{.Tip}}" data-drilldown data-drill-category="{{.Category}}">
             <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
               <span>{{.Label}}</span>
               <span style="color: var(--text-muted);">{{.Count}} recibo(s)</span>
@@ -150,13 +150,13 @@
     {{else}}
       <div style="display: flex; flex-direction: column; gap: 0.625rem;">
         {{range $occupancy}}
-          <div style="display: grid; grid-template-columns: minmax(140px, 240px) 1fr 90px; gap: 0.75rem; align-items: center; font-size: 0.85rem;" tabindex="0" data-tip="{{occupancyTip . $.Snapshot.Leases}}">
+          <a class="occupancy-link" style="display: grid; grid-template-columns: minmax(140px, 240px) 1fr 90px; gap: 0.75rem; align-items: center; font-size: 0.85rem;" href="/dashboard?tab=properties" data-tip="{{occupancyTip . $.Snapshot.Leases}}">
             <div style="color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{.Title}}">{{.Name}}</div>
             <div style="background: var(--glass-border); border-radius: 4px; height: 14px; overflow: hidden;">
               <div style="width: {{.Width}}%; height: 100%; background: linear-gradient(90deg, #6366f1, #818cf8); border-radius: 4px; transition: width 0.4s;"></div>
             </div>
             <div style="text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted);">{{.Leases}}</div>
-          </div>
+          </a>
         {{end}}
       </div>
     {{end}}
@@ -188,4 +188,6 @@
     {{end}}
   </section>
 </div>
+
+{{template "modal_drilldown" .}}
 {{end}}
