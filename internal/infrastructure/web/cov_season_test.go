@@ -584,3 +584,60 @@ func TestCovInspectionItemsFromParallelFields(t *testing.T) {
 		t.Fatalf("segundo item = %+v (campos ausentes devem ficar vazios)", items[1])
 	}
 }
+
+// TestCovLeasesTabExposesDepositActions (Work 0007, task 7.6): a aba Contratos
+// tem, por linha, os botões de Caução, Devolver e Vistoria, e a aba que cuida
+// de caução e vistoria se chama "Caução e vistoria" sem trocar de URL.
+func TestCovLeasesTabExposesDepositActions(t *testing.T) {
+	panel := covSeedPanel(t)
+
+	// A semente tem um contrato ativo com caução retida: a linha mostra
+	// Caução, Devolver (com o recibo) e Vistoria, com os modais incluídos.
+	leases := panel.as(http.MethodGet, "/dashboard?tab=leases", nil, panel.admin.ID)
+	if leases.Code != http.StatusOK {
+		t.Fatalf("contratos: status = %d, esperado 200", leases.Code)
+	}
+	leasesBody := leases.Body.String()
+	for _, want := range []string{
+		`data-modal-open="modal-deposit"`,
+		`data-modal-open="modal-refund"`,
+		`data-modal-open="modal-inspection"`,
+		`id="modal-deposit"`,
+		`id="modal-refund"`,
+		`id="modal-inspection"`,
+		`/deposit-pdf?id=lease-1`,
+	} {
+		if !strings.Contains(leasesBody, want) {
+			t.Fatalf("leases tab without deposit action %q", want)
+		}
+	}
+
+	// A bancada se chama pelo que faz; a URL continua a mesma.
+	season := panel.as(http.MethodGet, "/dashboard?tab=season", nil, panel.admin.ID)
+	if season.Code != http.StatusOK {
+		t.Fatalf("bancada: status = %d, esperado 200", season.Code)
+	}
+	seasonBody := season.Body.String()
+	if !strings.Contains(seasonBody, "Caução e vistoria") {
+		t.Fatal("bancada sem o nome Caução e vistoria")
+	}
+	if strings.Contains(seasonBody, ">Temporada<") {
+		t.Fatal("bancada ainda rotulada como Temporada")
+	}
+	if !strings.Contains(seasonBody, `href="/dashboard?tab=season" class="active"`) {
+		t.Fatal("bancada sem o item de menu marcado como atual")
+	}
+
+	// O apelido ?tab=caucao resolve para a mesma aba.
+	alias := panel.as(http.MethodGet, "/dashboard?tab=caucao", nil, panel.admin.ID)
+	if alias.Code != http.StatusOK {
+		t.Fatalf("apelido caucao: status = %d, esperado 200", alias.Code)
+	}
+	aliasBody := alias.Body.String()
+	if !strings.Contains(aliasBody, "Caução e vistoria") {
+		t.Fatal("apelido caucao sem o conteúdo da bancada")
+	}
+	if !strings.Contains(aliasBody, `href="/dashboard?tab=season" class="active"`) {
+		t.Fatal("apelido caucao sem o item de menu marcado como atual")
+	}
+}

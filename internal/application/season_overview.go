@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/passoz/aluxen/internal/domain"
 )
@@ -47,6 +48,7 @@ func BuildSeasonOverview(ctx context.Context, deps Deps) (*SeasonOverview, error
 		byLease[inspection.LeaseID] = append(byLease[inspection.LeaseID], inspection)
 	}
 
+	today := deps.Clock.Now().Format("2006-01-02")
 	overview := &SeasonOverview{Rows: make([]SeasonLeaseRow, 0, len(leases))}
 	for index := range leases {
 		lease := leases[index]
@@ -74,6 +76,10 @@ func BuildSeasonOverview(ctx context.Context, deps Deps) (*SeasonOverview, error
 			if row.CheckOut == nil {
 				overview.PendingCheckOut++
 			}
+		} else if row.CheckOut == nil && leaseEnded(lease.EndDate, today) {
+			// Fixo com prazo encerrado e sem vistoria de saída: a saída está
+			// pendente como na temporada. Fixo ainda vigente não conta.
+			overview.PendingCheckOut++
 		}
 		if domain.HasDeposit(lease.DepositAmount, lease.DepositStatus) {
 			overview.WithDeposit++
@@ -83,6 +89,19 @@ func BuildSeasonOverview(ctx context.Context, deps Deps) (*SeasonOverview, error
 		overview.Rows = append(overview.Rows, row)
 	}
 	return overview, nil
+}
+
+// leaseEnded informa se o prazo do contrato já passou na data informada
+// (aaaa-mm-dd). Data fora do formato não conta como encerrada.
+func leaseEnded(endDate, today string) bool {
+	if len(endDate) < 10 || len(today) < 10 {
+		return false
+	}
+	end := endDate[:10]
+	if _, err := time.Parse("2006-01-02", end); err != nil {
+		return false
+	}
+	return end < today[:10]
 }
 
 // InspectionForLease devolve a vistoria de um contrato, por tipo.

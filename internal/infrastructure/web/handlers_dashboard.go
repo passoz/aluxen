@@ -19,8 +19,9 @@ import (
 var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "review", "intake", "conversations", "adjustment", "history"}
 
 // tabAliases resolve URLs antigas para o tab canônico: a aba de indicadores
-// foi fundida com o Dashboard (Work 0007) e passa a cair nele.
-var tabAliases = map[string]string{"metrics": "dashboard"}
+// foi fundida com o Dashboard e a bancada de temporada passou a se chamar
+// "Caução e vistoria" (Work 0007).
+var tabAliases = map[string]string{"metrics": "dashboard", "caucao": "season"}
 
 // tabTemplate é o template de conteúdo de cada aba. Áreas que ainda não
 // publicaram o template apenas não renderizam conteúdo (o painel não quebra).

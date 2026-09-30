@@ -82,6 +82,33 @@
               >
                 Editar
               </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                data-modal-open="modal-deposit"
+                data-modal-fill='{"lease_id":"{{.ID}}","deposit_amount":"{{moneyValuePtr .DepositAmount}}","deposit_notes":"{{deref .DepositNotes}}"}'
+              >
+                Caução
+              </button>
+              {{if eq .DepositStatus "held"}}
+                <button
+                  type="button"
+                  class="btn btn-sm btn-secondary"
+                  data-modal-open="modal-refund"
+                  data-modal-fill='{"lease_id":"{{.ID}}","refund_amount":"{{moneyValuePtr .DepositAmount}}"}'
+                >
+                  Devolver
+                </button>
+                <a class="btn btn-sm btn-outline" href="/deposit-pdf?id={{.ID}}">Recibo</a>
+              {{end}}
+              <button
+                type="button"
+                class="btn btn-sm btn-outline"
+                data-modal-open="modal-inspection"
+                data-modal-fill='{"lease_id":"{{.ID}}","kind":"checkin","performed_at":"{{date .StartDate}}"}'
+              >
+                Vistoria
+              </button>
 
               {{if eq (printf "%s" .Status) "active"}}
                 <form method="post" action="/dashboard" data-offline data-confirm="Encerrar este contrato? Ele ficará inativo.">
@@ -299,5 +326,9 @@
     </form>
   </div>
 </div>
+
+{{template "modal_deposit" .}}
+{{template "modal_refund" .}}
+{{template "modal_inspection" .}}
 
 {{end}}

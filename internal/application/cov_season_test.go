@@ -1101,3 +1101,33 @@ func TestCseaBuildSeasonOverviewGroupsDepositsAndCheckouts(t *testing.T) {
 		t.Fatal("falha ao listar contratos deveria sair como erro")
 	}
 }
+
+// TestCseaPendingCheckoutCountsEndedLeases (Work 0007, task 7.6): a saída
+// pendente conta a temporada sem vistoria de saída e o fixo com prazo
+// encerrado sem vistoria de saída, sem contar o fixo ainda vigente.
+//
+// O "hoje" do ambiente é 21/09/2026.
+func TestCseaPendingCheckoutCountsEndedLeases(t *testing.T) {
+	env := newCovEnv(t)
+	ctx := context.Background()
+	env.leases.items = []domain.Lease{
+		covLeaseOf("s1", "t1", "p1", domain.LeaseStatusSeason, "2026-09-01", "2026-09-30", 2500),
+		covLeaseOf("a1", "t2", "p2", domain.LeaseStatusActive, "2026-01-01", "2026-12-31", 3200),
+		covLeaseOf("e1", "t3", "p3", domain.LeaseStatusActive, "2026-01-01", "2026-08-31", 1800),
+		covLeaseOf("e2", "t4", "p4", domain.LeaseStatusSuspended, "2026-01-01", "2026-07-31", 1500),
+	}
+	cseaSeedInspection(env, domain.Inspection{ID: "i-a1", LeaseID: "a1", Kind: domain.InspectionKindCheckIn})
+	cseaSeedInspection(env, domain.Inspection{ID: "i-e1", LeaseID: "e1", Kind: domain.InspectionKindCheckIn})
+	cseaSeedInspection(env, domain.Inspection{ID: "i-e2-in", LeaseID: "e2", Kind: domain.InspectionKindCheckIn})
+	cseaSeedInspection(env, domain.Inspection{ID: "i-e2-out", LeaseID: "e2", Kind: domain.InspectionKindCheckOut})
+
+	overview, err := BuildSeasonOverview(ctx, env.deps)
+	if err != nil {
+		t.Fatalf("montar bancada: %v", err)
+	}
+	// s1 (temporada sem saída) + e1 (fixo com prazo encerrado sem saída).
+	// a1 segue vigente e e2 já tem saída: nenhum dos dois conta.
+	if overview.PendingCheckOut != 2 {
+		t.Fatalf("saídas pendentes = %d, esperadas 2 (temporada + fixo encerrado)", overview.PendingCheckOut)
+	}
+}
