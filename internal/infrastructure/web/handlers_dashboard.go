@@ -16,12 +16,16 @@ import (
 // despacho, carregamento de dados e renderização da casca.
 
 // dashboardTabs são as abas válidas do painel.
-var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "review", "intake", "conversations", "adjustment", "history", "metrics"}
+var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "review", "intake", "conversations", "adjustment", "history"}
+
+// tabAliases resolve URLs antigas para o tab canônico: a aba de indicadores
+// foi fundida com o Dashboard (Work 0007) e passa a cair nele.
+var tabAliases = map[string]string{"metrics": "dashboard"}
 
 // tabTemplate é o template de conteúdo de cada aba. Áreas que ainda não
 // publicaram o template apenas não renderizam conteúdo (o painel não quebra).
 var tabTemplate = map[string]string{
-	"dashboard":     "tab_dashboard",
+	"dashboard":     "tab_metrics",
 	"tenants":       "tab_tenants",
 	"properties":    "tab_properties",
 	"leases":        "tab_leases",
@@ -33,7 +37,6 @@ var tabTemplate = map[string]string{
 	"conversations": "tab_conversations",
 	"adjustment":    "tab_adjustment",
 	"history":       "tab_history",
-	"metrics":       "tab_metrics",
 }
 
 // Dashboard renderiza o painel na aba pedida (ou devolve JSON com json=true).
@@ -182,6 +185,9 @@ func parseCalendarQuery(rawYear, rawMonth string, now time.Time) (int, int) {
 }
 
 func normalizeTab(tab string) string {
+	if canonical, ok := tabAliases[tab]; ok {
+		return canonical
+	}
 	for _, candidate := range dashboardTabs {
 		if tab == candidate {
 			return candidate

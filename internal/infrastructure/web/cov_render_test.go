@@ -109,7 +109,7 @@ func TestCovRendererHasOnlyPublishedTemplates(t *testing.T) {
 		t.Fatalf("renderer: %v", err)
 	}
 
-	for _, name := range []string{"login.html", "dashboard.html", "error.html", "tab_dashboard", "tab_tenants", "tab_leases", "tab_receipts", "tab_season", "tab_calendar", "tab_review", "tab_intake", "tab_conversations", "tab_adjustment", "tab_history", "tab_metrics", "tab_properties"} {
+	for _, name := range []string{"login.html", "dashboard.html", "error.html", "tab_tenants", "tab_leases", "tab_receipts", "tab_season", "tab_calendar", "tab_review", "tab_intake", "tab_conversations", "tab_adjustment", "tab_history", "tab_metrics", "tab_properties"} {
 		if !renderer.Has(name) {
 			t.Fatalf("template %q não publicado", name)
 		}
@@ -125,7 +125,7 @@ func TestCovExecuteRendersPartialAndRejectsUnknown(t *testing.T) {
 		t.Fatalf("renderer: %v", err)
 	}
 
-	html, err := renderer.Execute("tab_dashboard", &tabData{Snapshot: &application.DashboardData{}})
+	html, err := renderer.Execute("tab_metrics", &tabData{Snapshot: &application.DashboardData{}})
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

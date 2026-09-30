@@ -503,3 +503,44 @@ func TestCovLoginRegistersFailureForRateLimit(t *testing.T) {
 		t.Fatalf("falha de login não auditada: %v", actions)
 	}
 }
+
+// TestCovDashboardSingleIndicatorsEntry (Work 0007, task 7.1): o painel tem
+// uma entrada só de indicadores, e a URL antiga de indicadores cai no
+// Dashboard sem erro nem tela em branco.
+func TestCovDashboardSingleIndicatorsEntry(t *testing.T) {
+	panel := covSeedPanel(t)
+
+	dashboard := panel.as(http.MethodGet, "/dashboard?tab=dashboard", nil, panel.admin.ID)
+	if dashboard.Code != http.StatusOK {
+		t.Fatalf("dashboard: status = %d, esperado 200", dashboard.Code)
+	}
+	legacy := panel.as(http.MethodGet, "/dashboard?tab=metrics", nil, panel.admin.ID)
+	if legacy.Code != http.StatusOK {
+		t.Fatalf("metrics: status = %d, esperado 200", legacy.Code)
+	}
+
+	// Uma entrada só de indicadores no menu: o rótulo 'Dashboard' aparece uma
+	// vez e 'Indicadores' não aparece como rótulo de navegação.
+	pages := map[string]string{
+		"dashboard": dashboard.Body.String(),
+		"metrics":   legacy.Body.String(),
+	}
+	for name, body := range pages {
+		if got := strings.Count(body, ">Dashboard<"); got != 1 {
+			t.Fatalf("%s: rótulo 'Dashboard' aparece %d vez(es), esperado 1", name, got)
+		}
+		if strings.Contains(body, ">Indicadores<") {
+			t.Fatalf("%s: a entrada 'Indicadores' ainda existe no painel", name)
+		}
+	}
+
+	// A URL antiga de indicadores cai no Dashboard: o item de menu marcado
+	// como atual é o do Dashboard e o conteúdo é o dos indicadores.
+	legacyBody := pages["metrics"]
+	if !strings.Contains(legacyBody, `href="/dashboard?tab=dashboard" class="active"`) {
+		t.Fatal("metrics: o item de menu ativo não é o do Dashboard")
+	}
+	if !strings.Contains(legacyBody, "Recebimentos mensais") {
+		t.Fatal("metrics: o conteúdo dos indicadores não foi renderizado")
+	}
+}

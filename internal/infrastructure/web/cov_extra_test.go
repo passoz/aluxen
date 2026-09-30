@@ -71,7 +71,7 @@ func TestCovDashboardTabRenderFailureAnswers500(t *testing.T) {
 	// A aba existe, mas a execução falha (o contexto da aba não tem o dado que o
 	// template pede): o painel responde 500 em vez de meia página.
 	broken := template.Must(template.New("aluxen").Parse(""))
-	if _, err := broken.New("tab_dashboard").Parse("{{.Intake.Inexistente}}"); err != nil {
+	if _, err := broken.New("tab_metrics").Parse("{{.Intake.Inexistente}}"); err != nil {
 		t.Fatalf("template de sondagem: %v", err)
 	}
 	panel.common.Render = &Renderer{templates: broken}
