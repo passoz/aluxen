@@ -449,10 +449,10 @@ func TestComparisonPDFWithoutProviderIsUnavailable(t *testing.T) {
 
 // ── Aba de temporada ───────────────────────────────────────────────
 
-func TestSeasonTabOffersTheComparisonWhenBothInspectionsExist(t *testing.T) {
+func TestLeasesTabOffersTheComparisonWhenBothInspectionsExist(t *testing.T) {
 	panel, _ := cmpPanel(t)
 
-	recorder := panel.as(http.MethodGet, "/dashboard?tab=season", nil, panel.admin.ID)
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=leases", nil, panel.admin.ID)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
@@ -465,20 +465,20 @@ func TestSeasonTabOffersTheComparisonWhenBothInspectionsExist(t *testing.T) {
 		"/api/inspections/compare",
 	} {
 		if !strings.Contains(body, expected) {
-			t.Fatalf("aba de temporada sem %q", expected)
+			t.Fatalf("aba de contratos sem %q", expected)
 		}
 	}
 }
 
-func TestSeasonTabHidesTheComparisonWithoutTheCheckOut(t *testing.T) {
+func TestLeasesTabHidesTheComparisonWithoutTheCheckOut(t *testing.T) {
 	panel, _ := cmpPanel(t)
 	panel.inspections.items = panel.inspections.items[:1]
 
-	recorder := panel.as(http.MethodGet, "/dashboard?tab=season", nil, panel.admin.ID)
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=leases", nil, panel.admin.ID)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, esperado 200: %s", recorder.Code, recorder.Body.String())
 	}
 	if body := recorder.Body.String(); strings.Contains(body, `data-comparison-run="`+cmpLeaseID+`"`) {
-		t.Fatal("aba ofereceu a comparação sem a vistoria de saída")
+		t.Fatal("contrato ofereceu a comparação sem a vistoria de saída")
 	}
 }

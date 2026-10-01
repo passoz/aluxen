@@ -70,11 +70,9 @@ func TestCovSeasonTabNormalizesToLeases(t *testing.T) {
 		request := httptest.NewRequest(http.MethodGet, target, nil)
 		request.AddCookie(&http.Cookie{Name: adminCookieName, Value: session})
 		recorder := panel.server.do(request)
-		if recorder.Code != http.StatusOK {
-			t.Fatalf("%s: status %d, esperado 200", target, recorder.Code)
-		}
-		if !strings.Contains(recorder.Body.String(), "Gerenciar Contratos") {
-			t.Fatalf("%s não normalizou para a aba de contratos", target)
+		body := recorder.Body.String()
+		if recorder.Code != http.StatusOK || !strings.Contains(body, "Gerenciar Contratos") {
+			t.Fatalf("%s não normalizou para a aba de contratos (status %d)", target, recorder.Code)
 		}
 	}
 
@@ -89,6 +87,11 @@ func TestCovSeasonTabNormalizesToLeases(t *testing.T) {
 	// Temporada continua como situação do contrato (filtro preservado).
 	if !strings.Contains(body, `value="/dashboard?tab=leases&amp;status=season"`) {
 		t.Fatal("filtro de temporada sumiu da aba de contratos")
+	}
+
+	// A comparação de vistorias mora na linha do contrato, não mais na aba.
+	if !strings.Contains(body, `id="modal-comparison"`) {
+		t.Fatal("aba de contratos sem o modal de comparação de vistorias")
 	}
 }
 

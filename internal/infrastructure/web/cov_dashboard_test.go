@@ -213,7 +213,7 @@ func TestCovDashboardReportsTabContextFailure(t *testing.T) {
 	panel := newCovPanel(t)
 	panel.inspections.err = errCovBoom
 
-	recorder := panel.as(http.MethodGet, "/dashboard?tab=season", nil, panel.admin.ID)
+	recorder := panel.as(http.MethodGet, "/dashboard?tab=leases", nil, panel.admin.ID)
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, esperado 500 quando o contexto da aba falha", recorder.Code)
 	}

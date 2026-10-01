@@ -11,7 +11,6 @@
             {{else if eq .Page "properties"}}Imóveis
             {{else if eq .Page "leases"}}Contratos de Locação
             {{else if eq .Page "receipts"}}Pagamentos e Recibos
-            {{else if eq .Page "season"}}Caução e vistoria
             {{else if eq .Page "calendar"}}Calendário
             {{else if eq .Page "review"}}Revisão de comprovantes
             {{else if eq .Page "intake"}}Cadastros propostos
@@ -30,7 +29,6 @@
             {{else if eq .Page "properties"}}{{len .Data.Snapshot.Properties}} imóvel(is)
             {{else if eq .Page "leases"}}{{leaseStatusSummary .Data.Snapshot.Leases}}
             {{else if eq .Page "receipts"}}{{len .Data.Snapshot.Receipts}} recibo(s)
-            {{else if eq .Page "season"}}{{with .Data.Season}}{{.SeasonCount}} temporada(s){{end}}
             {{else if eq .Page "calendar"}}{{with .Data.Calendar}}{{.Month.Label}}{{end}}
             {{else if eq .Page "review"}}{{len .Data.Review}} comprovante(s)
             {{else if eq .Page "intake"}}Cadastros propostos

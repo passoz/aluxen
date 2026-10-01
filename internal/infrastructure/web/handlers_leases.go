@@ -89,6 +89,10 @@ func leaseInput(r *http.Request, id string) (application.LeaseInput, error) {
 type leaseRow struct {
 	domain.Lease
 	Tone string
+	// CheckInID e CheckOutID são os autos de vistoria do contrato (vazio quando
+	// não há): a linha oferece os PDFs e a comparação a partir deles.
+	CheckInID  string
+	CheckOutID string
 }
 
 // LeaseRows devolve os contratos do snapshot filtrados pela situação escolhida
@@ -102,7 +106,11 @@ func (d *tabData) LeaseRows() []leaseRow {
 		if d.Status != "" && d.Status != "all" && d.Status != string(lease.Status) {
 			continue
 		}
-		rows = append(rows, leaseRow{Lease: lease, Tone: leaseStatusTone(lease.Status)})
+		row := leaseRow{Lease: lease, Tone: leaseStatusTone(lease.Status)}
+		if pair, ok := d.InspectionsByLease[lease.ID]; ok {
+			row.CheckInID, row.CheckOutID = pair[0], pair[1]
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }

@@ -612,32 +612,19 @@ func TestCovLeasesTabExposesDepositActions(t *testing.T) {
 		}
 	}
 
-	// A bancada se chama pelo que faz; a URL continua a mesma.
-	season := panel.as(http.MethodGet, "/dashboard?tab=season", nil, panel.admin.ID)
-	if season.Code != http.StatusOK {
-		t.Fatalf("bancada: status = %d, esperado 200", season.Code)
-	}
-	seasonBody := season.Body.String()
-	if !strings.Contains(seasonBody, "Caução e vistoria") {
-		t.Fatal("bancada sem o nome Caução e vistoria")
-	}
-	if strings.Contains(seasonBody, ">Temporada<") {
-		t.Fatal("bancada ainda rotulada como Temporada")
-	}
-	if !strings.Contains(seasonBody, `href="/dashboard?tab=season" class="active"`) {
-		t.Fatal("bancada sem o item de menu marcado como atual")
-	}
-
-	// O apelido ?tab=caucao resolve para a mesma aba.
-	alias := panel.as(http.MethodGet, "/dashboard?tab=caucao", nil, panel.admin.ID)
-	if alias.Code != http.StatusOK {
-		t.Fatalf("apelido caucao: status = %d, esperado 200", alias.Code)
-	}
-	aliasBody := alias.Body.String()
-	if !strings.Contains(aliasBody, "Caução e vistoria") {
-		t.Fatal("apelido caucao sem o conteúdo da bancada")
-	}
-	if !strings.Contains(aliasBody, `href="/dashboard?tab=season" class="active"`) {
-		t.Fatal("apelido caucao sem o item de menu marcado como atual")
+	// Work 0008: a bancada saiu do menu — ?tab=season e ?tab=caucao caem nos
+	// contratos, que é onde caução e vistoria acontecem.
+	for _, target := range []string{"/dashboard?tab=season", "/dashboard?tab=caucao"} {
+		page := panel.as(http.MethodGet, target, nil, panel.admin.ID)
+		if page.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d, esperado 200", target, page.Code)
+		}
+		pageBody := page.Body.String()
+		if !strings.Contains(pageBody, "Gerenciar Contratos") {
+			t.Fatalf("%s não normalizou para a aba de contratos", target)
+		}
+		if strings.Contains(pageBody, `href="/dashboard?tab=season"`) {
+			t.Fatalf("%s ainda oferece a aba própria de temporada", target)
+		}
 	}
 }

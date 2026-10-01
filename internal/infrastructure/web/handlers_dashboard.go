@@ -16,12 +16,12 @@ import (
 // despacho, carregamento de dados e renderização da casca.
 
 // dashboardTabs são as abas válidas do painel.
-var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "season", "calendar", "review", "intake", "conversations", "adjustment", "history"}
+var dashboardTabs = []string{"dashboard", "tenants", "properties", "leases", "receipts", "calendar", "review", "intake", "conversations", "adjustment", "history"}
 
 // tabAliases resolve URLs antigas para o tab canônico: a aba de indicadores
-// foi fundida com o Dashboard e a bancada de temporada passou a se chamar
-// "Caução e vistoria" (Work 0007).
-var tabAliases = map[string]string{"metrics": "dashboard", "caucao": "season"}
+// foi fundida com o Dashboard e a bancada de temporada passou a ser a fase de
+// contratos (Work 0008) — temporada é só uma situação do contrato.
+var tabAliases = map[string]string{"metrics": "dashboard", "caucao": "leases", "season": "leases"}
 
 // tabTemplate é o template de conteúdo de cada aba. Áreas que ainda não
 // publicaram o template apenas não renderizam conteúdo (o painel não quebra).
@@ -31,7 +31,6 @@ var tabTemplate = map[string]string{
 	"properties":    "tab_properties",
 	"leases":        "tab_leases",
 	"receipts":      "tab_receipts",
-	"season":        "tab_season",
 	"calendar":      "tab_calendar",
 	"review":        "tab_review",
 	"intake":        "tab_intake",
@@ -113,8 +112,25 @@ func (h *Handlers) loadTabContext(r *http.Request, data *tabData) error {
 	var err error
 
 	switch data.Tab {
-	case "season":
-		data.Season, err = application.BuildSeasonOverview(ctx, h.Deps)
+	case "leases":
+		// A comparação de vistorias mora na linha do contrato: a aba precisa
+		// saber quais contratos têm entrada e saída para oferecer o botão.
+		inspections, err := h.Deps.Repos.Inspections.List(ctx)
+		if err != nil {
+			return err
+		}
+		byLease := make(map[string][2]string, len(inspections))
+		for _, inspection := range inspections {
+			pair := byLease[inspection.LeaseID]
+			switch inspection.Kind {
+			case domain.InspectionKindCheckIn:
+				pair[0] = inspection.ID
+			case domain.InspectionKindCheckOut:
+				pair[1] = inspection.ID
+			}
+			byLease[inspection.LeaseID] = pair
+		}
+		data.InspectionsByLease = byLease
 	case "calendar":
 		year, month := parseCalendarQuery(r.URL.Query().Get("year"), r.URL.Query().Get("month"), h.Deps.Clock.Now())
 		data.Calendar, err = application.BuildCalendar(ctx, h.Deps, year, month)
@@ -137,9 +153,11 @@ func (h *Handlers) loadTabContext(r *http.Request, data *tabData) error {
 type tabData struct {
 	User     *domain.User
 	Snapshot *application.DashboardData
-	Season   *application.SeasonOverview
-	Calendar *application.CalendarView
-	Tab      string
+	// InspectionsByLease guarda, por contrato, os ids da vistoria de entrada
+	// ([0]) e de saída ([1]) para a linha oferecer autos e comparação.
+	InspectionsByLease map[string][2]string
+	Calendar           *application.CalendarView
+	Tab                string
 	// Review é a fila de comprovantes em revisão humana.
 	Review []application.PaymentProofRow
 	// Intake é a lista de cadastros propostos a partir de documento.
