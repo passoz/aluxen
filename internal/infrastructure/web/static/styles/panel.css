@@ -484,6 +484,19 @@ input[data-mask="money"] {
   justify-content: flex-start;
 }
 
+/* ── Ações do contrato no dropdown: forms e botões alinhados como itens ── */
+.pdf-menu form {
+  display: contents;
+}
+
+.pdf-menu .btn,
+.pdf-menu button.btn {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: nowrap;
+}
+
 /* ── Ajustes de tela estreita ───────────────────────────────────── */
 @media (max-width: 480px) {
   .date-picker-dropdown {
