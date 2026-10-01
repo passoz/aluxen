@@ -103,14 +103,35 @@ func TestCovOpenSidebarGlyphHasCircleStyle(t *testing.T) {
 	}
 	css := recorder.Body.String()
 
-	// Com o menu aberto o glifo '<' aparece dentro de um círculo.
-	openRule := false
+	// Com o menu aberto o glifo '<' aparece dentro de um círculo. A regra é
+	// lida por bloco: o seletor abre e as declarações vêm nas linhas seguintes.
+	openRule, collapsedCircle := false, false
+	inBlock, blockOpen := "", false
 	for _, line := range strings.Split(css, "\n") {
-		if strings.Contains(line, "menu-glyph-expanded") && strings.Contains(line, "border-radius") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasSuffix(trimmed, "{") {
+			inBlock, blockOpen = trimmed, true
+			continue
+		}
+		if strings.HasPrefix(trimmed, "}") {
+			inBlock, blockOpen = "", false
+			continue
+		}
+		if !blockOpen || !strings.Contains(line, "border-radius") {
+			continue
+		}
+		switch {
+		case strings.Contains(inBlock, "menu-glyph-expanded"):
 			openRule = true
+		case strings.Contains(inBlock, "menu-glyph-collapsed"):
+			// Só do aberto: o hambúrguer do menu fechado não ganha círculo.
+			collapsedCircle = true
 		}
 	}
 	if !openRule {
 		t.Fatal("CSS sem regra de círculo (border-radius) para o glifo do menu aberto")
+	}
+	if collapsedCircle {
+		t.Fatal("CSS com círculo no glifo do menu fechado: a bolinha é só do aberto")
 	}
 }
