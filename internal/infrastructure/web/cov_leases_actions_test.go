@@ -105,6 +105,8 @@ func TestCovOpenSidebarGlyphHasCircleStyle(t *testing.T) {
 
 	// Com o menu aberto o glifo '<' aparece dentro de um círculo. A regra é
 	// lida por bloco: o seletor abre e as declarações vêm nas linhas seguintes.
+	// O círculo vai no <svg> com o menu aberto — borda não renderiza no <path>
+	// do glifo, então regra no path seria um não-op invisível.
 	openRule, collapsedCircle := false, false
 	inBlock, blockOpen := "", false
 	for _, line := range strings.Split(css, "\n") {
@@ -121,9 +123,11 @@ func TestCovOpenSidebarGlyphHasCircleStyle(t *testing.T) {
 			continue
 		}
 		switch {
-		case strings.Contains(inBlock, "menu-glyph-expanded"):
+		// O seletor mira o <svg> com o menu aberto (`.menu-glyph` sem sufixo):
+		// regra no path (`.menu-glyph-expanded`) seria um não-op invisível.
+		case strings.Contains(inBlock, ".sidebar.open") && strings.Contains(inBlock, ".menu-glyph") && !strings.Contains(inBlock, ".menu-glyph-"):
 			openRule = true
-		case strings.Contains(inBlock, "menu-glyph-collapsed"):
+		case strings.Contains(inBlock, "collapsed") || strings.Contains(inBlock, "mobile-menu"):
 			// Só do aberto: o hambúrguer do menu fechado não ganha círculo.
 			collapsedCircle = true
 		}

@@ -751,12 +751,13 @@ html.sidebar-collapsed main {
   display: none;
 }
 
-/* Bolinha no '<' com o menu aberto (Work 0008): só o estado expandido muda,
-   o hambúrguer do menu fechado continua como está. */
-.sidebar.open .menu-glyph-expanded {
+/* Bolinha no '<' com o menu aberto (Work 0008): o círculo vai no <svg> com o
+   menu aberto — borda não renderiza no <path> do glifo — e o hambúrguer do
+   menu fechado continua como está. */
+.sidebar.open .menu-btn .menu-glyph {
   border: 1.5px solid currentColor;
   border-radius: 50%;
-  padding: 3px;
+  padding: 2px;
 }
 
 /* Botão flutuante do menu no mobile: vira um X quando o drawer está aberto. */
