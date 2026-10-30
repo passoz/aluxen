@@ -50,7 +50,8 @@ type Config struct {
 	// SeedUsername é o administrador criado no primeiro boot.
 	SeedUsername string `env:"SEED_USERNAME" envDefault:"passoz"`
 	// SeedPassword é a senha semeada do administrador no primeiro boot.
-	SeedPassword string `env:"SEED_PASSWORD" envDefault:"senha-de-teste"`
+	// Obrigatória quando ainda não existe administrador; o app exige a troca no primeiro acesso.
+	SeedPassword string `env:"SEED_PASSWORD"`
 	// SeedDemo pede que o boot popule a base com os dados de demonstração.
 	SeedDemo bool `env:"SEED_DEMO" envDefault:"false"`
 	// DefaultLandlordName é o nome do locador gravado no seed das configurações.

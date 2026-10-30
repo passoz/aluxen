@@ -9,9 +9,9 @@ import (
 	"github.com/passoz/aluxen/internal/domain"
 )
 
-// productionHash é um hash gravado pelo app Bun em produção (bcryptjs, custo 10)
-// para a senha `senha-de-teste`; o port precisa continuar validando hashes assim.
-const productionHash = "$2b$10$mv411FwL8LPi14KG58PiTOsDyo7XCK8VEDFQdeWDE..15tb3kAQGi"
+// legacyHash é um hash de teste no formato gravado pelo app Bun (bcrypt, custo 10).
+// O port precisa continuar validando hashes assim.
+const legacyHash = "$2b$10$mv411FwL8LPi14KG58PiTOsDyo7XCK8VEDFQdeWDE..15tb3kAQGi"
 
 func TestBcryptHasherHashAndCompare(t *testing.T) {
 	hasher := BcryptHasher{}
@@ -56,13 +56,13 @@ func TestBcryptHasherRejectsWrongPassword(t *testing.T) {
 	}
 }
 
-func TestBcryptHasherAcceptsHashesFromTheBunApp(t *testing.T) {
+func TestBcryptHasherAcceptsLegacyBcryptHashes(t *testing.T) {
 	hasher := BcryptHasher{}
 
-	if err := hasher.Compare(productionHash, "senha-de-teste"); err != nil {
+	if err := hasher.Compare(legacyHash, "senha-de-teste"); err != nil {
 		t.Errorf("hash $2b$ de produção recusado: %v", err)
 	}
-	if err := hasher.Compare(productionHash, "senha-errada"); !errors.Is(err, domain.ErrUnauthorized) {
+	if err := hasher.Compare(legacyHash, "senha-errada"); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Errorf("erro = %v, esperado embrulhar domain.ErrUnauthorized", err)
 	}
 }

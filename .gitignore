@@ -32,14 +32,21 @@ data-test/
 .profile/
 whatsapp-session/
 
-# Governança do pwn (runtime)
-.pwn/sandboxes/
-.pwn/metrics.jsonl
-.pwn/RUN-*.jsonl
-.pwn/learnings.json
-.pwn/gate-cache/
+# Governança e artefatos internos do harness (nunca versionados)
+.pwn/
+.todo/
+.work/
+queue/
 .piwerness
-queue/review/*.json
+
+# Documentos internos de negócio e deploy
+ESTRATEGIA.md
+ARQUITETURA-DEPLOY.md
+
+# Propostas de identidade visual (o logo final fica em .assets/logos/final)
+.assets/logos/*
+!.assets/logos/final/
+!.assets/logos/final/**
 
 # Logs e caches
 logs

@@ -240,7 +240,7 @@ func covEnvOf(t *testing.T, instance *covInstance) map[string]string {
 // covCreateArgs são os argumentos mínimos de um create válido.
 func covCreateArgs(name string) []string {
 	return []string{"create", "--name", name, "--domain", name + ".aluxen.local",
-		"--image", "ghcr.io/passoz/aluxen:sha-cov"}
+		"--image", "ghcr.io/passoz/aluxen:sha-cov", "--seed-password", "senha-teste"}
 }
 
 // ── Parsing e ajuda ────────────────────────────────────────────────

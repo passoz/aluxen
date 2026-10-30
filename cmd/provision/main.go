@@ -63,7 +63,7 @@ Subcomandos:
       --port <porta>          porta do app (padrão: 3000)
       --seed-demo             sobe a instância já com os dados de demonstração
       --seed-username <user>  administrador semeado (padrão: $SEED_USERNAME ou "passoz")
-      --seed-password <senha> senha semeada (padrão: $SEED_PASSWORD ou "senha-de-teste")
+      --seed-password <senha> senha semeada (ou $SEED_PASSWORD; obrigatória)
       --session-secret <s>    segredo de sessão (padrão: $SESSION_SECRET ou gerado)
       --expires-at <data>     etiqueta de expiração: AAAA-MM-DD ou +Nd
 
@@ -165,7 +165,7 @@ func runCreate(ctx context.Context, args []string, out io.Writer) error {
 	}
 	options.project = projectName(options.project)
 	options.seedUsername = firstNonEmpty(options.seedUsername, os.Getenv("SEED_USERNAME"), "passoz")
-	options.seedPassword = firstNonEmpty(options.seedPassword, os.Getenv("SEED_PASSWORD"), "senha-de-teste")
+	options.seedPassword = firstNonEmpty(options.seedPassword, os.Getenv("SEED_PASSWORD"))
 	options.sessionSecret = firstNonEmpty(options.sessionSecret, os.Getenv("SESSION_SECRET"))
 
 	if options.name == "" || options.domain == "" || options.image == "" {
@@ -173,6 +173,9 @@ func runCreate(ctx context.Context, args []string, out io.Writer) error {
 	}
 	if options.dbDir == "" {
 		return errors.New("--db-dir não pode ser vazio")
+	}
+	if options.seedPassword == "" {
+		return errors.New("create exige --seed-password ou SEED_PASSWORD")
 	}
 	if options.sessionSecret == "" {
 		generated, err := newSecret()

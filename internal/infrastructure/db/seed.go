@@ -23,7 +23,6 @@ const (
 	legacySeedUsername = "admin"
 
 	defaultSeedUsername = "passoz"
-	defaultSeedPassword = "senha-de-teste"
 	defaultLandlordName = "Locador"
 )
 
@@ -37,12 +36,11 @@ const (
 //     `password_changed_at`, o que obriga a troca no primeiro acesso;
 //   - `landlord_name`/`landlord_cpf` só são gravados quando ainda não existem.
 //
-// Valores vazios caem para a variável de ambiente correspondente e, na falta
-// dela, para o padrão (`SEED_USERNAME`, `SEED_PASSWORD`, `DEFAULT_LANDLORD_NAME`,
-// `DEFAULT_LANDLORD_CPF`).
+// Valores vazios caem para a variável de ambiente correspondente. A senha não
+// tem padrão: sem `SEED_PASSWORD` no primeiro boot, a criação falha.
 func (s *Store) EnsureAdmin(ctx context.Context, username, password, landlordName, landlordCPF string) error {
 	username = firstNonEmpty(username, os.Getenv("SEED_USERNAME"), defaultSeedUsername)
-	password = firstNonEmpty(password, os.Getenv("SEED_PASSWORD"), defaultSeedPassword)
+	password = firstNonEmpty(password, os.Getenv("SEED_PASSWORD"))
 	landlordName = firstNonEmpty(landlordName, os.Getenv("DEFAULT_LANDLORD_NAME"), defaultLandlordName)
 	landlordCPF = firstNonEmpty(landlordCPF, os.Getenv("DEFAULT_LANDLORD_CPF"))
 
@@ -87,6 +85,9 @@ func (s *Store) createOrAdoptAdmin(ctx context.Context, username, password strin
 		return fmt.Errorf("procurar administrador legado %q: %w", legacySeedUsername, err)
 	}
 
+	if password == "" {
+		return errors.New("SEED_PASSWORD é obrigatório no primeiro boot")
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), seedBcryptCost)
 	if err != nil {
 		return fmt.Errorf("gerar hash da senha semeada: %w", err)

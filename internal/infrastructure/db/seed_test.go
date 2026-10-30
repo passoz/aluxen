@@ -144,6 +144,7 @@ func TestSeedDemo(t *testing.T) {
 		t.Run(tgt.name, func(t *testing.T) {
 			ctx := context.Background()
 			store := openStore(t, tgt)
+			t.Setenv("SEED_PASSWORD", "senha-demo")
 
 			require.NoError(t, db.SeedDemo(ctx, store))
 

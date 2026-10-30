@@ -50,7 +50,7 @@ func TestLoadDefaults(t *testing.T) {
 		{"SessionSecret", cfg.SessionSecret, ""},
 		{"CookieSecure", cfg.CookieSecure, false},
 		{"SeedUsername", cfg.SeedUsername, "passoz"},
-		{"SeedPassword", cfg.SeedPassword, "senha-de-teste"},
+		{"SeedPassword", cfg.SeedPassword, ""},
 		{"SeedDemo", cfg.SeedDemo, false},
 		{"DefaultLandlordName", cfg.DefaultLandlordName, "Locador"},
 		{"DefaultLandlordCPF", cfg.DefaultLandlordCPF, ""},

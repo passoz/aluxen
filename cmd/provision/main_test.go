@@ -170,6 +170,7 @@ func TestCreateProvisionsInstanceEndToEnd(t *testing.T) {
 		"--domain", "buzios.aluxen.evolucsia.com",
 		"--image", "ghcr.io/passoz/aluxen:sha-abc123",
 		"--db-dir", "/data",
+		"--seed-password", "senha-teste",
 		"--seed-demo",
 		"--expires-at", "2026-10-05",
 	)
@@ -204,7 +205,7 @@ func TestCreateProvisionsInstanceEndToEnd(t *testing.T) {
 func TestCreateIsIdempotentForSameName(t *testing.T) {
 	panel := newFakePanel(t)
 	args := []string{"create", "--name", "aluxen-demo-arraial", "--domain", "arraial.aluxen.evolucsia.com",
-		"--image", "ghcr.io/passoz/aluxen:sha-abc123"}
+		"--image", "ghcr.io/passoz/aluxen:sha-abc123", "--seed-password", "senha-teste"}
 
 	first, err := runProvision(t, args...)
 	require.NoError(t, err, first)
@@ -223,7 +224,7 @@ func TestCreateIsIdempotentForSameName(t *testing.T) {
 
 func TestCreateConvergesImageOnRerun(t *testing.T) {
 	panel := newFakePanel(t)
-	base := []string{"create", "--name", "aluxen-cliente-x", "--domain", "x.aluxen.evolucsia.com"}
+	base := []string{"create", "--name", "aluxen-cliente-x", "--domain", "x.aluxen.evolucsia.com", "--seed-password", "senha-teste"}
 
 	_, err := runProvision(t, append(base, "--image", "ghcr.io/passoz/aluxen:sha-velho")...)
 	require.NoError(t, err)
@@ -248,7 +249,7 @@ func TestCreateWithoutPanelCredentials(t *testing.T) {
 	t.Setenv("EASYPANEL_URL", "")
 	t.Setenv("EASYPANEL_API_KEY", "")
 
-	_, err := runProvision(t, "create", "--name", "aluxen-demo", "--domain", "d.aluxen.local", "--image", "img")
+	_, err := runProvision(t, "create", "--name", "aluxen-demo", "--domain", "d.aluxen.local", "--image", "img", "--seed-password", "senha-teste")
 	assert.ErrorIs(t, err, easypanel.ErrNotConfigured)
 }
 

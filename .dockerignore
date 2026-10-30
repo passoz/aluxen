@@ -29,6 +29,9 @@ docs/
 .assets/
 .piwerness/
 .todo/
+.pwn/
+.work/
+queue/
 
 # Testes (o binário não precisa deles)
 test/
